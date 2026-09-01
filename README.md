@@ -87,7 +87,7 @@ python scripts/seed_demo.py --clear   # removes exactly what it created
 | `EXTRACTOR` | `claude` | `claude`, `tesseract` or `ollama` |
 | `EXTRACTOR_MODEL` | `claude-opus-5` | `claude-haiku-4-5` costs about a fifth as much |
 | `EXTRACTOR_EFFORT` | `medium` | Transcription does not repay deep reasoning |
-| `ANTHROPIC_API_KEY` | – | Required when `EXTRACTOR=claude` |
+| `ANTHROPIC_API_KEY` | – | Required when `EXTRACTOR=claude`; a Console key, not a Pro/Max subscription |
 | `MAX_IMAGE_EDGE` | `1600` | The main cost lever; images bill at `w×h/750` tokens |
 | `SECRET_KEY` | – | Signs the session cookie |
 | `APP_PASSWORD_HASH` | – | `python scripts/hash_password.py` |

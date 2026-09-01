@@ -37,6 +37,10 @@ python scripts/hash_password.py   # APP_PASSWORD_HASH - prompts, echoes nothing
 
 And an API key from <https://console.anthropic.com> for `ANTHROPIC_API_KEY`.
 
+> A Claude Pro or Max subscription does **not** cover this. The subscription and the API
+> are billed separately — you need a Console account with credits on it. The minimum
+> top-up lasts a long time at this app's usage; see the cost table in the main README.
+
 ## 3. Install
 
 **Apps → Discover Apps → ⋮ → Install via YAML.** Name it `mazsola`, paste
