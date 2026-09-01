@@ -134,8 +134,10 @@ class TestBalance:
         assert validate(receipt, now=NOW).ok
 
     def test_one_forint_drift_is_tolerated(self, receipt):
+        # Line-level rounding on weighed goods makes an exact match unrealistic, so a
+        # single forint of drift must not send a receipt to review.
         receipt.total_gross = 3596.0
-        assert validate(receipt, now=NOW).ok
+        assert "items_total_mismatch" not in validate(receipt, now=NOW).reasons
 
     def test_three_forint_drift_is_not(self, receipt):
         receipt.total_gross = 3598.0
@@ -150,6 +152,20 @@ class TestSanityChecks:
     def test_rounding_beyond_two_forint_flagged(self, receipt):
         receipt.rounding = -7.0
         assert "rounding_out_of_range" in validate(receipt, now=NOW).reasons
+
+    def test_cash_total_must_be_a_multiple_of_five(self, receipt):
+        # 5232 cash is impossible: it would have been rounded to 5230.
+        receipt.total_gross = 3597.0
+        receipt.rounding = 0.0
+        reasons = validate(receipt, now=NOW).reasons
+        assert "cash_total_not_multiple_of_five" in reasons
+
+    def test_card_payment_may_end_in_any_digit(self, receipt):
+        receipt.payment_method = "card"
+        receipt.rounding = 0.0
+        receipt.total_gross = 3597.0
+        reasons = validate(receipt, now=NOW).reasons
+        assert "cash_total_not_multiple_of_five" not in reasons
 
     def test_missing_merchant_flagged(self, receipt):
         receipt.merchant_name = None

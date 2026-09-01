@@ -31,6 +31,19 @@ export const dateTime = (iso: string | null | undefined): string =>
 
 export const month = (iso: string): string => MONTH.format(new Date(iso));
 
+/** ISO timestamp -> the value a <input type="datetime-local"> expects, in local time.
+ *  Slicing the ISO string directly would show UTC and silently shift the time. */
+export const toLocalInput = (iso: string | null | undefined): string => {
+  if (!iso) return "";
+  const at = new Date(iso);
+  const local = new Date(at.getTime() - at.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+};
+
+/** The inverse: a datetime-local value is local time, and the API stores UTC. */
+export const fromLocalInput = (value: string): string | null =>
+  value ? new Date(value).toISOString() : null;
+
 export const pct = (value: number | null | undefined, digits = 1): string =>
   value == null ? "–" : `${value > 0 ? "+" : ""}${value.toFixed(digits)}%`;
 
@@ -55,6 +68,7 @@ export const REVIEW_REASONS: Record<string, string> = {
   future_date: "A dátum a jövőben van",
   implausibly_old_date: "Irreálisan régi dátum",
   rounding_out_of_range: "A kerekítés 2 Ft-nál nagyobb",
+  cash_total_not_multiple_of_five: "Készpénzes végösszeg, ami nem osztható 5-tel",
   missing_vat_rate: "Hiányzó ÁFA-kulcs",
   low_confidence: "A felismerés bizonytalan",
   low_confidence_line: "Legalább egy sor bizonytalan",

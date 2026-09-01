@@ -22,9 +22,9 @@ WIDTH, MARGIN, LINE_HEIGHT = 620, 26, 26
 # The expected reading, so a live test can assert against it.
 EXPECTED = {
     "merchant": "Tesco",
-    "total_gross": 5235.0,   # a cash total is always a multiple of 5 Ft
-    "subtotal": 5238.0,      # before the kerekítés line
-    "rounding": -3.0,
+    "total_gross": 5230.0,   # a cash total is always a multiple of 5 Ft
+    "subtotal": 5232.0,      # before the kerekítés line
+    "rounding": -2.0,
     "discount_total": 1088.0,
     "goods_lines": 6,        # plus one deposit, one discount and one rounding line
     "vat_rates": {27.0, 18.0, 5.0},
@@ -50,18 +50,18 @@ LINES: list[tuple[str, str]] = [
     ("pair", "MOSOGATÓSZER 1L|A"),
     ("pair", "  1 db x 1 099|1 099"),
     ("pair", "ŐRÖLT KÁVÉ 250G|A"),
-    ("pair", "  1 db x 1 497|1 497"),
+    ("pair", "  1 db x 1 491|1 491"),
     ("pair", "KEDVEZMÉNY AKCIÓ|-1 088"),
     ("sep", ""),
-    ("pair", "ÖSSZESEN:|5 238"),
-    ("pair", "KEREKÍTÉS:|-3"),
-    ("pair", "FIZETENDŐ:|5 235"),
+    ("pair", "ÖSSZESEN:|5 232"),
+    ("pair", "KEREKÍTÉS:|-2"),
+    ("pair", "FIZETENDŐ:|5 230"),
     ("sep", ""),
     ("pair", "KÉSZPÉNZ:|10 000"),
-    ("pair", "VISSZAJÁRÓ:|4 765"),
+    ("pair", "VISSZAJÁRÓ:|4 770"),
     ("sep", ""),
     ("left", "ÁFA ÖSSZESÍTŐ"),
-    ("pair", "A 27%  alap 2 288  áfa 618|2 906"),
+    ("pair", "A 27%  alap 2 283  áfa 617|2 900"),
     ("pair", "B 18%  alap 1 767  áfa 318|2 085"),
     ("pair", "C  5%  alap   235  áfa  12|247"),
     ("sep", ""),

@@ -222,6 +222,12 @@ def validate(receipt: ExtractedReceipt, *, now: datetime | None = None) -> Valid
         result.flag("implausibly_old_date")
 
     rounding = to_decimal(receipt.rounding) or Decimal("0.00")
+
+    # A cash total in Hungary is always a multiple of 5 Ft - that is the entire point of
+    # the kerekítés line. A cash total that is not is a misread digit, every time.
+    if receipt.payment_method == "cash" and total is not None and total % 5 != 0:
+        result.flag("cash_total_not_multiple_of_five")
+
     if abs(rounding) > MAX_ROUNDING:
         # Cash rounding to the nearest 5 Ft can never exceed 2 Ft; a bigger value means the
         # engine put something else on this line.

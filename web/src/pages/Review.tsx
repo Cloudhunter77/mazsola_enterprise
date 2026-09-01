@@ -10,7 +10,9 @@ import { useCallback, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { api, type Item, type Product, type ReceiptDetail } from "../lib/api";
-import { KIND_LABELS, REVIEW_REASONS, STATUS_LABELS, dateTime, ft, qty } from "../lib/format";
+import {
+  KIND_LABELS, REVIEW_REASONS, STATUS_LABELS, dateTime, fromLocalInput, ft, qty, toLocalInput,
+} from "../lib/format";
 import { AsyncBlock, Card, useAsync } from "../components/ui";
 
 const KINDS = ["item", "deposit", "discount", "rounding", "fee"];
@@ -152,14 +154,12 @@ function Header({ receipt, onSave, busy }: {
 }) {
   const [merchant, setMerchant] = useState(receipt.merchant_name ?? receipt.merchant_raw_name ?? "");
   const [total, setTotal] = useState(receipt.total_gross ?? "");
-  const [purchasedAt, setPurchasedAt] = useState(
-    receipt.purchased_at ? receipt.purchased_at.slice(0, 16) : "",
-  );
+  const [purchasedAt, setPurchasedAt] = useState(toLocalInput(receipt.purchased_at));
 
   const dirty =
     merchant !== (receipt.merchant_name ?? receipt.merchant_raw_name ?? "") ||
     String(total) !== String(receipt.total_gross ?? "") ||
-    purchasedAt !== (receipt.purchased_at ? receipt.purchased_at.slice(0, 16) : "");
+    purchasedAt !== toLocalInput(receipt.purchased_at);
 
   return (
     <Card title="Fejléc">
@@ -192,7 +192,7 @@ function Header({ receipt, onSave, busy }: {
           onSave({
             merchant_name: merchant || null,
             total_gross: total === "" ? null : total,
-            purchased_at: purchasedAt ? new Date(purchasedAt).toISOString() : null,
+            purchased_at: fromLocalInput(purchasedAt),
           })
         }
       >
