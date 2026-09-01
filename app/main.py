@@ -1,0 +1,133 @@
+"""Mazsola - a receipt scanner and expense database for a home NAS.
+
+One process serves the API, the built single-page app, and the extraction worker. On start
+it brings the schema up to date and seeds the category tree, so deploying is 'pull the image
+and set the environment variables' with no migration step to remember.
+"""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
+
+from app.api import auth, catalog, costs, receipts, stats
+from app.config import get_settings
+from app.db import SessionLocal, engine
+from app.services.seed import seed_if_empty
+from app.worker import ExtractionWorker
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-7s %(name)s | %(message)s",
+)
+log = logging.getLogger("mazsola")
+
+STATIC_DIR = Path(__file__).resolve().parent.parent / "web" / "dist"
+
+
+async def _run_migrations() -> None:
+    """Apply Alembic migrations against the configured database."""
+    from alembic import command
+    from alembic.config import Config
+
+    root = Path(__file__).resolve().parent.parent
+    config = Config(str(root / "alembic.ini"))
+    config.set_main_option("script_location", str(root / "app" / "migrations"))
+    config.attributes["configure_logger"] = False
+
+    import asyncio
+
+    await asyncio.to_thread(command.upgrade, config, "head")
+    log.info("database schema is up to date")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    settings = get_settings()
+    settings.image_dir.mkdir(parents=True, exist_ok=True)
+
+    await _run_migrations()
+
+    async with SessionLocal() as session:
+        await seed_if_empty(session)
+
+    worker = ExtractionWorker(settings)
+    app.state.worker = worker
+    if settings.worker_enabled:
+        worker.start()
+    else:
+        log.warning("worker disabled (WORKER_ENABLED=false); uploads will stay pending")
+
+    if settings.auth_disabled:
+        log.warning("AUTH_DISABLED is set - the API is open to anyone who can reach it")
+
+    try:
+        yield
+    finally:
+        await worker.stop()
+        await engine.dispose()
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(
+        title="Mazsola",
+        description="Photograph a receipt, get a queryable expense database.",
+        version="0.1.0",
+        lifespan=lifespan,
+    )
+
+    app.include_router(auth.router)
+    app.include_router(receipts.router)
+    app.include_router(catalog.router)
+    app.include_router(stats.router)
+    app.include_router(costs.router)
+
+    @app.get("/health", tags=["ops"])
+    async def health() -> JSONResponse:
+        """Liveness plus a real database round-trip, for the compose healthcheck."""
+        settings = get_settings()
+        try:
+            async with SessionLocal() as session:
+                await session.execute(text("SELECT 1"))
+            database_ok = True
+        except Exception as exc:  # noqa: BLE001 - the point is to report, not raise
+            log.warning("health check could not reach the database: %s", exc)
+            database_ok = False
+
+        payload = {
+            "status": "ok" if database_ok else "degraded",
+            "database": database_ok,
+            "extractor": settings.extractor,
+            "model": settings.extractor_model if settings.extractor == "claude" else None,
+            "worker": settings.worker_enabled,
+        }
+        return JSONResponse(payload, status_code=200 if database_ok else 503)
+
+    _mount_frontend(app)
+    return app
+
+
+def _mount_frontend(app: FastAPI) -> None:
+    """Serve the built SPA, with unknown paths falling back to index.html for client routing."""
+    if not STATIC_DIR.is_dir():
+        log.warning("no built frontend at %s - API only", STATIC_DIR)
+        return
+
+    app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa(full_path: str) -> FileResponse:
+        candidate = STATIC_DIR / full_path
+        if full_path and candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(STATIC_DIR / "index.html")
+
+
+app = create_app()

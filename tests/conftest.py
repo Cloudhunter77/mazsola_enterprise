@@ -77,3 +77,49 @@ def build_receipt(**overrides) -> ExtractedReceipt:
 @pytest.fixture
 def receipt() -> ExtractedReceipt:
     return build_receipt()
+
+
+# --- database fixtures -------------------------------------------------------
+# These require a real PostgreSQL: the statistics queries use date_trunc and the worker
+# uses SELECT ... FOR UPDATE SKIP LOCKED, neither of which SQLite can stand in for.
+import io  # noqa: E402
+import os  # noqa: E402
+
+from PIL import Image  # noqa: E402
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
+
+from app.models import Base  # noqa: E402
+
+TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL") or os.environ.get("DATABASE_URL")
+
+requires_db = pytest.mark.skipif(
+    not TEST_DATABASE_URL or "postgresql" not in TEST_DATABASE_URL,
+    reason="set TEST_DATABASE_URL to a PostgreSQL DSN to run database tests",
+)
+
+
+@pytest.fixture
+async def sessionmaker_fixture():
+    engine = create_async_engine(TEST_DATABASE_URL, poolclass=None)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        yield maker
+    finally:
+        await engine.dispose()
+
+
+@pytest.fixture
+async def session(sessionmaker_fixture):
+    async with sessionmaker_fixture() as s:
+        yield s
+
+
+@pytest.fixture
+def receipt_photo() -> bytes:
+    """A real (if boring) JPEG. Ingest verifies the bytes are a decodable image."""
+    buffer = io.BytesIO()
+    Image.new("RGB", (900, 1600), (252, 252, 250)).save(buffer, format="JPEG")
+    return buffer.getvalue()
