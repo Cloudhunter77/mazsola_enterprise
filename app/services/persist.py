@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import delete
@@ -18,7 +18,14 @@ from app.extraction.hu_rules import (
     to_decimal,
     validate,
 )
-from app.models import ExtractionAttempt, LineKind, PaymentMethod, Receipt, ReceiptItem, ReceiptStatus
+from app.models import (
+    ExtractionAttempt,
+    LineKind,
+    PaymentMethod,
+    Receipt,
+    ReceiptItem,
+    ReceiptStatus,
+)
 from app.schemas.extraction import ExtractedReceipt
 from app.services.catalog import resolve_merchant, resolve_product
 
@@ -130,7 +137,7 @@ async def persist_extraction(
     receipt.status = (
         ReceiptStatus.PARSED.value if verdict.ok else ReceiptStatus.NEEDS_REVIEW.value
     )
-    receipt.parsed_at = datetime.now(timezone.utc)
+    receipt.parsed_at = datetime.now(UTC)
     receipt.error = None
 
     return verdict

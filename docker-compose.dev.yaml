@@ -1,0 +1,39 @@
+# Local development: builds from source and reloads on change.
+# For the NAS use deploy/docker-compose.yaml, which pulls a prebuilt image instead.
+name: mazsola-dev
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: mazsola
+      POSTGRES_PASSWORD: mazsola
+      POSTGRES_DB: mazsola
+    ports: ["5432:5432"]
+    volumes: ["dev-pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mazsola"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      db: {condition: service_healthy}
+    environment:
+      DATABASE_URL: postgresql+asyncpg://mazsola:mazsola@db:5432/mazsola
+      DATA_DIR: /data
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      EXTRACTOR: ${EXTRACTOR:-claude}
+      EXTRACTOR_MODEL: ${EXTRACTOR_MODEL:-claude-opus-5}
+      SECRET_KEY: dev-secret-not-for-real-use
+      AUTH_DISABLED: "true"
+    ports: ["8000:8000"]
+    volumes: ["dev-data:/data"]
+
+volumes:
+  dev-pgdata:
+  dev-data:

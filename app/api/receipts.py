@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, Query, Response, UploadFile, status
@@ -162,7 +162,7 @@ async def confirm_receipt(
         raise HTTPException(status_code=404, detail="No such receipt.")
 
     receipt.status = ReceiptStatus.CONFIRMED.value
-    receipt.confirmed_at = datetime.now(timezone.utc)
+    receipt.confirmed_at = datetime.now(UTC)
     receipt.review_reasons = None
     await session.commit()
     return await get_receipt(_, session, receipt_id)

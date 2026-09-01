@@ -68,7 +68,7 @@ class ExtractionWorker:
                     await asyncio.wait_for(
                         self._stopping.wait(), timeout=self.settings.worker_poll_seconds
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     pass
 
     # --- work ----------------------------------------------------------------

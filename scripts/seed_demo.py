@@ -15,7 +15,7 @@ import asyncio
 import random
 import sys
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -25,8 +25,15 @@ from sqlalchemy import delete, select  # noqa: E402
 
 from app.db import SessionLocal  # noqa: E402
 from app.models import (  # noqa: E402
-    Category, ExtractionAttempt, LineKind, Merchant, Product, ProductAlias,
-    Receipt, ReceiptItem, ReceiptStatus,
+    Category,
+    ExtractionAttempt,
+    LineKind,
+    Merchant,
+    Product,
+    ProductAlias,
+    Receipt,
+    ReceiptItem,
+    ReceiptStatus,
 )
 from app.services.catalog import resolve_merchant  # noqa: E402
 from app.services.seed import seed_categories  # noqa: E402
@@ -96,7 +103,7 @@ async def generate(months: int, seed: int) -> None:
                 )
         await session.flush()
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         created = 0
 
         for month_offset in range(months, 0, -1):

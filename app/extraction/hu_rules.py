@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
 
@@ -55,7 +55,8 @@ def _fold(text: str) -> str:
 # treating it as an item is the single most common receipt-parsing error.
 DROP_KEYWORDS = (
     "visszajaro", "keszpenz", "bankkartya", "osszesen", "fizetendo", "fizetendo osszeg",
-    "megtakarit", "on ma megtakaritott", "pontegyenleg", "gyujtott pont", "hitelkartya",
+    "megtakarit", "on ma megtakaritott", "pontegyenleg", "gyujtott pont",
+    "hitelkartya",
     "adoszam", "nyugtaszam", "koszonjuk", "viszontlatasra", "afa osszesen", "vasarlas",
 )
 DEPOSIT_KEYWORDS = ("betetdij", "betet dij", "repohar", "visszavalthato", "palack")
@@ -121,7 +122,9 @@ def parse_purchased_at(raw: str | None) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=BUDAPEST)
 
 
-def resolve_vat(code: str | None, rate: float | Decimal | None) -> tuple[str | None, Decimal | None]:
+def resolve_vat(
+    code: str | None, rate: float | Decimal | None
+) -> tuple[str | None, Decimal | None]:
     """Reconcile the printed ÁFA letter with the percent, preferring an explicit valid rate."""
     normalized_code = code.strip().upper() if code else None
     resolved_rate = to_decimal(rate)
@@ -192,7 +195,7 @@ def items_subtotal(items: list[ExtractedItem]) -> Decimal:
 def validate(receipt: ExtractedReceipt, *, now: datetime | None = None) -> Validation:
     """Check a receipt against the arithmetic a genuine Hungarian receipt must satisfy."""
     result = Validation()
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
 
     total = to_decimal(receipt.total_gross)
     result.stated_total = total
@@ -237,7 +240,8 @@ def validate(receipt: ExtractedReceipt, *, now: datetime | None = None) -> Valid
             (to_decimal(row.gross) or Decimal("0.00") for row in receipt.vat_summary),
             Decimal("0.00"),
         )
-        if total is not None and vat_gross > 0 and abs(vat_gross - total) > TOLERANCE + abs(rounding):
+        vat_tolerance = TOLERANCE + abs(rounding)
+        if total is not None and vat_gross > 0 and abs(vat_gross - total) > vat_tolerance:
             result.flag("vat_summary_mismatch")
 
         for row in receipt.vat_summary:

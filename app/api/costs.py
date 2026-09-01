@@ -7,7 +7,6 @@ model is worth it - rather than guessing from list prices.
 
 from __future__ import annotations
 
-from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter

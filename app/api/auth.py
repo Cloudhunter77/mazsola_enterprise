@@ -21,7 +21,10 @@ async def login(body: LoginRequest, response: Response, settings: SettingsDep) -
     if not settings.app_password_hash:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="No password is configured. Set APP_PASSWORD_HASH (see scripts/hash_password.py).",
+            detail=(
+                "No password is configured. Set APP_PASSWORD_HASH "
+                "(see scripts/hash_password.py)."
+            ),
         )
 
     if not verify_password(body.password, settings.app_password_hash):

@@ -30,9 +30,15 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Alembic writes these; reformatting generated migrations only creates diff noise.
+extend-exclude = ["app/migrations/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# FastAPI's dependency idiom puts calls in argument defaults on purpose.
+"app/api/*.py" = ["B008"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

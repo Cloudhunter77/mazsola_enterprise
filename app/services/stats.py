@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from sqlalchemy import Select, func, select
@@ -46,10 +46,10 @@ def _in_range(stmt: Select, start: date | None, end: date | None) -> Select:
     stmt = stmt.where(Receipt.status.in_(COUNTED_STATUSES))
     if start:
         stmt = stmt.where(Receipt.purchased_at >= datetime(start.year, start.month, start.day,
-                                                           tzinfo=timezone.utc))
+                                                           tzinfo=UTC))
     if end:
         stmt = stmt.where(Receipt.purchased_at < datetime(end.year, end.month, end.day,
-                                                          tzinfo=timezone.utc))
+                                                          tzinfo=UTC))
     return stmt
 
 

@@ -67,13 +67,17 @@ class ExtractedReceipt(BaseModel):
     payment_method: PaymentLiteral = Field(description="How it was paid.")
 
     currency: str = Field(description="ISO code, almost always HUF.")
-    total_gross: float | None = Field(description="Final amount actually paid (ÖSSZESEN / FIZETENDŐ).")
+    total_gross: float | None = Field(
+        description="Final amount actually paid (ÖSSZESEN / FIZETENDŐ)."
+    )
     total_net: float | None = Field(description="Sum of net amounts, if the ÁFA block prints it.")
     total_vat: float | None = Field(description="Sum of VAT amounts, if printed.")
     rounding: float | None = Field(
         description="Kerekítés line value, signed (-2, +3...). 0 or null for card payments."
     )
-    discount_total: float | None = Field(description="Total of all discount lines, as a positive number.")
+    discount_total: float | None = Field(
+        description="Total of all discount lines, as a positive number."
+    )
 
     items: list[ExtractedItem] = Field(description="Every printed line, in order.")
     vat_summary: list[ExtractedVatLine] = Field(description="The ÁFA summary rows, if printed.")

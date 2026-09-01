@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
@@ -41,7 +41,7 @@ def _verify_image(data: bytes) -> str:
 
 def _storage_path(settings: Settings, receipt_id: uuid.UUID, extension: str) -> Path:
     """Bucket by year/month so a directory listing stays usable after a few thousand receipts."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     directory = settings.image_dir / f"{now:%Y}" / f"{now:%m}"
     directory.mkdir(parents=True, exist_ok=True)
     return directory / f"{receipt_id}{extension}"

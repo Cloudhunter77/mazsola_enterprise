@@ -6,6 +6,7 @@ import enum
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     JSON,
@@ -21,8 +22,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, money, pk
 
+if TYPE_CHECKING:
+    from app.models.catalog import Merchant, Product
 
-class ReceiptStatus(str, enum.Enum):
+
+class ReceiptStatus(enum.StrEnum):
     PENDING = "pending"            # uploaded, waiting for the worker
     PROCESSING = "processing"      # extraction in flight
     PARSED = "parsed"              # extracted and self-consistent
@@ -31,14 +35,14 @@ class ReceiptStatus(str, enum.Enum):
     CONFIRMED = "confirmed"        # you checked it; counts as ground truth
 
 
-class PaymentMethod(str, enum.Enum):
+class PaymentMethod(enum.StrEnum):
     CASH = "cash"
     CARD = "card"
     OTHER = "other"
     UNKNOWN = "unknown"
 
 
-class LineKind(str, enum.Enum):
+class LineKind(enum.StrEnum):
     """Not every printed line is a thing you bought."""
 
     ITEM = "item"
@@ -102,7 +106,7 @@ class Receipt(Base, TimestampMixin):
         cascade="all, delete-orphan",
         order_by="ReceiptItem.line_no",
     )
-    merchant: Mapped["Merchant | None"] = relationship()  # noqa: F821
+    merchant: Mapped[Merchant | None] = relationship()  # noqa: F821
 
 
 class ReceiptItem(Base, TimestampMixin):
@@ -137,4 +141,4 @@ class ReceiptItem(Base, TimestampMixin):
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     receipt: Mapped[Receipt] = relationship(back_populates="items")
-    product: Mapped["Product | None"] = relationship()  # noqa: F821
+    product: Mapped[Product | None] = relationship()  # noqa: F821

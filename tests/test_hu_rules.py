@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -17,7 +17,7 @@ from app.extraction.hu_rules import (
 )
 from tests.conftest import build_receipt, item
 
-NOW = datetime(2026, 9, 1, tzinfo=timezone.utc)
+NOW = datetime(2026, 9, 1, tzinfo=UTC)
 
 
 class TestAmountParsing:
