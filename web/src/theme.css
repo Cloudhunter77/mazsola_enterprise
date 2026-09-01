@@ -1,0 +1,241 @@
+/* Design tokens.
+   Chart colours come from a palette validated for colour-vision deficiency and for
+   contrast against both surfaces (see the dataviz palette reference). The dark values
+   are their own steps chosen for the dark surface, not an automatic flip - which is why
+   every token is declared three times: once for light, once for the OS dark setting,
+   and once for the in-app toggle, so the toggle wins in both directions. */
+
+:root {
+  color-scheme: light;
+
+  --plane: #f9f9f7;
+  --surface: #fcfcfb;
+  --surface-raised: #ffffff;
+
+  --ink: #0b0b0b;
+  --ink-secondary: #52514e;
+  --ink-muted: #898781;
+
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.1);
+
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+
+  /* Single-hue ramp for magnitude (category and merchant bars). */
+  --seq-500: #256abf;
+  --seq-450: #2a78d6;
+  --seq-350: #5598e7;
+  --seq-250: #86b6ef;
+  --seq-150: #b7d3f6;
+
+  --good: #0ca30c;
+  --good-text: #006300;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+
+  --radius: 10px;
+  --shadow: 0 1px 2px rgba(11, 11, 11, 0.06);
+  --font: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --plane: #0d0d0d;
+    --surface: #1a1a19;
+    --surface-raised: #232322;
+
+    --ink: #ffffff;
+    --ink-secondary: #c3c2b7;
+    --ink-muted: #898781;
+
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.1);
+
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+
+    --seq-500: #86b6ef;
+    --seq-450: #6da7ec;
+    --seq-350: #3987e5;
+    --seq-250: #2a78d6;
+    --seq-150: #256abf;
+
+    --good-text: #0ca30c;
+    --shadow: none;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --plane: #0d0d0d;
+  --surface: #1a1a19;
+  --surface-raised: #232322;
+
+  --ink: #ffffff;
+  --ink-secondary: #c3c2b7;
+  --ink-muted: #898781;
+
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.1);
+
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+
+  --seq-500: #86b6ef;
+  --seq-450: #6da7ec;
+  --seq-350: #3987e5;
+  --seq-250: #2a78d6;
+  --seq-150: #256abf;
+
+  --good-text: #0ca30c;
+  --shadow: none;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.5;
+  background: var(--plane);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 { margin: 0; font-weight: 650; letter-spacing: -0.01em; }
+h1 { font-size: 1.35rem; }
+h2 { font-size: 1.05rem; }
+h3 { font-size: 0.9rem; }
+
+a { color: var(--series-1); }
+
+button, input, select, textarea { font: inherit; color: inherit; }
+
+/* --- layout ------------------------------------------------------------- */
+.app { min-height: 100%; display: flex; flex-direction: column; }
+
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-top)) 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.topbar .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.topbar .spacer { flex: 1; }
+
+.content { flex: 1; padding: 16px; max-width: 1100px; width: 100%; margin: 0 auto; }
+
+.tabbar {
+  position: sticky; bottom: 0; z-index: 20;
+  display: flex; background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.tabbar a {
+  flex: 1; text-align: center; padding: 10px 4px; font-size: 0.72rem;
+  color: var(--ink-muted); text-decoration: none; display: grid; gap: 2px;
+}
+.tabbar a .glyph { font-size: 1.15rem; line-height: 1.1; }
+.tabbar a.active { color: var(--series-1); font-weight: 600; }
+
+/* --- surfaces ----------------------------------------------------------- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+.card + .card { margin-top: 14px; }
+.card-header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.card-header h2 { flex: 1; min-width: 12ch; }
+
+/* On a phone a title and a control fight for the same line; give each its own. */
+@media (max-width: 560px) {
+  .card-header { flex-direction: column; align-items: stretch; gap: 8px; }
+  .card-header h2 { flex: none; }
+}
+.card-note { color: var(--ink-muted); font-size: 0.8rem; }
+
+.grid { display: grid; gap: 14px; }
+.grid.cols-2 { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.grid.tiles { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+
+/* --- stat tiles --------------------------------------------------------- */
+.tile { background: var(--surface); border: 1px solid var(--border);
+        border-radius: var(--radius); padding: 14px; }
+.tile .label { font-size: 0.78rem; color: var(--ink-secondary); }
+.tile .value { font-size: 1.6rem; font-weight: 680; letter-spacing: -0.02em; margin-top: 4px; }
+.tile .sub { font-size: 0.76rem; color: var(--ink-muted); margin-top: 2px; }
+
+/* --- controls ----------------------------------------------------------- */
+.btn {
+  border: 1px solid var(--border); background: var(--surface-raised);
+  border-radius: 8px; padding: 9px 14px; cursor: pointer; font-weight: 550;
+}
+.btn:hover { border-color: var(--axis); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn.primary { background: var(--series-1); border-color: var(--series-1); color: #fff; }
+.btn.danger { color: var(--critical); }
+.btn.big { padding: 14px 20px; font-size: 1rem; border-radius: 12px; }
+
+.field { display: grid; gap: 5px; margin-bottom: 12px; }
+.field label { font-size: 0.78rem; color: var(--ink-secondary); }
+.field input, .field select, .field textarea {
+  padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface-raised); width: 100%;
+}
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+/* --- tables ------------------------------------------------------------- */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+th { text-align: left; font-weight: 600; color: var(--ink-secondary);
+     border-bottom: 1px solid var(--border); padding: 8px 8px; white-space: nowrap; }
+td { padding: 8px; border-bottom: 1px solid var(--grid); vertical-align: middle; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* --- status ------------------------------------------------------------- */
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 0.74rem; font-weight: 600; padding: 2px 8px; border-radius: 99px;
+  border: 1px solid var(--border); color: var(--ink-secondary);
+  background: var(--surface-raised); white-space: nowrap;
+}
+.badge.good { color: var(--good-text); }
+.badge.warn { color: var(--serious); }
+.badge.bad { color: var(--critical); }
+
+.empty { text-align: center; padding: 34px 16px; color: var(--ink-muted); }
+.error { color: var(--critical); font-size: 0.86rem; }
+.muted { color: var(--ink-muted); }
+.mono { font-variant-numeric: tabular-nums; }
+
+.spinner {
+  width: 18px; height: 18px; border-radius: 50%; display: inline-block;
+  border: 2px solid var(--grid); border-top-color: var(--series-1);
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 2s; }
+}
