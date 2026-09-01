@@ -33,6 +33,16 @@ def prepare(data: bytes, max_edge: int = 1600, quality: int = 85) -> tuple[bytes
     receipts help the model tell an item from a promotion.
     """
     with Image.open(io.BytesIO(data)) as img:
+        # Shrink first, convert second. Doing it the other way round means a palette or
+        # transparent image is expanded to 4 bytes per pixel at full size and composited
+        # onto a same-size canvas before anything shrinks it - which turned a 7 KB PNG
+        # into 769 MB of resident memory. draft() additionally lets the JPEG decoder
+        # produce a reduced-size image directly, so the common path never allocates the
+        # full-resolution bitmap at all.
+        img.draft("RGB", (max_edge, max_edge))
+        img.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS, reducing_gap=2.0)
+
+        # Phones store portrait shots rotated; apply that to the now-small image.
         img = ImageOps.exif_transpose(img)
 
         if img.mode in ("RGBA", "LA", "P"):
@@ -42,12 +52,6 @@ def prepare(data: bytes, max_edge: int = 1600, quality: int = 85) -> tuple[bytes
             img = background
         elif img.mode != "RGB":
             img = img.convert("RGB")
-
-        longest = max(img.size)
-        if longest > max_edge:
-            scale = max_edge / longest
-            new_size = (max(1, round(img.width * scale)), max(1, round(img.height * scale)))
-            img = img.resize(new_size, Image.Resampling.LANCZOS)
 
         out = io.BytesIO()
         img.save(out, format="JPEG", quality=quality, optimize=True)

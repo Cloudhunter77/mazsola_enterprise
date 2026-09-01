@@ -12,7 +12,7 @@ import re
 import unicodedata
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Merchant, MerchantAlias, Product, ProductAlias
@@ -99,8 +99,9 @@ async def resolve_merchant(
             session.add(MerchantAlias(merchant_id=by_tax.id, raw_name=raw_name))
             return by_tax
 
-    name = canonical_merchant_name(raw_name)
-    slug = slugify(name)
+    # Keep within the column widths; a garbled OCR read should not break ingestion.
+    name = canonical_merchant_name(raw_name)[:200]
+    slug = slugify(name)[:200]
 
     merchant = await session.scalar(select(Merchant).where(Merchant.slug == slug))
     if merchant is None:
@@ -126,12 +127,19 @@ async def resolve_product(
     if not raw_name:
         return None
 
+    # `merchant_id IN (:id, NULL)` looks like it would also match the global aliases, but
+    # SQL never matches NULL through IN, so written that way a global alias was invisible
+    # whenever a merchant was known - which is every real receipt.
+    scope = (
+        or_(ProductAlias.merchant_id == merchant_id, ProductAlias.merchant_id.is_(None))
+        if merchant_id
+        else ProductAlias.merchant_id.is_(None)
+    )
     stmt = (
         select(ProductAlias)
         .where(ProductAlias.raw_name == raw_name)
-        .where(ProductAlias.merchant_id.in_([merchant_id, None]) if merchant_id else
-               ProductAlias.merchant_id.is_(None))
-        # NULLS LAST puts the merchant-specific alias first.
+        .where(scope)
+        # False sorts before True, so the shop-specific alias comes first.
         .order_by(ProductAlias.merchant_id.is_(None))
     )
     alias = await session.scalar(stmt)

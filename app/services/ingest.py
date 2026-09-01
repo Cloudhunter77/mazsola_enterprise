@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -20,19 +21,40 @@ log = logging.getLogger(__name__)
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 ALLOWED_FORMATS = {"JPEG", "PNG", "HEIF", "HEIC", "WEBP", "MPO"}
 
+# A byte limit alone does not bound memory: a solid-colour PNG is a few KB on the wire
+# and hundreds of MB once decoded, which is a real problem on a NAS. The other half of
+# this defence is in preprocess.prepare(), which shrinks before converting so the full
+# resolution bitmap is never materialised. A 48 MP phone photo is about 8000x6000, so
+# this ceiling still admits anything a real camera produces.
+MAX_PIXELS = 50_000_000
+
+# Lower PIL's own guard (default ~89 MP) to match, so any decode reached by another path
+# is bounded too rather than relying on this check alone.
+Image.MAX_IMAGE_PIXELS = MAX_PIXELS
+
 
 class IngestError(ValueError):
     """The upload is not something we can work with."""
 
 
 def _verify_image(data: bytes) -> str:
-    """Confirm the bytes really are an image and return its format."""
+    """Confirm the bytes really are an image of a sane size, and return its format."""
     try:
-        with Image.open(__import__("io").BytesIO(data)) as img:
+        with Image.open(io.BytesIO(data)) as img:
             fmt = (img.format or "").upper()
+            width, height = img.size
             img.verify()
+    except Image.DecompressionBombError as exc:
+        # Not an OSError, so it would otherwise escape as a 500 rather than a clean 400.
+        raise IngestError("That image is far too large to process.") from exc
     except (UnidentifiedImageError, OSError) as exc:
         raise IngestError("That file is not a readable image.") from exc
+
+    if width * height > MAX_PIXELS:
+        raise IngestError(
+            f"That image is {width}×{height} ({width * height // 1_000_000} megapixels); "
+            f"the limit is {MAX_PIXELS // 1_000_000}."
+        )
 
     if fmt not in ALLOWED_FORMATS:
         raise IngestError(f"Unsupported image format: {fmt or 'unknown'}.")

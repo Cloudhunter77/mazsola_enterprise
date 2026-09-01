@@ -20,6 +20,7 @@ from sqlalchemy import text
 from app.api import auth, catalog, costs, receipts, stats
 from app.config import get_settings
 from app.db import SessionLocal, engine
+from app.security import check_configuration
 from app.services.seed import seed_if_empty
 from app.worker import ExtractionWorker
 
@@ -51,6 +52,10 @@ async def _run_migrations() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
+    # Before anything else: a misconfigured deployment should fail loudly at start
+    # rather than quietly serve an app whose sessions can be forged.
+    check_configuration(settings)
+
     settings.image_dir.mkdir(parents=True, exist_ok=True)
 
     await _run_migrations()
@@ -120,14 +125,25 @@ def _mount_frontend(app: FastAPI) -> None:
         log.warning("no built frontend at %s - API only", STATIC_DIR)
         return
 
-    app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
+    root = STATIC_DIR.resolve()
+    app.mount("/assets", StaticFiles(directory=root / "assets"), name="assets")
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def spa(full_path: str) -> FileResponse:
-        candidate = STATIC_DIR / full_path
-        if full_path and candidate.is_file():
+        # This route is deliberately unauthenticated - it serves the app shell - so the
+        # requested path must be confined to the build directory. Resolving first and
+        # then checking containment is what makes `../../` traversal impossible; a
+        # string check on the raw path would miss symlinks and encoded variants.
+        try:
+            candidate = (root / full_path).resolve()
+        except (ValueError, OSError):
+            # A null byte or an over-long path makes resolve() raise; that is just a
+            # request for something that cannot exist, not a server error.
+            return FileResponse(root / "index.html")
+
+        if full_path and candidate.is_file() and candidate.is_relative_to(root):
             return FileResponse(candidate)
-        return FileResponse(STATIC_DIR / "index.html")
+        return FileResponse(root / "index.html")
 
 
 app = create_app()

@@ -123,3 +123,53 @@ def receipt_photo() -> bytes:
     buffer = io.BytesIO()
     Image.new("RGB", (900, 1600), (252, 252, 250)).save(buffer, format="JPEG")
     return buffer.getvalue()
+
+
+# --- HTTP client fixtures ----------------------------------------------------
+# The real ASGI app wired to the test database, with the lifespan not run (migrations
+# and the startup configuration guard are covered separately).
+from httpx import ASGITransport, AsyncClient  # noqa: E402
+
+from app.config import Settings, get_settings  # noqa: E402
+from app.db import get_session  # noqa: E402
+from app.main import create_app  # noqa: E402
+from app.security import hash_password  # noqa: E402
+
+TEST_SECRET = "b8f2c1d4e5a6079813f2c4d5e6a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f"
+TEST_PASSWORD = "helyes-jelszo-123"
+TEST_API_KEY = "test-api-key-0123456789"
+
+
+@pytest.fixture
+def app_settings(tmp_path) -> Settings:
+    return Settings(
+        data_dir=tmp_path,
+        secret_key=TEST_SECRET,
+        app_password_hash=hash_password(TEST_PASSWORD),
+        api_key=TEST_API_KEY,
+        auth_disabled=False,
+        worker_enabled=False,
+        extractor="stub",
+    )
+
+
+@pytest.fixture
+async def client(app_settings, sessionmaker_fixture):
+    app = create_app()
+
+    async def _session():
+        async with sessionmaker_fixture() as session:
+            yield session
+
+    app.dependency_overrides[get_settings] = lambda: app_settings
+    app.dependency_overrides[get_session] = _session
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://nas") as http:
+        yield http
+
+
+@pytest.fixture
+async def auth_client(client):
+    """A client that has already logged in, for the endpoints that need a session."""
+    client.headers["X-API-Key"] = TEST_API_KEY
+    return client
