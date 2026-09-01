@@ -62,10 +62,13 @@ async def price_history(
 
 @router.get("/basket-comparison", response_model=BasketComparison)
 async def basket_comparison(
-    _: AuthDep, session: SessionDep, min_receipts: int = Query(3, ge=1, le=50)
+    _: AuthDep,
+    session: SessionDep,
+    min_receipts: int = Query(3, ge=1, le=50),
+    window_days: int = Query(90, ge=7, le=730, description="Ignore prices older than this."),
 ) -> BasketComparison:
     """Which shop your usual basket is cheapest at, compared on shared products only."""
-    return await stats.basket_comparison(session, min_receipts)
+    return await stats.basket_comparison(session, min_receipts, window_days)
 
 
 @router.get("/inflation", response_model=list[InflationPoint])

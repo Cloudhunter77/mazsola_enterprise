@@ -164,6 +164,86 @@ class TestReceiptEndpoints:
         assert path.is_file()
 
 
+class TestItemEditing:
+    """The review screen's core interaction. Every one of these edits used to return 500:
+    the handler read `item.receipt`, a lazy relationship, on an async session."""
+
+    @pytest.fixture
+    async def item_id(self, auth_client, session, receipt_photo, app_settings) -> str:
+        from app.models import LineKind, ReceiptItem
+        from app.services.ingest import ingest_image
+
+        receipt, _ = await ingest_image(session, receipt_photo, app_settings)
+        item = ReceiptItem(
+            receipt_id=receipt.id, line_no=1, raw_name="TEJ 2,8% 1L UHT",
+            gross_amount=Decimal("379.00"), kind=LineKind.ITEM.value,
+        )
+        session.add(item)
+        await session.commit()
+        return str(item.id)
+
+    async def test_correcting_an_amount(self, auth_client, item_id):
+        response = await auth_client.patch(
+            f"/api/receipts/items/{item_id}", json={"gross_amount": "400.00"}
+        )
+        assert response.status_code == 200
+        assert Decimal(response.json()["gross_amount"]) == Decimal("400.00")
+
+    async def test_changing_the_line_kind(self, auth_client, item_id):
+        response = await auth_client.patch(
+            f"/api/receipts/items/{item_id}", json={"kind": "deposit"}
+        )
+        assert response.status_code == 200
+        assert response.json()["kind"] == "deposit"
+
+    async def test_an_unknown_kind_is_rejected(self, auth_client, item_id):
+        response = await auth_client.patch(
+            f"/api/receipts/items/{item_id}", json={"kind": "nonsense"}
+        )
+        assert response.status_code == 400
+
+    async def test_edits_are_recorded_as_corrections(self, auth_client, item_id, session):
+        from sqlalchemy import select
+
+        from app.models import Correction
+
+        await auth_client.patch(f"/api/receipts/items/{item_id}", json={"gross_amount": "450.00"})
+        rows = (
+            await session.scalars(
+                select(Correction).where(Correction.item_id == uuid.UUID(item_id))
+            )
+        ).all()
+        assert [row.field for row in rows] == ["gross_amount"]
+        assert rows[0].new_value == "450.00"
+
+    async def test_mapping_a_line_to_a_product_is_remembered(self, auth_client, item_id, session):
+        from sqlalchemy import select
+
+        from app.models import ProductAlias
+
+        product = (await auth_client.post(
+            "/api/products", json={"canonical_name": "Tej 2,8% 1L"}
+        )).json()
+
+        response = await auth_client.patch(
+            f"/api/receipts/items/{item_id}",
+            json={"product_id": product["id"], "remember_mapping": True},
+        )
+        assert response.status_code == 200
+        assert response.json()["product_id"] == product["id"]
+
+        aliases = (await session.scalars(select(ProductAlias))).all()
+        assert any(a.raw_name == "TEJ 2,8% 1L UHT" for a in aliases), (
+            "the mapping should apply to future receipts without asking again"
+        )
+
+    async def test_editing_an_unknown_item_is_404(self, auth_client):
+        response = await auth_client.patch(
+            f"/api/receipts/items/{uuid.uuid4()}", json={"gross_amount": "1.00"}
+        )
+        assert response.status_code == 404
+
+
 class TestStatsEndpoints:
     async def test_an_empty_database_returns_zeroes_rather_than_errors(self, auth_client):
         summary = await auth_client.get("/api/stats/summary")

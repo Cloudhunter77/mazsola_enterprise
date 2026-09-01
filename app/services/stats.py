@@ -7,14 +7,17 @@ being able to read the logic later matter more than milliseconds.
 
 from __future__ import annotations
 
+import math
 import uuid
 from collections import defaultdict
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.models import Category, LineKind, Merchant, Product, Receipt, ReceiptItem, ReceiptStatus
 from app.schemas.api import (
     BasketComparison,
@@ -30,6 +33,22 @@ from app.schemas.api import (
 
 ZERO = Decimal("0.00")
 
+# Timestamps are stored in UTC, but months and days have to be counted the way they were
+# lived. Without this, a 00:30 purchase on the 1st is 22:30 UTC on the previous day and
+# lands in the wrong month - and every late-evening shop skews the monthly chart.
+LOCAL_TZ_NAME = get_settings().timezone
+LOCAL_TZ = ZoneInfo(LOCAL_TZ_NAME)
+
+
+def local_month(column):
+    """Group a stored UTC timestamp by the local month it fell in."""
+    return func.date_trunc("month", func.timezone(LOCAL_TZ_NAME, column))
+
+
+def local_day_start(day: date) -> datetime:
+    """Midnight on `day`, local time, as the UTC instant to compare against."""
+    return datetime(day.year, day.month, day.day, tzinfo=LOCAL_TZ)
+
 # Receipts that count towards spending. `needs_review` is included on purpose: excluding it
 # would make the dashboard quietly understate your spending whenever the review queue grows.
 # The summary reports how many are unreviewed so the number can be read with that in mind.
@@ -44,12 +63,13 @@ UNCATEGORISED = "Besorolatlan"
 
 def _in_range(stmt: Select, start: date | None, end: date | None) -> Select:
     stmt = stmt.where(Receipt.status.in_(COUNTED_STATUSES))
+    # Local midnight, not UTC midnight: otherwise a range starting on the 1st silently
+    # drops the small hours of that day, which the monthly chart does count.
     if start:
-        stmt = stmt.where(Receipt.purchased_at >= datetime(start.year, start.month, start.day,
-                                                           tzinfo=UTC))
+        stmt = stmt.where(Receipt.purchased_at >= local_day_start(start))
     if end:
-        stmt = stmt.where(Receipt.purchased_at < datetime(end.year, end.month, end.day,
-                                                          tzinfo=UTC))
+        # `end` is inclusive of that whole local day.
+        stmt = stmt.where(Receipt.purchased_at < local_day_start(end) + timedelta(days=1))
     return stmt
 
 
@@ -95,7 +115,7 @@ async def summary(
 
 
 async def monthly(session: AsyncSession, months: int = 24) -> list[MonthlySpend]:
-    month_col = func.date_trunc("month", Receipt.purchased_at).label("month")
+    month_col = local_month(Receipt.purchased_at).label("month")
     stmt = (
         _in_range(
             select(month_col, func.sum(Receipt.total_gross), func.count(Receipt.id)), None, None
@@ -252,12 +272,18 @@ async def price_history(
     )
 
 
-async def basket_comparison(session: AsyncSession, min_receipts: int = 3) -> BasketComparison:
+async def basket_comparison(
+    session: AsyncSession, min_receipts: int = 3, window_days: int = 90
+) -> BasketComparison:
     """What your regular basket would cost at each shop.
 
-    Only compares on products that *every* considered shop has sold you - otherwise a shop
-    that happens to stock fewer of your regulars would look cheap purely by absence.
+    Two things keep this honest. It compares only on products that *every* considered shop
+    has sold you, because a shop that happens to stock fewer of your regulars would
+    otherwise look cheap purely by absence. And it ignores prices older than
+    `window_days`: a shop you last visited a year ago would otherwise be judged on
+    year-old prices and win on nothing but staleness.
     """
+    cutoff = datetime.now(UTC) - timedelta(days=window_days)
     stmt = (
         _in_range(
             select(
@@ -277,6 +303,7 @@ async def basket_comparison(session: AsyncSession, min_receipts: int = 3) -> Bas
         .where(ReceiptItem.product_id.is_not(None))
         .where(Receipt.merchant_id.is_not(None))
         .where(ReceiptItem.kind == LineKind.ITEM.value)
+        .where(Receipt.purchased_at >= cutoff)
         .order_by(Receipt.purchased_at)
     )
     rows = (await session.execute(stmt)).all()
@@ -297,14 +324,18 @@ async def basket_comparison(session: AsyncSession, min_receipts: int = 3) -> Bas
     # Shops you actually use, not the one-off petrol station.
     merchants = [m for m in merchant_names if len(receipts_per_merchant[m]) >= min_receipts]
     if len(merchants) < 2:
-        return BasketComparison(product_count=0, merchants=[], potential_saving=ZERO)
+        return BasketComparison(
+            product_count=0, merchants=[], potential_saving=ZERO, window_days=window_days
+        )
 
     products_per_merchant = [
         {product_id for (mid, product_id) in latest if mid == merchant} for merchant in merchants
     ]
     shared = set.intersection(*products_per_merchant)
     if not shared:
-        return BasketComparison(product_count=0, merchants=[], potential_saving=ZERO)
+        return BasketComparison(
+            product_count=0, merchants=[], potential_saving=ZERO, window_days=window_days
+        )
 
     totals = [
         MerchantBasketPrice(
@@ -319,15 +350,31 @@ async def basket_comparison(session: AsyncSession, min_receipts: int = 3) -> Bas
     saving = totals[-1].basket_total - totals[0].basket_total
 
     return BasketComparison(
-        product_count=len(shared), merchants=totals, potential_saving=_q(saving)
+        product_count=len(shared),
+        merchants=totals,
+        potential_saving=_q(saving),
+        window_days=window_days,
     )
 
 
-async def inflation(session: AsyncSession) -> list[InflationPoint]:
-    """A personal price index: what your own regular products cost relative to their first price.
+async def inflation(session: AsyncSession, min_products: int = 3) -> list[InflationPoint]:
+    """A personal price index: what your own basket costs relative to where it started.
 
-    Each product contributes the ratio of its price that month to its first recorded price;
-    the index is the mean of those ratios, so it tracks *your* basket rather than the CPI.
+    The hard part of an index over household data is that the basket changes every month.
+    Two things handle that, and both are what statistical agencies actually do.
+
+    It is *chained*: each month contributes a link, the average price change between that
+    month and the one before, measured only over products priced in both. A product you
+    started buying this month therefore cannot move the index - it has nothing to be
+    compared against yet - and joins from the following month onward. Anchoring everything
+    to a first-ever price instead would let a batch of newly mapped products drag the
+    index back toward 100 and report a fall that never happened.
+
+    Prices are *carried forward* into months you did not buy something, so a product
+    contributes a neutral link rather than dropping out and changing the basket.
+
+    The link is a geometric mean, the standard average for price relatives: a doubling and
+    a halving cancel, where an arithmetic mean would report a 25% rise.
     """
     stmt = (
         _in_range(
@@ -348,32 +395,48 @@ async def inflation(session: AsyncSession) -> list[InflationPoint]:
     )
     rows = (await session.execute(stmt)).all()
 
-    baseline: dict[uuid.UUID, Decimal] = {}
     monthly_prices: dict[date, dict[uuid.UUID, list[Decimal]]] = defaultdict(
         lambda: defaultdict(list)
     )
-
     for product_id, purchased_at, unit_price, gross, qty in rows:
         price = _effective_unit_price(unit_price, gross, qty)
         if price is None or price <= 0:
             continue
-        baseline.setdefault(product_id, price)
-        month = date(purchased_at.year, purchased_at.month, 1)
-        monthly_prices[month][product_id].append(price)
+        local = purchased_at.astimezone(LOCAL_TZ)
+        monthly_prices[date(local.year, local.month, 1)][product_id].append(price)
 
     points: list[InflationPoint] = []
+    previous: dict[uuid.UUID, Decimal] = {}
+    index = 100.0
+
     for month in sorted(monthly_prices):
-        ratios = [
-            float(sum(prices, ZERO) / len(prices) / baseline[product_id])
-            for product_id, prices in monthly_prices[month].items()
-            if baseline.get(product_id)
-        ]
-        if ratios:
-            points.append(
-                InflationPoint(
-                    month=month,
-                    index=round(sum(ratios) / len(ratios) * 100, 2),
-                    product_count=len(ratios),
+        current = dict(previous)  # carry unbought products forward at their last price
+        for product_id, prices in monthly_prices[month].items():
+            current[product_id] = sum(prices, ZERO) / len(prices)
+
+        if not previous:
+            if len(current) >= min_products:
+                points.append(
+                    InflationPoint(month=month, index=100.0, product_count=len(current))
                 )
-            )
+                previous = current
+            continue
+
+        # Only products priced in both months can say anything about the change.
+        ratios = [
+            float(current[product_id] / previous[product_id])
+            for product_id in current
+            if product_id in previous and previous[product_id] > 0
+        ]
+        previous = current
+
+        if len(ratios) < min_products:
+            continue
+
+        link = math.exp(sum(math.log(ratio) for ratio in ratios) / len(ratios))
+        index *= link
+        points.append(
+            InflationPoint(month=month, index=round(index, 2), product_count=len(ratios))
+        )
+
     return points

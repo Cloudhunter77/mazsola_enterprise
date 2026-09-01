@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     worker_enabled: bool = True
     worker_poll_seconds: float = 3.0
     worker_max_attempts: int = 3
+    worker_stale_seconds: int = Field(
+        default=1800,
+        description=(
+            "A receipt left in 'processing' for longer than this is assumed to belong to a "
+            "worker that died, and is picked up again. Must comfortably exceed the longest "
+            "an extraction can take, so a live job is never stolen and paid for twice."
+        ),
+    )
 
     # --- auth ----------------------------------------------------------------
     secret_key: str = Field(

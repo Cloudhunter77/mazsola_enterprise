@@ -10,6 +10,7 @@ from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -104,7 +105,6 @@ async def ingest_image(
     receipt_id = uuid.uuid4()
     extension = {"JPEG": ".jpg", "MPO": ".jpg", "PNG": ".png", "WEBP": ".webp"}.get(fmt, ".jpg")
     path = _storage_path(settings, receipt_id, extension)
-    path.write_bytes(data)
 
     receipt = Receipt(
         id=receipt_id,
@@ -115,7 +115,26 @@ async def ingest_image(
         source=source,
         status=ReceiptStatus.PENDING.value,
     )
-    session.add(receipt)
-    await session.flush()
+
+    # Claim the row before writing the file. The check above is not enough on its own: a
+    # retrying phone shortcut can have two uploads of the same photo in flight at once,
+    # and both will pass it. The unique index on the hash is the real arbiter, and losing
+    # that race is a duplicate - not the 500 (plus an orphaned file) it used to be.
+    try:
+        async with session.begin_nested():
+            session.add(receipt)
+            await session.flush()
+    except IntegrityError:
+        existing = await session.scalar(select(Receipt).where(Receipt.image_sha256 == digest))
+        if existing is None:
+            raise
+        log.info(
+            "lost the race to store %s; using the existing receipt %s", digest[:12], existing.id
+        )
+        return existing, False
+
+    # Only now put bytes on disk, so a failed insert can never leave a file behind.
+    path.write_bytes(data)
+
     log.info("queued receipt %s (%d KB, %s)", receipt.id, len(data) // 1024, fmt)
     return receipt, True

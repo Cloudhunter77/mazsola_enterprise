@@ -230,6 +230,78 @@ class TestPipeline:
         assert first_count == second_count
 
 
+class TestResilience:
+    """What happens when things are interrupted - the normal state of a home NAS."""
+
+    async def test_a_receipt_stranded_by_a_crash_is_picked_up_again(
+        self, session, sessionmaker_fixture, settings, receipt_photo
+    ):
+        """A container restart mid-extraction used to leave a receipt in 'processing'
+        forever: the worker only ever looked at 'pending', so it was never retried."""
+        from datetime import UTC, datetime, timedelta
+
+        from sqlalchemy import update
+
+        receipt, _ = await ingest_image(session, receipt_photo, settings)
+        receipt_id = receipt.id
+        receipt.status = ReceiptStatus.PROCESSING.value
+        receipt.attempts = 1
+        await session.commit()
+        await session.execute(
+            update(Receipt)
+            .where(Receipt.id == receipt_id)
+            .values(updated_at=datetime.now(UTC) - timedelta(hours=1))
+        )
+        await session.commit()
+
+        await run_worker_once(sessionmaker_fixture, settings, StubExtractor())
+
+        stored = await session.get(Receipt, receipt_id)
+        await session.refresh(stored)
+        assert stored.status == ReceiptStatus.PARSED.value
+
+    async def test_a_recent_in_flight_receipt_is_left_alone(
+        self, session, sessionmaker_fixture, settings, receipt_photo
+    ):
+        """The mirror image: a live extraction must never be stolen and paid for twice."""
+        receipt, _ = await ingest_image(session, receipt_photo, settings)
+        receipt.status = ReceiptStatus.PROCESSING.value
+        await session.commit()
+
+        worker = ExtractionWorker(settings)
+        worker._extractor = StubExtractor()
+        import app.worker as worker_module
+
+        original = worker_module.SessionLocal
+        worker_module.SessionLocal = sessionmaker_fixture
+        try:
+            assert await worker.process_next() is False
+        finally:
+            worker_module.SessionLocal = original
+
+    async def test_two_simultaneous_uploads_of_one_photo(
+        self, sessionmaker_fixture, settings, receipt_photo, tmp_path
+    ):
+        """A retrying phone shortcut can have two uploads in flight. Both used to get past
+        the duplicate check; one then died on the unique index and left a stray file."""
+        import asyncio
+
+        async def upload():
+            async with sessionmaker_fixture() as session:
+                receipt, created = await ingest_image(session, receipt_photo, settings)
+                await asyncio.sleep(0.05)
+                await session.commit()
+                return receipt.id, created
+
+        results = await asyncio.gather(*(upload() for _ in range(2)))
+
+        assert results[0][0] == results[1][0], "both callers should get the same receipt"
+        assert sorted(created for _, created in results) == [False, True]
+
+        files = list((settings.image_dir).rglob("*.jpg"))
+        assert len(files) == 1, "a lost race must not leave an orphaned file behind"
+
+
 class TestStatistics:
     @pytest.fixture
     async def populated(self, session, sessionmaker_fixture, settings, receipt_photo):

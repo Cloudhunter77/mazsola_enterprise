@@ -6,7 +6,7 @@
  *  which is what turns a pile of receipts into price history.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { api, type Item, type Product, type ReceiptDetail } from "../lib/api";
@@ -24,6 +24,17 @@ export default function Review() {
   const categories = useAsync(() => api.categories(), []);
   const products = useAsync(() => api.products(), []);
   const [busy, setBusy] = useState(false);
+
+  // While a re-extraction is in flight the page would otherwise sit on the old parse
+  // until manually reloaded, so reprocessing would appear to do nothing.
+  const status = state.data?.status;
+  const inFlight = status === "pending" || status === "processing";
+  const reload = state.reload;
+  useEffect(() => {
+    if (!inFlight) return;
+    const timer = window.setInterval(reload, 2500);
+    return () => window.clearInterval(timer);
+  }, [inFlight, reload]);
 
   const act = useCallback(
     async (action: () => Promise<unknown>) => {
@@ -78,7 +89,17 @@ export default function Review() {
             </Card>
 
             <div>
-              <Header receipt={receipt} onSave={(patch) => act(() => api.patchReceipt(receipt.id, patch))} busy={busy} />
+              {/* Keyed on when the parse itself was last rewritten. The form seeds its
+                  state on mount, so a re-extraction must remount it or it would keep
+                  showing - and on save write back - values from the previous parse.
+                  Deliberately not keyed on confirmed_at: confirming is not a new parse,
+                  and remounting there would throw away edits made just before confirming. */}
+              <Header
+                key={`${receipt.id}:${receipt.parsed_at ?? ""}`}
+                receipt={receipt}
+                onSave={(patch) => act(() => api.patchReceipt(receipt.id, patch))}
+                busy={busy}
+              />
 
               <Card title="Műveletek">
                 <div className="row">

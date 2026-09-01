@@ -115,12 +115,14 @@ export default function Prices() {
           {(data) =>
             data.product_count === 0 ? (
               <Empty>
-                Ehhez legalább két bolt kell, közös termékekkel. Társíts több tételt termékhez.
+                Ehhez legalább két olyan bolt kell, ahol az elmúlt {data.window_days} napban
+                ugyanazokat a termékeket vetted. Társíts több tételt termékhez.
               </Empty>
             ) : (
               <>
                 <p className="muted" style={{ marginTop: 0 }}>
-                  {data.product_count} olyan termék alapján, amit mindegyik boltban megvettél már.
+                  {data.product_count} olyan termék alapján, amit mindegyik boltban megvettél már,
+                  az elmúlt {data.window_days} nap árait nézve.
                   {Number(data.potential_saving) > 0 && (
                     <> A legdrágább és a legolcsóbb bolt közti különbség{" "}
                       <strong>{ft(data.potential_saving)}</strong>.</>

@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
@@ -73,15 +74,36 @@ class ExtractionWorker:
 
     # --- work ----------------------------------------------------------------
     async def _claim(self, session: AsyncSession) -> Receipt | None:
-        """Take the oldest pending receipt and mark it in flight.
+        """Take the oldest waiting receipt and mark it in flight.
+
+        "Waiting" includes receipts stranded in `processing` by a worker that died - a
+        container restart mid-extraction would otherwise leave them stuck in that state
+        forever, showing as permanently in-progress with no retry. The staleness window
+        is long enough that a live extraction is never stolen from a running worker.
 
         SKIP LOCKED means a second app replica would pick a different row rather than
         duplicate the work (and the API spend).
         """
+        stale_before = datetime.now(UTC) - timedelta(seconds=self.settings.worker_stale_seconds)
         stmt = (
             select(Receipt)
-            .where(Receipt.status == ReceiptStatus.PENDING.value)
-            .where(Receipt.attempts < self.settings.worker_max_attempts)
+            .where(
+                or_(
+                    and_(
+                        Receipt.status == ReceiptStatus.PENDING.value,
+                        Receipt.attempts < self.settings.worker_max_attempts,
+                    ),
+                    # A stranded receipt is reclaimed whatever its attempt count. Applying
+                    # the attempts filter here too would leave one that crashed on its
+                    # final attempt showing as in-progress forever - the exact state this
+                    # is meant to clear. If it has no attempts left it is marked failed
+                    # below rather than retried.
+                    and_(
+                        Receipt.status == ReceiptStatus.PROCESSING.value,
+                        Receipt.updated_at < stale_before,
+                    ),
+                )
+            )
             .order_by(Receipt.created_at)
             .limit(1)
         )
@@ -91,6 +113,21 @@ class ExtractionWorker:
         receipt = await session.scalar(stmt)
         if receipt is None:
             return None
+
+        if receipt.status == ReceiptStatus.PROCESSING.value:
+            log.warning(
+                "reclaiming receipt %s, stranded in processing since %s",
+                receipt.id, receipt.updated_at,
+            )
+            if receipt.attempts >= self.settings.worker_max_attempts:
+                receipt.status = ReceiptStatus.FAILED.value
+                receipt.error = (
+                    "Extraction was interrupted and no attempts remain. "
+                    "Use reprocess to try again."
+                )
+                await session.commit()
+                log.warning("receipt %s had no attempts left; marked failed", receipt.id)
+                return None
 
         receipt.status = ReceiptStatus.PROCESSING.value
         receipt.attempts += 1

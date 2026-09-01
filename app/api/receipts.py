@@ -139,13 +139,13 @@ async def update_receipt(
     if "merchant_name" in changes:
         merchant = await resolve_merchant(session, changes.pop("merchant_name"))
         if merchant is not None:
-            _log_correction(session, receipt, "merchant_id", receipt.merchant_id, merchant.id)
+            _log_correction(session, receipt.id, "merchant_id", receipt.merchant_id, merchant.id)
             receipt.merchant_id = merchant.id
 
     for field, value in changes.items():
         old = getattr(receipt, field)
         if old != value:
-            _log_correction(session, receipt, field, old, value)
+            _log_correction(session, receipt.id, field, old, value)
             setattr(receipt, field, value)
 
     await session.commit()
@@ -218,7 +218,7 @@ async def update_item(
     for field, value in changes.items():
         old = getattr(item, field)
         if old != value:
-            _log_correction(session, item.receipt, field, old, value, item_id=item.id)
+            _log_correction(session, item.receipt_id, field, old, value, item_id=item.id)
             setattr(item, field, value)
 
     if remember and item.product_id:
@@ -238,15 +238,18 @@ async def update_item(
 
 def _log_correction(
     session: SessionDep,
-    receipt: Receipt,
+    receipt_id: uuid.UUID,
     field: str,
     old: object,
     new: object,
     item_id: uuid.UUID | None = None,
 ) -> None:
+    """Record one edit. Takes the receipt id rather than the object on purpose: reading
+    `item.receipt` here would lazy-load a relationship, which raises MissingGreenlet on an
+    async session and made every line-item edit fail with a 500."""
     session.add(
         Correction(
-            receipt_id=receipt.id,
+            receipt_id=receipt_id,
             item_id=item_id,
             field=field,
             old_value=None if old is None else str(old),

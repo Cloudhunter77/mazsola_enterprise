@@ -220,6 +220,9 @@ class BasketComparison(BaseModel):
     product_count: int
     merchants: list[MerchantBasketPrice]
     potential_saving: Decimal
+    window_days: int = Field(
+        default=90, description="Only prices seen this recently were compared."
+    )
 
 
 class InflationPoint(BaseModel):

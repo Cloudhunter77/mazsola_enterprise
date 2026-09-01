@@ -15,6 +15,7 @@ from sqlalchemy import func, select
 from app.api.deps import AuthDep, SessionDep
 from app.models import ExtractionAttempt
 from app.schemas.api import CostByMonth, CostSummary
+from app.services.stats import local_month
 
 router = APIRouter(prefix="/api/costs", tags=["costs"])
 
@@ -23,7 +24,7 @@ ZERO = Decimal("0.00")
 
 @router.get("/summary", response_model=CostSummary)
 async def cost_summary(_: AuthDep, session: SessionDep) -> CostSummary:
-    month_col = func.date_trunc("month", ExtractionAttempt.created_at).label("month")
+    month_col = local_month(ExtractionAttempt.created_at).label("month")
     rows = (
         await session.execute(
             select(

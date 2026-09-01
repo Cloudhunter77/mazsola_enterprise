@@ -75,7 +75,7 @@ export interface MerchantSpend { merchant_id: string | null; merchant_name: stri
 export interface PricePoint { purchased_at: string; merchant_id: string | null; merchant_name: string; unit_price: Money; quantity: Money | null; unit: string | null; receipt_id: string }
 export interface PriceHistory { product_id: string; product_name: string; points: PricePoint[]; cheapest_merchant: string | null; latest_price: Money | null; change_pct: number | null }
 export interface BasketMerchant { merchant_id: string; merchant_name: string; covered_products: number; basket_total: Money }
-export interface BasketComparison { product_count: number; merchants: BasketMerchant[]; potential_saving: Money }
+export interface BasketComparison { product_count: number; merchants: BasketMerchant[]; potential_saving: Money; window_days: number }
 export interface InflationPoint { month: string; index: number; product_count: number }
 export interface CostByMonth { month: string; model: string | null; receipts: number; total_usd: Money; avg_usd: Money }
 export interface CostSummary { total_usd: Money; receipts_extracted: number; average_usd: Money; projected_yearly_usd: Money; by_month: CostByMonth[]; failures: number }
