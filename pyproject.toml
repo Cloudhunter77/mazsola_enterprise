@@ -42,6 +42,10 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# The tests import shared fixtures via `from tests.conftest import ...`. Running
+# `python -m pytest` puts the working directory on sys.path and hides the need for this;
+# a bare `pytest`, which is what CI runs, does not. Setting it here makes both work.
+pythonpath = ["."]
 testpaths = ["tests"]
 markers = ["live: hits the real Anthropic API; requires ANTHROPIC_API_KEY and real receipt images"]
 
