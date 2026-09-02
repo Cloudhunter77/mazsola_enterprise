@@ -23,7 +23,7 @@ export default function Login({ onSuccess }: { onSuccess: () => void }) {
 
   return (
     <div className="content" style={{ maxWidth: 380, marginTop: "12vh" }}>
-      <h1 style={{ marginBottom: 6 }}>🍇 Mazsola</h1>
+      <h1 style={{ marginBottom: 6 }}>🧾 Receipt Tracker</h1>
       <p className="muted" style={{ marginTop: 0, marginBottom: 22 }}>
         Blokkok rögzítése és költségkövetés.
       </p>

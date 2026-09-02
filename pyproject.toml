@@ -1,5 +1,5 @@
 [project]
-name = "mazsola"
+name = "receipt-tracker"
 version = "0.1.0"
 description = "Self-hosted receipt scanner and expense database for Hungarian receipts"
 requires-python = ">=3.11"

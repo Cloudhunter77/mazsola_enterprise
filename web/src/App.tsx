@@ -16,7 +16,7 @@ type Theme = "light" | "dark" | "system";
 function useTheme(): [Theme, (theme: Theme) => void] {
   const [theme, setTheme] = useState<Theme>(() => {
     try {
-      return (localStorage.getItem("mazsola-theme") as Theme) ?? "system";
+      return (localStorage.getItem("receipt-tracker-theme") as Theme) ?? "system";
     } catch {
       return "system"; // private windows and blocked site data both throw here
     }
@@ -27,7 +27,7 @@ function useTheme(): [Theme, (theme: Theme) => void] {
     if (theme === "system") root.removeAttribute("data-theme");
     else root.setAttribute("data-theme", theme);
     try {
-      localStorage.setItem("mazsola-theme", theme);
+      localStorage.setItem("receipt-tracker-theme", theme);
     } catch {
       /* remembering the choice is a convenience, not a requirement */
     }
@@ -69,7 +69,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <span className="brand">🍇 Mazsola</span>
+        <span className="brand">🧾 Receipt Tracker</span>
         <span className="spacer" />
         <button
           className="btn"

@@ -1,6 +1,6 @@
 {
-  "name": "Mazsola",
-  "short_name": "Mazsola",
+  "name": "Receipt Tracker",
+  "short_name": "Receipt Tracker",
   "description": "Blokk befotózása és költségkövetés",
   "start_url": "/",
   "display": "standalone",

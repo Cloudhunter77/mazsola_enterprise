@@ -18,7 +18,7 @@ from app.config import Settings
 
 log = logging.getLogger(__name__)
 
-SESSION_COOKIE = "mazsola_session"
+SESSION_COOKIE = "receipt_tracker_session"
 DEFAULT_SECRET = "change-me-in-production"
 
 # Every placeholder this repository ships. Checking only the pydantic default would miss
@@ -135,7 +135,7 @@ def verify_api_key(provided: str | None, expected: str | None) -> bool:
 
 
 def _serializer(settings: Settings) -> URLSafeTimedSerializer:
-    return URLSafeTimedSerializer(settings.secret_key, salt="mazsola-session")
+    return URLSafeTimedSerializer(settings.secret_key, salt="receipt-tracker-session")
 
 
 def issue_session(settings: Settings, subject: str = "owner") -> str:

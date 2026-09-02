@@ -73,9 +73,9 @@ async def logout(response: Response) -> SessionInfo:
 @router.get("/me", response_model=SessionInfo)
 async def me(
     settings: SettingsDep,
-    mazsola_session: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
+    receipt_tracker_session: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
 ) -> SessionInfo:
     if settings.auth_disabled:
         return SessionInfo(authenticated=True, subject="dev")
-    subject = read_session(settings, mazsola_session)
+    subject = read_session(settings, receipt_tracker_session)
     return SessionInfo(authenticated=bool(subject), subject=subject)

@@ -1,4 +1,4 @@
-"""Mazsola - a receipt scanner and expense database for a home NAS.
+"""Receipt Tracker - a receipt scanner and expense database for a home NAS.
 
 One process serves the API, the built single-page app, and the extraction worker. On start
 it brings the schema up to date and seeds the category tree, so deploying is 'pull the image
@@ -28,7 +28,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)-7s %(name)s | %(message)s",
 )
-log = logging.getLogger("mazsola")
+log = logging.getLogger("receipt-tracker")
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "web" / "dist"
 
@@ -82,7 +82,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="Mazsola",
+        title="Receipt Tracker",
         description="Photograph a receipt, get a queryable expense database.",
         version="0.1.0",
         lifespan=lifespan,

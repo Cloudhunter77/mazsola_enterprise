@@ -10,18 +10,18 @@ TrueNAS 25.10 requires the top-level `services:` key in custom YAML, which
 
 | Dataset | Holds |
 |---|---|
-| `apps/mazsola/images` | the receipt photos |
-| `apps/mazsola/pgdata` | the PostgreSQL data directory |
-| `apps/mazsola/backups` | nightly database dumps (optional) |
+| `apps/receipt-tracker/images` | the receipt photos |
+| `apps/receipt-tracker/pgdata` | the PostgreSQL data directory |
+| `apps/receipt-tracker/backups` | nightly database dumps (optional) |
 
 Set the owner of all three to UID **568**, GID **568** (the `apps` user) — the app runs
 as that user, and the containers cannot write otherwise:
 
 ```sh
-chown -R 568:568 /mnt/tank/apps/mazsola
+chown -R 568:568 /mnt/tank/apps/receipt-tracker
 ```
 
-Snapshot `apps/mazsola` on whatever schedule you like; with the backup script below, one
+Snapshot `apps/receipt-tracker` on whatever schedule you like; with the backup script below, one
 snapshot covers both the photos and the database.
 
 ## 2. The values you need
@@ -38,7 +38,7 @@ For `APP_PASSWORD_HASH`, run the hashing script inside the image you already pul
 there is nothing to install:
 
 ```sh
-docker run --rm -it ghcr.io/cloudhunter77/mazsola:latest python scripts/hash_password.py
+docker run --rm -it ghcr.io/cloudhunter77/receipt-tracker:latest python scripts/hash_password.py
 ```
 
 It prompts twice, echoes nothing, and prints two forms of the hash. **Use the
@@ -67,7 +67,7 @@ password, so paste the token there rather than putting it on a command line:
 ```sh
 sudo -i
 docker login ghcr.io -u Cloudhunter77
-docker pull ghcr.io/cloudhunter77/mazsola:latest
+docker pull ghcr.io/cloudhunter77/receipt-tracker:latest
 ```
 
 `sudo -i` matters: the Apps system pulls images as root and reads
@@ -82,11 +82,11 @@ pull is denied after one, just run the login again. To undo: `docker logout ghcr
 **Or — build the image on the NAS instead**, and skip the registry entirely:
 
 ```sh
-git clone https://github.com/Cloudhunter77/mazsola_enterprise.git /mnt/tank/apps/mazsola/src
-cd /mnt/tank/apps/mazsola/src && docker build -t mazsola:local .
+git clone https://github.com/Cloudhunter77/mazsola_enterprise.git /mnt/tank/apps/receipt-tracker/src
+cd /mnt/tank/apps/receipt-tracker/src && docker build -t receipt-tracker:local .
 ```
 
-Then in the compose file below, change the app's `image:` to `mazsola:local` and add
+Then in the compose file below, change the app's `image:` to `receipt-tracker:local` and add
 `pull_policy: never` beside it. Updating then means `git pull` and building again.
 
 Making the GHCR package public is a third option, but the image contains the application
@@ -94,7 +94,7 @@ source, so it would publish the code that this private repository is keeping pri
 
 ## 4. Install
 
-**Apps → Discover Apps → ⋮ → Install via YAML.** Name it `mazsola`, paste
+**Apps → Discover Apps → ⋮ → Install via YAML.** Name it `receipt-tracker`, paste
 `deploy/docker-compose.yaml`, and before saving:
 
 - replace both `/mnt/tank/...` paths with your pool name,
@@ -136,21 +136,21 @@ review anything flagged.
 
 ## 6. Backups
 
-Copy `scripts/backup.sh` to `/mnt/tank/apps/mazsola/`, then **System → Advanced →
+Copy `scripts/backup.sh` to `/mnt/tank/apps/receipt-tracker/`, then **System → Advanced →
 Cron Jobs**, daily as root:
 
 ```sh
-sh /mnt/tank/apps/mazsola/backup.sh
+sh /mnt/tank/apps/receipt-tracker/backup.sh
 ```
 
 It writes a compressed `pg_dump` into the `backups` dataset and keeps the last 14. Check
-the container name first (`docker ps | grep mazsola`) and set `DB_CONTAINER` if it is not
-`mazsola-db-1`.
+the container name first (`docker ps | grep receipt-tracker`) and set `DB_CONTAINER` if it is not
+`receipt-tracker-db-1`.
 
 ## 7. Updating
 
 The image is built by GitHub Actions on every push and published to
-`ghcr.io/cloudhunter77/mazsola:latest`. To update: **Apps → mazsola → ⋮ → Pull image**,
+`ghcr.io/cloudhunter77/receipt-tracker:latest`. To update: **Apps → receipt-tracker → ⋮ → Pull image**,
 then restart. Schema migrations run automatically on start.
 
 ## Troubleshooting
@@ -165,7 +165,7 @@ because the repository is; see step 3 above.
 
 **The app container restarts in a loop.** Almost always the database: check that
 `DATABASE_URL`'s password matches `POSTGRES_PASSWORD`, and that `pgdata` is owned by
-568:568. `docker logs mazsola-app-1` says which.
+568:568. `docker logs receipt-tracker-app-1` says which.
 
 **Postgres will not initialise.** It refuses a non-empty data directory. The compose file
 sets `PGDATA` one level down inside the mount for exactly this reason — keep that line.

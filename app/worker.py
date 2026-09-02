@@ -43,7 +43,7 @@ class ExtractionWorker:
     # --- lifecycle -----------------------------------------------------------
     def start(self) -> None:
         if self._task is None:
-            self._task = asyncio.create_task(self.run_forever(), name="mazsola-worker")
+            self._task = asyncio.create_task(self.run_forever(), name="receipt-tracker-worker")
             log.info("extraction worker started (engine=%s)", self.settings.extractor)
 
     async def stop(self) -> None:

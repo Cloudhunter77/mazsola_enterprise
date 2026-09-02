@@ -1,4 +1,4 @@
-/** Typed client for the Mazsola API.
+/** Typed client for the Receipt Tracker API.
  *  Same-origin in production (FastAPI serves the built SPA); Vite proxies /api in dev. */
 
 export class ApiError extends Error {

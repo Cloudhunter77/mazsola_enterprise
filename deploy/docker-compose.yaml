@@ -1,45 +1,45 @@
-# Mazsola on TrueNAS SCALE.
+# Receipt Tracker on TrueNAS SCALE.
 #
 # Apps -> Discover -> (three dots) -> Install via YAML, then paste this file.
 # TrueNAS 25.10 and later require the top-level `services:` key, which is present below.
 #
 # Before installing, create the datasets and edit the two marked lines:
-#   /mnt/<pool>/apps/mazsola/images   - the receipt photos
-#   /mnt/<pool>/apps/mazsola/pgdata   - the PostgreSQL data directory
+#   /mnt/<pool>/apps/receipt-tracker/images   - the receipt photos
+#   /mnt/<pool>/apps/receipt-tracker/pgdata   - the PostgreSQL data directory
 #
 # Then set the environment values marked REQUIRED. See deploy/README.md.
 
-name: mazsola
+name: receipt-tracker
 
 services:
   db:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: mazsola
+      POSTGRES_USER: receipts
       POSTGRES_PASSWORD: CHANGE_ME_DB_PASSWORD      # REQUIRED: any long random string
-      POSTGRES_DB: mazsola
+      POSTGRES_DB: receipts
       # Postgres refuses to initialise into a non-empty directory, and TrueNAS datasets
       # are not empty, so keep the data one level down.
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
-      - /mnt/tank/apps/mazsola/pgdata:/var/lib/postgresql/data   # EDIT: your pool name
+      - /mnt/tank/apps/receipt-tracker/pgdata:/var/lib/postgresql/data   # EDIT: your pool name
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mazsola"]
+      test: ["CMD-SHELL", "pg_isready -U receipts"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 30s
 
   app:
-    image: ghcr.io/cloudhunter77/mazsola:latest
+    image: ghcr.io/cloudhunter77/receipt-tracker:latest
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
     user: "568:568"          # the TrueNAS `apps` user, so bind-mounted files stay writable
     environment:
-      DATABASE_URL: postgresql+asyncpg://mazsola:CHANGE_ME_DB_PASSWORD@db:5432/mazsola  # REQUIRED: same password as above
+      DATABASE_URL: postgresql+asyncpg://receipts:CHANGE_ME_DB_PASSWORD@db:5432/receipts  # REQUIRED: same password as above
       DATA_DIR: /data
 
       # --- extraction -----------------------------------------------------
@@ -57,6 +57,6 @@ services:
       MAX_IMAGE_EDGE: "1600"
       WORKER_ENABLED: "true"
     volumes:
-      - /mnt/tank/apps/mazsola/images:/data          # EDIT: your pool name
+      - /mnt/tank/apps/receipt-tracker/images:/data          # EDIT: your pool name
     ports:
       - "8088:8000"

@@ -12,12 +12,12 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_USER: mazsola
-          POSTGRES_PASSWORD: mazsola
-          POSTGRES_DB: mazsola
+          POSTGRES_USER: receipts
+          POSTGRES_PASSWORD: receipt-tracker
+          POSTGRES_DB: receipts
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U mazsola"
+          --health-cmd "pg_isready -U receipts"
           --health-interval 5s --health-timeout 3s --health-retries 10
     steps:
       - uses: actions/checkout@v4
@@ -42,7 +42,7 @@ jobs:
       - run: ruff check app tests scripts
       - name: Run tests
         env:
-          TEST_DATABASE_URL: postgresql+asyncpg://mazsola:mazsola@127.0.0.1:5432/mazsola
+          TEST_DATABASE_URL: postgresql+asyncpg://receipts:receipts@127.0.0.1:5432/receipts
         run: pytest -q -m "not live"
 
   image:
@@ -62,7 +62,7 @@ jobs:
       - uses: docker/metadata-action@v5
         id: meta
         with:
-          images: ghcr.io/${{ github.repository_owner }}/mazsola
+          images: ghcr.io/${{ github.repository_owner }}/receipt-tracker
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch

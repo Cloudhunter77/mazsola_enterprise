@@ -17,7 +17,7 @@ SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 async def require_auth(
     settings: SettingsDep,
-    mazsola_session: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
+    receipt_tracker_session: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
     x_api_key: Annotated[str | None, Header()] = None,
 ) -> str:
     """Accept either the browser session cookie or the shortcut's API key."""
@@ -27,7 +27,7 @@ async def require_auth(
     if verify_api_key(x_api_key, settings.api_key):
         return "api-key"
 
-    subject = read_session(settings, mazsola_session)
+    subject = read_session(settings, receipt_tracker_session)
     if subject:
         return subject
 

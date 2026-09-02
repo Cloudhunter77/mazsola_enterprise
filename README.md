@@ -1,4 +1,4 @@
-# Mazsola
+# Receipt Tracker
 
 Photograph a receipt, get a queryable expense database. Self-hosted, built for
 TrueNAS SCALE and for Hungarian receipts.
@@ -62,7 +62,7 @@ open http://localhost:8000
 ```bash
 python -m venv .venv && .venv/bin/pip install -e ".[dev]"
 cd web && npm install && npm run build && cd ..
-export DATABASE_URL=postgresql+asyncpg://mazsola:mazsola@localhost:5432/mazsola
+export DATABASE_URL=postgresql+asyncpg://receipts:receipts@localhost:5432/receipts
 export ANTHROPIC_API_KEY=sk-ant-...
 export AUTH_DISABLED=true     # local only
 .venv/bin/uvicorn app.main:app --reload
@@ -82,7 +82,7 @@ python scripts/seed_demo.py --clear   # removes exactly what it created
 
 | Variable | Default | Notes |
 |---|---|---|
-| `DATABASE_URL` | `postgresql+asyncpg://mazsola:mazsola@db:5432/mazsola` | |
+| `DATABASE_URL` | `postgresql+asyncpg://receipts:receipts@db:5432/receipts` | |
 | `DATA_DIR` | `/data` | Where receipt photos are stored |
 | `EXTRACTOR` | `claude` | `claude`, `tesseract` or `ollama` |
 | `EXTRACTOR_MODEL` | `claude-opus-5` | `claude-haiku-4-5` costs about a fifth as much |

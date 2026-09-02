@@ -14,7 +14,7 @@ class Settings(BaseSettings):
 
     # --- storage -------------------------------------------------------------
     database_url: str = Field(
-        default="postgresql+asyncpg://mazsola:mazsola@db:5432/mazsola",
+        default="postgresql+asyncpg://receipts:receipts@db:5432/receipts",
         description="SQLAlchemy async DSN.",
     )
     data_dir: Path = Field(
