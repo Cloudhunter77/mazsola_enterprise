@@ -26,8 +26,16 @@ def main() -> None:
     if len(password) < 8:
         print("Warning: shorter than 8 characters.", file=sys.stderr)
 
-    print("\nPaste this as APP_PASSWORD_HASH:\n")
-    print(hash_password(password))
+    digest = hash_password(password)
+
+    # An Argon2 hash contains `$` separators, and Docker Compose treats `$` as the start
+    # of a variable substitution - so pasting the raw hash into a compose file silently
+    # corrupts it and every login then fails for no visible reason. Doubling each `$`
+    # escapes it. Both forms are printed because only the compose file needs escaping.
+    print("\nFor a docker-compose file (TrueNAS 'Install via YAML'), paste this:\n")
+    print(digest.replace("$", "$$"))
+    print("\nFor a .env file or a plain environment variable, paste this instead:\n")
+    print(digest)
 
 
 if __name__ == "__main__":

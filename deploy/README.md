@@ -32,8 +32,20 @@ Run these anywhere with a shell (they never leave your machine):
 openssl rand -hex 32          # SECRET_KEY
 openssl rand -hex 24          # API_KEY, for the phone shortcut
 openssl rand -hex 16          # the database password
-python scripts/hash_password.py   # APP_PASSWORD_HASH - prompts, echoes nothing
 ```
+
+For `APP_PASSWORD_HASH`, run the hashing script inside the image you already pulled, so
+there is nothing to install:
+
+```sh
+docker run --rm -it ghcr.io/cloudhunter77/mazsola:latest python scripts/hash_password.py
+```
+
+It prompts twice, echoes nothing, and prints two forms of the hash. **Use the
+compose-safe one** — an Argon2 hash contains `$` characters, Docker Compose reads `$` as
+the start of a variable substitution, and a raw hash pasted into the YAML is silently
+corrupted so that every login fails with no clue why. The escaped form doubles each `$`,
+which compose turns back into the original.
 
 And an API key from <https://console.anthropic.com> for `ANTHROPIC_API_KEY`.
 
