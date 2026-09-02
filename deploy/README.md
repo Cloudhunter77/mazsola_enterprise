@@ -48,15 +48,24 @@ too, and a plain `docker pull` from the NAS fails with `denied`. Pick one of the
 before installing.
 
 **Either — log the NAS in to GHCR (keeps everything private).** Create a token at
-<https://github.com/settings/tokens> (classic) with only the **`read:packages`** scope,
-then over SSH on the NAS, as root:
+<https://github.com/settings/tokens> (classic) with only the **`read:packages`** scope.
+Then over SSH on the NAS, run these **one at a time** — the second prompts for the
+password, so paste the token there rather than putting it on a command line:
 
 ```sh
-echo '<the-token>' | docker login ghcr.io -u Cloudhunter77 --password-stdin
+sudo -i
+docker login ghcr.io -u Cloudhunter77
+docker pull ghcr.io/cloudhunter77/mazsola:latest
 ```
 
-The credentials persist in `/root/.docker/config.json`, so every later pull and update
-just works. Nothing else in the compose file changes.
+`sudo -i` matters: the Apps system pulls images as root and reads
+`/root/.docker/config.json`. Logging in as your admin user writes to that user's home
+instead, and the pull would still be denied at install time even though the login said
+it succeeded.
+
+The credentials persist across reboots, so every later pull and update just works. A
+major TrueNAS upgrade builds a new boot environment and may not carry them over — if a
+pull is denied after one, just run the login again. To undo: `docker logout ghcr.io`.
 
 **Or — build the image on the NAS instead**, and skip the registry entirely:
 
