@@ -134,6 +134,14 @@ then restart. Schema migrations run automatically on start.
 
 ## Troubleshooting
 
+**"SECRET_KEY is still a placeholder from the repository".** The app refuses to start
+rather than run with a signing key that is published in this repository — anyone who
+could reach it would be able to forge a login session. Generate one with
+`openssl rand -hex 32` and set it. The same guard rejects any key under 32 characters.
+
+**"denied" or "manifest unknown" when pulling the image.** The GHCR package is private
+because the repository is; see step 3 above.
+
 **The app container restarts in a loop.** Almost always the database: check that
 `DATABASE_URL`'s password matches `POSTGRES_PASSWORD`, and that `pgdata` is owned by
 568:568. `docker logs mazsola-app-1` says which.
