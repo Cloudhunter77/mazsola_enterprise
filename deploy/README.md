@@ -41,7 +41,37 @@ And an API key from <https://console.anthropic.com> for `ANTHROPIC_API_KEY`.
 > are billed separately — you need a Console account with credits on it. The minimum
 > top-up lasts a long time at this app's usage; see the cost table in the main README.
 
-## 3. Install
+## 3. Let the NAS pull the image
+
+This repository is private, so the image GitHub Actions publishes to GHCR is private
+too, and a plain `docker pull` from the NAS fails with `denied`. Pick one of these once,
+before installing.
+
+**Either — log the NAS in to GHCR (keeps everything private).** Create a token at
+<https://github.com/settings/tokens> (classic) with only the **`read:packages`** scope,
+then over SSH on the NAS, as root:
+
+```sh
+echo '<the-token>' | docker login ghcr.io -u Cloudhunter77 --password-stdin
+```
+
+The credentials persist in `/root/.docker/config.json`, so every later pull and update
+just works. Nothing else in the compose file changes.
+
+**Or — build the image on the NAS instead**, and skip the registry entirely:
+
+```sh
+git clone https://github.com/Cloudhunter77/mazsola_enterprise.git /mnt/tank/apps/mazsola/src
+cd /mnt/tank/apps/mazsola/src && docker build -t mazsola:local .
+```
+
+Then in the compose file below, change the app's `image:` to `mazsola:local` and add
+`pull_policy: never` beside it. Updating then means `git pull` and building again.
+
+Making the GHCR package public is a third option, but the image contains the application
+source, so it would publish the code that this private repository is keeping private.
+
+## 4. Install
 
 **Apps → Discover Apps → ⋮ → Install via YAML.** Name it `mazsola`, paste
 `deploy/docker-compose.yaml`, and before saving:
@@ -61,7 +91,7 @@ curl http://<nas>:8088/health
 # {"status":"ok","database":true,"extractor":"claude","model":"claude-opus-5","worker":true}
 ```
 
-## 4. On your phone
+## 5. On your phone
 
 Open `http://<nas>:8088` over your VPN and add it to the home screen (iOS: Share →
 Add to Home Screen; Android: menu → Install app). It then opens full-screen, and
@@ -83,7 +113,7 @@ For a one-tap capture from the lock screen or Action Button:
 The upload returns immediately; the reading happens on the NAS. Open the app later to
 review anything flagged.
 
-## 5. Backups
+## 6. Backups
 
 Copy `scripts/backup.sh` to `/mnt/tank/apps/mazsola/`, then **System → Advanced →
 Cron Jobs**, daily as root:
@@ -96,7 +126,7 @@ It writes a compressed `pg_dump` into the `backups` dataset and keeps the last 1
 the container name first (`docker ps | grep mazsola`) and set `DB_CONTAINER` if it is not
 `mazsola-db-1`.
 
-## 6. Updating
+## 7. Updating
 
 The image is built by GitHub Actions on every push and published to
 `ghcr.io/cloudhunter77/mazsola:latest`. To update: **Apps → mazsola → ⋮ → Pull image**,
