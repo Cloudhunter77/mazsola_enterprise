@@ -37,6 +37,22 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     extractor_effort: str = Field(default="medium", description="low | medium | high | xhigh | max")
 
+    # --- openrouter -----------------------------------------------------------
+    # A gateway in front of many providers. Useful if you already hold credit there,
+    # or want to try a non-Anthropic vision model without changing any code.
+    openrouter_api_key: str | None = None
+    openrouter_model: str = Field(
+        default="anthropic/claude-sonnet-4.5",
+        description=(
+            "OpenRouter model id, in vendor/model form. It must support both vision and "
+            "structured outputs. Check openrouter.ai/models for current ids."
+        ),
+    )
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_site_url: str | None = Field(
+        default=None, description="Optional, for attribution on the OpenRouter dashboard."
+    )
+
     # Image preprocessing. Claude bills images at (width * height) / 750 tokens, so the
     # longest-edge cap is the main cost lever in the whole app.
     max_image_edge: int = 1600

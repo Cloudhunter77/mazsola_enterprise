@@ -47,11 +47,27 @@ the start of a variable substitution, and a raw hash pasted into the YAML is sil
 corrupted so that every login fails with no clue why. The escaped form doubles each `$`,
 which compose turns back into the original.
 
-And an API key from <https://console.anthropic.com> for `ANTHROPIC_API_KEY`.
+And a key for whichever extraction engine you chose:
 
-> A Claude Pro or Max subscription does **not** cover this. The subscription and the API
-> are billed separately — you need a Console account with credits on it. The minimum
-> top-up lasts a long time at this app's usage; see the cost table in the main README.
+- **OpenRouter** (the default in the compose file): a key from
+  <https://openrouter.ai/keys>, as `OPENROUTER_API_KEY`.
+- **Anthropic directly**: a key from <https://console.anthropic.com>, as
+  `ANTHROPIC_API_KEY`. A Claude Pro or Max subscription does **not** cover this — the
+  subscription and the API are billed separately.
+
+Before installing, check the key and model actually work on a real image. One API call,
+nothing else needed:
+
+```sh
+docker run --rm \
+  -e EXTRACTOR=openrouter -e OPENROUTER_API_KEY=sk-or-... \
+  ghcr.io/cloudhunter77/receipt-tracker:latest \
+  python scripts/try_extract.py tests/fixtures/receipts/synthetic_tesco.jpg
+```
+
+It prints the lines it read, the real cost, and whether the totals balanced. If the model
+answers with prose instead of structured data, it does not support strict structured
+outputs — pick another model and try again.
 
 ## 3. Let the NAS pull the image
 

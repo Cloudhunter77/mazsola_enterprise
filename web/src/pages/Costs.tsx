@@ -63,9 +63,9 @@ export default function Costs() {
 
             <Card title="Olcsóbbra váltás">
               <p style={{ marginTop: 0 }}>
-                A modell egyetlen környezeti változó: <code>EXTRACTOR_MODEL</code>. A{" "}
-                <code>claude-haiku-4-5</code> nagyjából a fenti összeg ötödébe kerül, cserébe több
-                blokk kerül ellenőrzésre.
+                A modell egyetlen környezeti változó – <code>OPENROUTER_MODEL</code>, illetve
+                közvetlen Anthropic-kapcsolatnál <code>EXTRACTOR_MODEL</code>. Egy olcsóbb modell
+                töredékébe kerül, cserébe több blokk kerül ellenőrzésre.
               </p>
               <p className="muted" style={{ marginBottom: 0 }}>
                 Váltás után ezen az oldalon és az „Ellenőrzendő” számon látszik, megérte-e: ha az

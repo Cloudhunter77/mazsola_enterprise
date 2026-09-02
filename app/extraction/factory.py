@@ -6,9 +6,11 @@ from app.config import Settings, get_settings
 from app.extraction.base import ReceiptExtractor
 from app.extraction.claude import ClaudeExtractor
 from app.extraction.local import OllamaExtractor, TesseractExtractor
+from app.extraction.openrouter import OpenRouterExtractor
 
 _BUILDERS = {
     "claude": ClaudeExtractor,
+    "openrouter": OpenRouterExtractor,
     "tesseract": TesseractExtractor,
     "ollama": OllamaExtractor,
 }

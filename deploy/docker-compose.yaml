@@ -42,11 +42,19 @@ services:
       DATABASE_URL: postgresql+asyncpg://receipts:CHANGE_ME_DB_PASSWORD@db:5432/receipts  # REQUIRED: same password as above
       DATA_DIR: /data
 
-      # --- extraction -----------------------------------------------------
-      ANTHROPIC_API_KEY: CHANGE_ME_API_KEY          # REQUIRED: console.anthropic.com
-      EXTRACTOR: claude                             # claude | tesseract | ollama
-      EXTRACTOR_MODEL: claude-opus-5                # claude-haiku-4-5 costs ~1/5 as much
-      EXTRACTOR_EFFORT: medium
+      # --- extraction ------------------------------------------------------
+      # Pick ONE engine and fill in only its key.
+      EXTRACTOR: openrouter                         # openrouter | claude | tesseract | ollama
+
+      # If EXTRACTOR=openrouter (uses OpenRouter credit; it reports the real cost per call)
+      OPENROUTER_API_KEY: CHANGE_ME_OPENROUTER_KEY
+      OPENROUTER_MODEL: anthropic/claude-sonnet-4.5 # must do vision AND structured outputs
+      # OPENROUTER_SITE_URL: http://nas.local:8088  # optional, for the OpenRouter dashboard
+
+      # If EXTRACTOR=claude (billed by Anthropic directly, not covered by a Claude subscription)
+      # ANTHROPIC_API_KEY: CHANGE_ME_API_KEY
+      # EXTRACTOR_MODEL: claude-opus-5
+      # EXTRACTOR_EFFORT: medium
 
       # --- auth -----------------------------------------------------------
       SECRET_KEY: CHANGE_ME_SECRET                  # REQUIRED: openssl rand -hex 32

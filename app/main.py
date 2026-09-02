@@ -110,13 +110,21 @@ def create_app() -> FastAPI:
             "status": "ok" if database_ok else "degraded",
             "database": database_ok,
             "extractor": settings.extractor,
-            "model": settings.extractor_model if settings.extractor == "claude" else None,
+            "model": _active_model(settings),
             "worker": settings.worker_enabled,
         }
         return JSONResponse(payload, status_code=200 if database_ok else 503)
 
     _mount_frontend(app)
     return app
+
+
+def _active_model(settings) -> str | None:
+    """Whichever model the configured engine will actually use."""
+    return {
+        "claude": settings.extractor_model,
+        "openrouter": settings.openrouter_model,
+    }.get(settings.extractor)
 
 
 def _mount_frontend(app: FastAPI) -> None:

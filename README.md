@@ -84,7 +84,9 @@ python scripts/seed_demo.py --clear   # removes exactly what it created
 |---|---|---|
 | `DATABASE_URL` | `postgresql+asyncpg://receipts:receipts@db:5432/receipts` | |
 | `DATA_DIR` | `/data` | Where receipt photos are stored |
-| `EXTRACTOR` | `claude` | `claude`, `tesseract` or `ollama` |
+| `EXTRACTOR` | `claude` | `openrouter`, `claude`, `tesseract` or `ollama` |
+| `OPENROUTER_API_KEY` | – | Required when `EXTRACTOR=openrouter` |
+| `OPENROUTER_MODEL` | `anthropic/claude-sonnet-4.5` | Must support vision **and** structured outputs |
 | `EXTRACTOR_MODEL` | `claude-opus-5` | `claude-haiku-4-5` costs about a fifth as much |
 | `EXTRACTOR_EFFORT` | `medium` | Transcription does not repay deep reasoning |
 | `ANTHROPIC_API_KEY` | – | Required when `EXTRACTOR=claude`; a Console key, not a Pro/Max subscription |
@@ -109,6 +111,31 @@ tokens per receipt:
 The app records the real token cost of every extraction and shows it under
 **Felismerési költség**, so the choice can be made on your own numbers rather than on
 these estimates. Switching is one environment variable.
+
+## Choosing an extraction engine
+
+`EXTRACTOR` picks one. All of them produce the same `ExtractedReceipt`, so nothing else
+in the app changes.
+
+| Engine | Billed by | Notes |
+|---|---|---|
+| `openrouter` | your OpenRouter credit | One gateway in front of many providers. Reports the real cost of every call, so the Costs page shows what you were actually charged rather than an estimate. The model must support vision and structured outputs. |
+| `claude` | Anthropic, directly | What the prompt was written and tuned against. Uses schema-validated output, prompt caching and adaptive thinking. A Claude Pro/Max subscription does **not** cover it. |
+| `tesseract`, `ollama` | nothing | Stubs. See `app/extraction/local.py`. |
+
+Before deploying, check a key and model actually work together on a real image:
+
+```bash
+EXTRACTOR=openrouter OPENROUTER_API_KEY=sk-or-... \
+    python scripts/try_extract.py tests/fixtures/receipts/synthetic_tesco.jpg
+```
+
+It prints the parsed lines, the real cost, and whether the arithmetic balanced. One API
+call, no database, no containers.
+
+**If the model returns prose instead of the structure**, it does not honour strict
+structured outputs — try another. That is the one failure mode this route has that going
+direct to Anthropic does not.
 
 ## Moving off the API later
 
