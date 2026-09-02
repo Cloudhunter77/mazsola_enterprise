@@ -7,6 +7,7 @@ development, not a hypothetical. If one of these fails, the vulnerability is bac
 from __future__ import annotations
 
 import io
+from pathlib import Path
 
 import pytest
 from PIL import Image
@@ -35,6 +36,15 @@ PASSWORD = TEST_PASSWORD
 # Path traversal on the SPA route. This was a real unauthenticated arbitrary file read:
 # GET /../../../../../etc/passwd returned the file with HTTP 200.
 # --------------------------------------------------------------------------------------
+# Without a built frontend the SPA route is never mounted, so every probe below would
+# 404 and these tests would pass while proving nothing. Skip loudly instead.
+frontend_built = pytest.mark.skipif(
+    not (Path(__file__).resolve().parent.parent / "web" / "dist" / "index.html").is_file(),
+    reason="needs a built frontend (npm run build in web/) for the SPA route to exist",
+)
+
+
+@frontend_built
 class TestStaticFileTraversal:
     TRAVERSALS = [
         "/../../../../../etc/passwd",

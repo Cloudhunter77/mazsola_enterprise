@@ -22,16 +22,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install -e ".[dev]"
-      - run: ruff check app tests scripts
-      - name: Run tests
-        env:
-          TEST_DATABASE_URL: postgresql+asyncpg://mazsola:mazsola@127.0.0.1:5432/mazsola
-        run: pytest -q -m "not live"
-
+      # The frontend is built BEFORE the Python tests on purpose. Without web/dist the
+      # app serves no SPA route at all, and the path-traversal tests would pass
+      # vacuously - every request 404s because the route they probe does not exist.
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -41,6 +34,16 @@ jobs:
         working-directory: web
       - run: npm run build
         working-directory: web
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: ruff check app tests scripts
+      - name: Run tests
+        env:
+          TEST_DATABASE_URL: postgresql+asyncpg://mazsola:mazsola@127.0.0.1:5432/mazsola
+        run: pytest -q -m "not live"
 
   image:
     needs: test
