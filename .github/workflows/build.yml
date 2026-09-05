@@ -99,6 +99,22 @@ jobs:
           docker run --rm receipt-tracker:smoke python scripts/try_extract.py --help > /dev/null
           echo "the extraction CLI runs"
 
+      # `--help` passing said nothing about whether the fixture the deploy guide tells
+      # the user to point at is actually in the image - it was not, and the very first
+      # command of the install failed. So check the real paths, read out of the docs,
+      # rather than a hand-copied list that can drift away from them.
+      - name: Every script and fixture the docs reference must exist in the image
+        run: |
+          paths=$(grep -hoE '(scripts|tests)/[A-Za-z0-9_./-]+\.(py|sh|jpg|png)' \
+            README.md deploy/README.md deploy/COWORK_PROMPT.md | sort -u)
+          echo "checking: $paths"
+          test -n "$paths"
+          for f in $paths; do
+            docker run --rm receipt-tracker:smoke test -f "$f" \
+              || { echo "MISSING IN IMAGE: $f"; exit 1; }
+          done
+          echo "every documented path is present"
+
       - name: The image must start and serve health
         run: |
           docker run -d --name smoke --network host \

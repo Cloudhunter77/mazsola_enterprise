@@ -37,6 +37,11 @@ print('\\n'.join(tomllib.load(open('pyproject.toml','rb'))['project']['dependenc
 COPY alembic.ini ./
 COPY app/ ./app/
 COPY scripts/ ./scripts/
+# The test fixtures ship too: scripts/try_extract.py - the documented pre-install smoke
+# test - reads tests/fixtures/receipts/synthetic_tesco.jpg, and a fixture that exists in
+# the repository but not in the image made that command fail for the person following
+# the deploy guide.
+COPY tests/ ./tests/
 COPY --from=web /build/dist ./web/dist
 
 # TrueNAS SCALE runs apps as uid/gid 568 (the `apps` user). Matching it here means
