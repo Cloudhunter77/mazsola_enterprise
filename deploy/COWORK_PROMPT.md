@@ -35,11 +35,19 @@ Do not redo these:
 
 ## Start by pulling the current image
 
-An earlier image on this NAS is stale and **known broken** - it failed with
-`ModuleNotFoundError: No module named 'httpx'` because the Dockerfile kept its own
-dependency list that had drifted from pyproject.toml. That is fixed, and CI now starts
-the image and checks every module imports before publishing, so the class is closed.
-Pull before anything else:
+Any image already on this NAS is stale and **known broken**. Two separate faults have
+been fixed since, both of the same kind - something true of the repository was assumed
+true of the published image:
+
+- `ModuleNotFoundError: No module named 'httpx'`, because the Dockerfile kept its own
+  dependency list that had drifted from pyproject.toml. Dependencies are now read from
+  pyproject.toml at build time.
+- `scripts/try_extract.py` could not find its sample receipt, because `tests/` was never
+  copied into the image. It is now.
+
+CI closes both classes before publishing: it starts the built image, checks every module
+imports, and asserts that every script and fixture path the documentation tells you to
+run actually exists inside the image. Pull before anything else:
 
 ```
 docker pull ghcr.io/cloudhunter77/receipt-tracker:latest
