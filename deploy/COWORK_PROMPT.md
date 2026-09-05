@@ -33,6 +33,23 @@ Do not redo these:
   work. Verify with a pull rather than assuming.
 - CI is green and the image is published.
 
+## Start by pulling the current image
+
+An earlier image on this NAS is stale and **known broken** - it failed with
+`ModuleNotFoundError: No module named 'httpx'` because the Dockerfile kept its own
+dependency list that had drifted from pyproject.toml. That is fixed, and CI now starts
+the image and checks every module imports before publishing, so the class is closed.
+Pull before anything else:
+
+```
+docker pull ghcr.io/cloudhunter77/receipt-tracker:latest
+```
+
+If you still see a `ModuleNotFoundError` after pulling, the pull did not take - check the
+image digest rather than assuming. And note that packages named `httpx2` and `httpcore2`
+appearing in the image are **correct, not typos**: the Anthropic SDK v1 is built on them.
+Do not "fix" those.
+
 ## What is not done yet
 
 - Creating the datasets.
