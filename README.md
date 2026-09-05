@@ -37,6 +37,8 @@ misclassification. So the app knows that:
 - **`KEREKÍTÉS` is cash rounding**, always between -2 and +2 Ft, and a cash total is always
   a multiple of 5.
 - A two-line item (`COCA COLA 1,75L` then `2 db x 549`) is **one** purchase, not two.
+- A receipt too long to photograph legibly in one frame is captured in overlapping
+  sections and read as **one** document — a line visible in two sections is counted once.
 - ÁFA collector letters (A=27%, B=18%, C=5%, AM=mentes) are read from the legend printed
   on the receipt.
 - `1 234,56` is one thousand two hundred thirty-four, and `2026.08.14.` is a date.
@@ -91,6 +93,7 @@ python scripts/seed_demo.py --clear   # removes exactly what it created
 | `EXTRACTOR_EFFORT` | `medium` | Transcription does not repay deep reasoning |
 | `ANTHROPIC_API_KEY` | – | Required when `EXTRACTOR=claude`; a Console key, not a Pro/Max subscription |
 | `MAX_IMAGE_EDGE` | `1600` | The main cost lever; images bill at `w×h/750` tokens |
+| `MAX_PARTS` | `8` (in code) | Most photos one receipt may be captured in |
 | `SECRET_KEY` | – | Signs the session cookie |
 | `APP_PASSWORD_HASH` | – | `python scripts/hash_password.py` |
 | `API_KEY` | – | For the iOS Shortcut's `X-API-Key` header |
@@ -122,6 +125,20 @@ in the app changes.
 | `openrouter` | your OpenRouter credit | One gateway in front of many providers. Reports the real cost of every call, so the Costs page shows what you were actually charged rather than an estimate. The model must support vision and structured outputs. |
 | `claude` | Anthropic, directly | What the prompt was written and tuned against. Uses schema-validated output, prompt caching and adaptive thinking. A Claude Pro/Max subscription does **not** cover it. |
 | `tesseract`, `ollama` | nothing | Stubs. See `app/extraction/local.py`. |
+
+### Finding a cheaper model
+
+`scripts/list_models.py` reads OpenRouter's catalogue, keeps only the models that accept
+images **and** support strict structured outputs, and ranks them by what one receipt would
+cost at your own token counts:
+
+```bash
+python scripts/list_models.py --in 3000 --out 1200
+```
+
+Take the token numbers from the Costs page rather than the defaults — the per-receipt
+figure is just tokens x rate, so an unexpected bill is nearly always an unexpected input
+token count, and the photo is most of the input. `MAX_IMAGE_EDGE=1280` roughly halves it.
 
 Before deploying, check a key and model actually work together on a real image:
 

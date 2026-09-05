@@ -13,7 +13,7 @@ import pytest
 from sqlalchemy import func, select
 
 from app.config import Settings
-from app.extraction.base import ExtractionError, ExtractionResult
+from app.extraction.base import ExtractionError, ExtractionResult, as_parts
 from app.models import LineKind, Merchant, Product, Receipt, ReceiptItem, ReceiptStatus
 from app.schemas.extraction import ExtractedReceipt
 from app.services import stats
@@ -35,9 +35,11 @@ class StubExtractor:
         self.receipt = receipt or build_receipt()
         self.error = error
         self.calls = 0
+        self.parts_seen: list[int] = []
 
-    async def extract(self, image_bytes: bytes, mime_type: str = "image/jpeg") -> ExtractionResult:
+    async def extract(self, images, mime_type: str = "image/jpeg") -> ExtractionResult:
         self.calls += 1
+        self.parts_seen.append(len(as_parts(images)))
         if self.error:
             raise ExtractionError(self.error)
         return ExtractionResult(

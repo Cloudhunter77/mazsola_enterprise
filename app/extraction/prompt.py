@@ -118,3 +118,26 @@ USER_INSTRUCTION = (
     "Extract this Hungarian receipt into the required structure. "
     "Read every line from top to bottom, then verify the totals balance before answering."
 )
+
+# Sent instead of USER_INSTRUCTION when a receipt arrives as several photographs. The
+# double-counting warning is the whole point: parts are expected to overlap, because a
+# person photographing a long receipt naturally leaves a few lines of margin, and a line
+# transcribed twice breaks the arithmetic check in exactly the way a missed line does.
+MULTIPART_INSTRUCTION = (
+    "These {count} images are consecutive, overlapping sections of ONE Hungarian receipt, "
+    "in order from the top. Read them as a single document and return one receipt.\n\n"
+    "The sections overlap: the last lines of one image are usually the first lines of the "
+    "next. A line that appears in two images is ONE line - transcribe it once. Work down "
+    "the receipt in order, and where an image ends mid-way through a two-line item, join "
+    "it with its continuation in the following image rather than emitting two lines.\n\n"
+    "The header (shop, address, tax number) is on the first image and the totals, ÁFA "
+    "block and payment lines are on the last. Then verify the totals balance across the "
+    "whole receipt before answering."
+)
+
+
+def instruction_for(part_count: int) -> str:
+    """The user turn for a receipt captured in `part_count` photographs."""
+    if part_count <= 1:
+        return USER_INSTRUCTION
+    return MULTIPART_INSTRUCTION.format(count=part_count)

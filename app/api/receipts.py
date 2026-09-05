@@ -17,6 +17,7 @@ from app.models import (
     LineKind,
     Merchant,
     Receipt,
+    ReceiptImage,
     ReceiptItem,
     ReceiptStatus,
 )
@@ -29,7 +30,7 @@ from app.schemas.api import (
     UploadResponse,
 )
 from app.services.catalog import link_product, resolve_merchant
-from app.services.ingest import IngestError, ingest_image
+from app.services.ingest import IngestError, ingest_images
 
 router = APIRouter(prefix="/api/receipts", tags=["receipts"])
 
@@ -47,13 +48,23 @@ async def upload_receipt(
     session: SessionDep,
     settings: SettingsDep,
     response: Response,
-    file: UploadFile = File(..., description="A photo of the receipt."),
+    file: list[UploadFile] = File(
+        ...,
+        description=(
+            "One photo of the receipt, or several sections of a long one in reading order."
+        ),
+    ),
     source: str = Query("web", description="web | shortcut | folder"),
 ) -> UploadResponse:
-    """Accept a photo and queue it. Returns immediately; the worker extracts in the background."""
-    data = await file.read()
+    """Accept a receipt and queue it. Returns immediately; the worker extracts in the background.
+
+    Repeating the `file` field uploads a receipt too long to photograph legibly in one
+    frame: the sections are read together as a single document. The field stayed named
+    `file` so the existing iOS Shortcut keeps working untouched.
+    """
+    parts = [await item.read() for item in file]
     try:
-        receipt, created = await ingest_image(session, data, settings, source=source)
+        receipt, created = await ingest_images(session, parts, settings, source=source)
     except IngestError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -97,13 +108,17 @@ async def list_receipts(
 @router.get("/{receipt_id}", response_model=ReceiptDetail)
 async def get_receipt(_: AuthDep, session: SessionDep, receipt_id: uuid.UUID) -> ReceiptDetail:
     receipt = await session.scalar(
-        select(Receipt).where(Receipt.id == receipt_id).options(selectinload(Receipt.items))
+        select(Receipt)
+        .where(Receipt.id == receipt_id)
+        .options(selectinload(Receipt.items), selectinload(Receipt.images))
     )
     if receipt is None:
         raise HTTPException(status_code=404, detail="No such receipt.")
 
     detail = ReceiptDetail.model_validate(receipt)
     detail.item_count = len(receipt.items)
+    # Receipts stored before multi-part capture have no rows here and are single-page.
+    detail.pages = len(receipt.images) or 1
     if receipt.merchant_id:
         merchant = await session.get(Merchant, receipt.merchant_id)
         detail.merchant_name = merchant.name if merchant else None
@@ -111,16 +126,33 @@ async def get_receipt(_: AuthDep, session: SessionDep, receipt_id: uuid.UUID) ->
 
 
 @router.get("/{receipt_id}/image")
-async def get_receipt_image(_: AuthDep, session: SessionDep, receipt_id: uuid.UUID) -> FileResponse:
-    """Serve the stored photo, so the review screen can show it beside the parsed fields."""
+async def get_receipt_image(
+    _: AuthDep,
+    session: SessionDep,
+    receipt_id: uuid.UUID,
+    part: int = Query(0, ge=0, description="Which photo, for a receipt captured in sections."),
+) -> FileResponse:
+    """Serve a stored photo, so the review screen can show it beside the parsed fields."""
     receipt = await session.get(Receipt, receipt_id)
     if receipt is None:
         raise HTTPException(status_code=404, detail="No such receipt.")
 
-    path = Path(receipt.image_path)
+    image = await session.scalar(
+        select(ReceiptImage).where(
+            ReceiptImage.receipt_id == receipt_id, ReceiptImage.part_no == part
+        )
+    )
+    if image is not None:
+        path, media_type = Path(image.path), image.mime
+    elif part == 0:
+        # A receipt from before multi-part capture whose backfill did not run.
+        path, media_type = Path(receipt.image_path), receipt.image_mime
+    else:
+        raise HTTPException(status_code=404, detail="This receipt has no such page.")
+
     if not path.is_file():
         raise HTTPException(status_code=404, detail="The image file is missing from storage.")
-    return FileResponse(path, media_type=receipt.image_mime)
+    return FileResponse(path, media_type=media_type)
 
 
 @router.patch("/{receipt_id}", response_model=ReceiptDetail)
@@ -192,12 +224,21 @@ async def delete_receipt(
     if receipt is None:
         raise HTTPException(status_code=404, detail="No such receipt.")
 
-    path = Path(receipt.image_path)
+    # Read the paths before the cascade removes the rows that name them, or a multi-part
+    # receipt would leave every page but the first orphaned on disk.
+    paths = [
+        Path(image.path)
+        for image in await session.scalars(
+            select(ReceiptImage).where(ReceiptImage.receipt_id == receipt_id)
+        )
+    ] or [Path(receipt.image_path)]
+
     await session.delete(receipt)
     await session.commit()
 
-    if not keep_image and path.is_file():
-        path.unlink(missing_ok=True)
+    if not keep_image:
+        for path in paths:
+            path.unlink(missing_ok=True)
 
 
 @router.patch("/items/{item_id}", response_model=ItemOut)

@@ -1,8 +1,13 @@
 /** The capture screen.
  *
  *  `capture="environment"` on a file input opens the rear camera directly on both iOS and
- *  Android with no native app and no permissions dance - which is why this is the whole
- *  capture story. After upload the page polls the receipt until the worker finishes, so
+ *  Android with no native app and no permissions dance. A second input without that
+ *  attribute opens the photo library instead - the same element, and the attribute is the
+ *  only difference, which is why there are two inputs rather than one with a mode flag.
+ *
+ *  Both accept several files. A receipt longer than a phone frame can hold legibly is
+ *  photographed in overlapping sections and uploaded together as one receipt; the sections
+ *  are read as a single document. After upload the page polls until the worker finishes, so
  *  you see what was read while you are still standing in the shop and can retake a bad shot.
  */
 
@@ -17,19 +22,30 @@ type Phase = "idle" | "uploading" | "waiting" | "done" | "error";
 
 const TERMINAL = new Set(["parsed", "needs_review", "failed", "confirmed"]);
 
+// Matches MAX_PARTS in app/services/ingest.py. Exceeding it is refused server-side; this
+// only saves the round trip.
+const MAX_PARTS = 8;
+
+type Part = { file: File; preview: string };
+
 export default function Capture() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<ReceiptDetail | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
+  const [parts, setParts] = useState<Part[]>([]);
+  const cameraInput = useRef<HTMLInputElement>(null);
+  const galleryInput = useRef<HTMLInputElement>(null);
   const pollTimer = useRef<number | null>(null);
 
+  // Object URLs are revoked explicitly wherever parts are dropped, so this only has to
+  // catch the case of leaving the page mid-flow.
+  const partsRef = useRef<Part[]>([]);
+  partsRef.current = parts;
   useEffect(() => () => {
     if (pollTimer.current) window.clearTimeout(pollTimer.current);
-    if (preview) URL.revokeObjectURL(preview);
-  }, [preview]);
+    for (const part of partsRef.current) URL.revokeObjectURL(part.preview);
+  }, []);
 
   const poll = useCallback((id: string, attempt = 0) => {
     api.receipt(id)
@@ -49,35 +65,57 @@ export default function Capture() {
       .catch((err: Error) => { setPhase("error"); setMessage(err.message); });
   }, []);
 
-  async function onFile(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  function onPick(event: ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(event.target.files ?? []);
+    // Reset the input first, so picking the same photo again after a retake still fires.
+    event.target.value = "";
+    if (!picked.length) return;
 
-    if (preview) URL.revokeObjectURL(preview);
-    setPreview(URL.createObjectURL(file));
+    setMessage(null);
+    setParts((current) => {
+      const room = MAX_PARTS - current.length;
+      if (picked.length > room) {
+        setMessage(`Egy blokk legfeljebb ${MAX_PARTS} képből állhat.`);
+      }
+      const added = picked.slice(0, Math.max(room, 0)).map((file) => ({
+        file,
+        preview: URL.createObjectURL(file),
+      }));
+      return [...current, ...added];
+    });
+  }
+
+  function removePart(index: number) {
+    setParts((current) => {
+      URL.revokeObjectURL(current[index].preview);
+      return current.filter((_, i) => i !== index);
+    });
+  }
+
+  async function send() {
+    if (!parts.length) return;
     setPhase("uploading");
     setProgress(0);
     setMessage(null);
     setReceipt(null);
 
     try {
-      const response = await api.upload(file, setProgress);
-      if (response.duplicate) setMessage("Ezt a képet már feltöltötted – ugyanazt a blokkot mutatom.");
+      const response = await api.upload(parts.map((part) => part.file), setProgress);
+      if (response.duplicate) {
+        setMessage("Ezt már feltöltötted – ugyanazt a blokkot mutatom.");
+      }
       setPhase("waiting");
       poll(response.id);
     } catch (err) {
       setPhase("error");
       setMessage((err as Error).message);
-    } finally {
-      // Let the same photo be picked again after a retake.
-      if (fileInput.current) fileInput.current.value = "";
     }
   }
 
   function reset() {
     if (pollTimer.current) window.clearTimeout(pollTimer.current);
-    if (preview) URL.revokeObjectURL(preview);
-    setPreview(null);
+    for (const part of parts) URL.revokeObjectURL(part.preview);
+    setParts([]);
     setReceipt(null);
     setMessage(null);
     setPhase("idle");
@@ -87,12 +125,24 @@ export default function Capture() {
     <>
       <h1 style={{ marginBottom: 14 }}>Blokk rögzítése</h1>
 
+      {/* Two inputs, differing only in `capture`: with it the rear camera opens directly,
+          without it the photo library does. `multiple` lets a long receipt be captured in
+          overlapping sections. */}
       <input
-        ref={fileInput}
+        ref={cameraInput}
         type="file"
         accept="image/*"
         capture="environment"
-        onChange={onFile}
+        multiple
+        onChange={onPick}
+        style={{ display: "none" }}
+      />
+      <input
+        ref={galleryInput}
+        type="file"
+        accept="image/*"
+        multiple
+        onChange={onPick}
         style={{ display: "none" }}
       />
 
@@ -101,13 +151,43 @@ export default function Capture() {
           <p className="muted" style={{ marginTop: 0 }}>
             Fotózd le a blokkot fentről lefelé, lehetőleg sima felületen. A többi megy magától.
           </p>
-          <button
-            className="btn primary big"
-            style={{ width: "100%" }}
-            onClick={() => fileInput.current?.click()}
-          >
-            📷 Fotó készítése
-          </button>
+
+          {parts.length > 0 && <PartStrip parts={parts} onRemove={removePart} />}
+
+          <div className="row" style={{ gap: 8 }}>
+            <button
+              className="btn primary big"
+              style={{ flex: 1 }}
+              onClick={() => cameraInput.current?.click()}
+            >
+              📷 {parts.length ? "További rész" : "Fotó készítése"}
+            </button>
+            <button
+              className="btn big"
+              style={{ flex: 1 }}
+              onClick={() => galleryInput.current?.click()}
+            >
+              🖼️ Tallózás
+            </button>
+          </div>
+
+          {parts.length > 0 && (
+            <button
+              className="btn primary big"
+              style={{ width: "100%", marginTop: 8 }}
+              onClick={send}
+            >
+              Feldolgozás ({parts.length} kép)
+            </button>
+          )}
+
+          {message && <p className="error" style={{ marginBottom: 0 }}>{message}</p>}
+
+          <p className="muted" style={{ fontSize: "0.84rem", marginBottom: 0 }}>
+            Hosszú blokknál fotózd több részletben, felülről lefelé haladva, és hagyj pár sor
+            átfedést a részek között – így az apró betű is olvasható marad. Egy blokként
+            dolgozom fel őket.
+          </p>
         </Card>
       )}
 
@@ -124,12 +204,17 @@ export default function Capture() {
           }
         >
           <div className="row" style={{ alignItems: "flex-start", gap: 16 }}>
-            {preview && (
-              <img
-                src={preview}
-                alt="A feltöltött blokk"
-                style={{ width: 130, borderRadius: 8, border: "1px solid var(--border)" }}
-              />
+            {parts.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {parts.map((part, index) => (
+                  <img
+                    key={part.preview}
+                    src={part.preview}
+                    alt={`A feltöltött blokk ${index + 1}. része`}
+                    style={{ width: 130, borderRadius: 8, border: "1px solid var(--border)" }}
+                  />
+                ))}
+              </div>
             )}
             <div style={{ flex: 1, minWidth: 220 }}>
               {phase === "uploading" && (
@@ -148,6 +233,42 @@ export default function Capture() {
         </Card>
       )}
     </>
+  );
+}
+
+function PartStrip({ parts, onRemove }: { parts: Part[]; onRemove: (index: number) => void }) {
+  return (
+    <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+      {parts.map((part, index) => (
+        <div key={part.preview} style={{ position: "relative" }}>
+          <img
+            src={part.preview}
+            alt={`${index + 1}. rész`}
+            style={{
+              width: 76, height: 100, objectFit: "cover",
+              borderRadius: 8, border: "1px solid var(--border)",
+            }}
+          />
+          <span
+            className="badge"
+            style={{ position: "absolute", left: 4, bottom: 4, fontSize: "0.7rem" }}
+          >
+            {index + 1}
+          </span>
+          <button
+            className="btn"
+            aria-label={`${index + 1}. rész eltávolítása`}
+            onClick={() => onRemove(index)}
+            style={{
+              position: "absolute", top: -6, right: -6,
+              padding: "0 7px", lineHeight: "20px", borderRadius: "50%",
+            }}
+          >
+            ×
+          </button>
+        </div>
+      ))}
+    </div>
   );
 }
 

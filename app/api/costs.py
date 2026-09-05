@@ -32,6 +32,8 @@ async def cost_summary(_: AuthDep, session: SessionDep) -> CostSummary:
                 ExtractionAttempt.model,
                 func.count(ExtractionAttempt.id),
                 func.coalesce(func.sum(ExtractionAttempt.cost_usd), 0),
+                func.avg(ExtractionAttempt.input_tokens),
+                func.avg(ExtractionAttempt.output_tokens),
             )
             .where(ExtractionAttempt.succeeded.is_(True))
             .group_by(month_col, ExtractionAttempt.model)
@@ -46,8 +48,12 @@ async def cost_summary(_: AuthDep, session: SessionDep) -> CostSummary:
             receipts=count,
             total_usd=Decimal(total).quantize(Decimal("0.000001")),
             avg_usd=(Decimal(total) / count).quantize(Decimal("0.000001")) if count else ZERO,
+            # avg() is NULL when an engine reported no token counts at all, which is a
+            # legitimate state - not every provider returns them.
+            avg_input_tokens=round(avg_in) if avg_in is not None else None,
+            avg_output_tokens=round(avg_out) if avg_out is not None else None,
         )
-        for month, model, count, total in rows
+        for month, model, count, total, avg_in, avg_out in rows
     ]
 
     total_usd = sum((row.total_usd for row in by_month), Decimal("0"))

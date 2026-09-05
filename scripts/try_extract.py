@@ -6,6 +6,9 @@ whether your API key, model and image actually work together before deploying an
     EXTRACTOR=openrouter OPENROUTER_API_KEY=sk-or-... \
         python scripts/try_extract.py tests/fixtures/receipts/synthetic_tesco.jpg
 
+Pass several images, top to bottom, to try a long receipt captured in overlapping sections -
+they are read together as one receipt, exactly as the app does it.
+
 It costs one real API call. The exit status is 0 only if the receipt both parsed and
 balanced, so it can be used as a check in a script.
 """
@@ -26,13 +29,19 @@ from app.extraction.hu_rules import classify_line, validate  # noqa: E402
 from app.extraction.preprocess import estimate_image_tokens, prepare  # noqa: E402
 
 
-async def run(image_path: Path, show_json: bool) -> int:
+async def run(image_paths: list[Path], show_json: bool) -> int:
     settings = get_settings()
-    original = image_path.read_bytes()
-    _, width, height = prepare(original, settings.max_image_edge, settings.jpeg_quality)
+    originals = [path.read_bytes() for path in image_paths]
 
-    print(f"image     {image_path.name}  {len(original) // 1024} KB")
-    print(f"sent as   {width}x{height}  (~{estimate_image_tokens(width, height)} image tokens)")
+    estimated = 0
+    for path, original in zip(image_paths, originals, strict=True):
+        _, width, height = prepare(original, settings.max_image_edge, settings.jpeg_quality)
+        image_tokens = estimate_image_tokens(width, height)
+        estimated += image_tokens
+        print(f"image     {path.name}  {len(original) // 1024} KB")
+        print(f"sent as   {width}x{height}  (~{image_tokens} image tokens)")
+    if len(originals) > 1:
+        print(f"parts     {len(originals)}, read as one receipt (~{estimated} image tokens)")
     print(f"engine    {settings.extractor}")
 
     try:
@@ -42,7 +51,7 @@ async def run(image_path: Path, show_json: bool) -> int:
         return 2
 
     try:
-        result = await extractor.extract(original)
+        result = await extractor.extract(originals)
     except ExtractionError as exc:
         print(f"\nExtraction failed: {exc}")
         return 1
@@ -89,12 +98,16 @@ async def run(image_path: Path, show_json: bool) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("image", type=Path, help="a photo of a receipt")
+    parser.add_argument(
+        "image", type=Path, nargs="+",
+        help="a photo of a receipt, or several sections of a long one in reading order",
+    )
     parser.add_argument("--json", action="store_true", help="also print the full structure")
     args = parser.parse_args()
 
-    if not args.image.is_file():
-        raise SystemExit(f"No such file: {args.image}")
+    for path in args.image:
+        if not path.is_file():
+            raise SystemExit(f"No such file: {path}")
 
     raise SystemExit(asyncio.run(run(args.image, args.json)))
 

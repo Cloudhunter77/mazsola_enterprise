@@ -3,7 +3,14 @@
 from app.models.base import Base
 from app.models.catalog import Category, Merchant, MerchantAlias, Product, ProductAlias
 from app.models.ops import Budget, Correction, ExtractionAttempt
-from app.models.receipt import LineKind, PaymentMethod, Receipt, ReceiptItem, ReceiptStatus
+from app.models.receipt import (
+    LineKind,
+    PaymentMethod,
+    Receipt,
+    ReceiptImage,
+    ReceiptItem,
+    ReceiptStatus,
+)
 
 __all__ = [
     "Base",
@@ -18,6 +25,7 @@ __all__ = [
     "Product",
     "ProductAlias",
     "Receipt",
+    "ReceiptImage",
     "ReceiptItem",
     "ReceiptStatus",
 ]

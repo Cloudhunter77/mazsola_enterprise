@@ -17,6 +17,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -106,7 +107,43 @@ class Receipt(Base, TimestampMixin):
         cascade="all, delete-orphan",
         order_by="ReceiptItem.line_no",
     )
+    images: Mapped[list[ReceiptImage]] = relationship(
+        back_populates="receipt",
+        cascade="all, delete-orphan",
+        order_by="ReceiptImage.part_no",
+    )
     merchant: Mapped[Merchant | None] = relationship()  # noqa: F821
+
+
+class ReceiptImage(Base, TimestampMixin):
+    """One photograph. A long receipt needs several to stay legible.
+
+    Photographing a 60 cm Lidl receipt in one frame makes the small print unreadable at any
+    sane downscale, so a receipt may be captured in overlapping parts and read as a single
+    document. Part 0 is also mirrored into the `receipts.image_*` columns: everything that
+    predates this table - the review screen, the image endpoint, deletion - keeps working
+    unchanged, and a single-photo receipt behaves exactly as it always did.
+    """
+
+    __tablename__ = "receipt_images"
+
+    id: Mapped[uuid.UUID] = pk()
+    receipt_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("receipts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # Reading order, not upload order: part 0 is the top of the receipt.
+    part_no: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    path: Mapped[str] = mapped_column(String(500), nullable=False)
+    # Unique across every part of every receipt, so re-uploading one page of a receipt you
+    # already have is caught the same way a duplicate whole receipt is.
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    mime: Mapped[str] = mapped_column(String(60), default="image/jpeg", nullable=False)
+
+    receipt: Mapped[Receipt] = relationship(back_populates="images")
+
+    __table_args__ = (UniqueConstraint("receipt_id", "part_no", name="uq_receipt_images_part"),)
 
 
 class ReceiptItem(Base, TimestampMixin):

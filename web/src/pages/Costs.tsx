@@ -12,6 +12,11 @@ import { AsyncBlock, Card, Tile, useAsync } from "../components/ui";
 
 const usd = (value: string | number) => `$${Number(value).toFixed(4)}`;
 
+// Averages per receipt. These are the number to look at when the bill surprises you: the
+// per-receipt cost is just tokens x the model's rate, so an unexpected total is nearly
+// always an unexpected input-token count rather than the model being dearer than thought.
+const tokens = (value: number | null) => (value == null ? "–" : value.toLocaleString("hu-HU"));
+
 export default function Costs() {
   const costs = useAsync(() => api.costs(), []);
 
@@ -42,8 +47,10 @@ export default function Costs() {
                       <th>Hónap</th>
                       <th>Modell</th>
                       <th className="num">Blokk</th>
-                      <th className="num">Összeg</th>
+                      <th className="num">Össze&shy;sen</th>
                       <th className="num">Blokkonként</th>
+                      <th className="num">Token be</th>
+                      <th className="num">Token ki</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -54,6 +61,8 @@ export default function Costs() {
                         <td className="num">{row.receipts}</td>
                         <td className="num">${Number(row.total_usd).toFixed(4)}</td>
                         <td className="num">{usd(row.avg_usd)}</td>
+                        <td className="num">{tokens(row.avg_input_tokens)}</td>
+                        <td className="num">{tokens(row.avg_output_tokens)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -67,9 +76,15 @@ export default function Costs() {
                 közvetlen Anthropic-kapcsolatnál <code>EXTRACTOR_MODEL</code>. Egy olcsóbb modell
                 töredékébe kerül, cserébe több blokk kerül ellenőrzésre.
               </p>
-              <p className="muted" style={{ marginBottom: 0 }}>
+              <p className="muted">
                 Váltás után ezen az oldalon és az „Ellenőrzendő” számon látszik, megérte-e: ha az
                 ellenőrzésre váró blokkok aránya nem nő, a drágább modellre nincs szükség.
+              </p>
+              <p className="muted" style={{ marginBottom: 0 }}>
+                Ha a blokkonkénti összeg magasabb a vártnál, előbb a token-oszlopokat nézd meg. A
+                bemeneti tokenek nagy részét a fénykép adja: a <code>MAX_IMAGE_EDGE</code>{" "}
+                csökkentése 1600-ról 1280-ra nagyjából a felére viszi. Olcsóbb modellek listáját a{" "}
+                <code>scripts/list_models.py</code> adja, épp erre a token-mennyiségre számolva.
               </p>
             </Card>
           </>

@@ -17,6 +17,7 @@ import base64
 import json
 import logging
 import time
+from collections.abc import Sequence
 from decimal import Decimal
 from typing import Any
 
@@ -24,9 +25,9 @@ import httpx
 from pydantic import BaseModel, ValidationError
 
 from app.config import Settings
-from app.extraction.base import ExtractionError, ExtractionResult
+from app.extraction.base import ExtractionError, ExtractionResult, as_parts
 from app.extraction.preprocess import prepare
-from app.extraction.prompt import SYSTEM_PROMPT, USER_INSTRUCTION
+from app.extraction.prompt import SYSTEM_PROMPT, instruction_for
 from app.schemas.extraction import ExtractedReceipt
 
 log = logging.getLogger(__name__)
@@ -87,21 +88,19 @@ class OpenRouterExtractor:
     async def aclose(self) -> None:
         await self.client.aclose()
 
-    def _payload(self, encoded: str) -> dict[str, Any]:
+    def _payload(self, encoded: Sequence[str]) -> dict[str, Any]:
+        # Images first, instruction last: on a multi-part receipt the instruction has to be
+        # read knowing how many images precede it.
+        content: list[dict[str, Any]] = [
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{part}"}}
+            for part in encoded
+        ]
+        content.append({"type": "text", "text": instruction_for(len(encoded))})
         return {
             "model": self.model,
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/jpeg;base64,{encoded}"},
-                        },
-                        {"type": "text", "text": USER_INSTRUCTION},
-                    ],
-                },
+                {"role": "user", "content": content},
             ],
             "response_format": {
                 "type": "json_schema",
@@ -113,13 +112,20 @@ class OpenRouterExtractor:
             },
         }
 
-    async def extract(self, image_bytes: bytes, mime_type: str = "image/jpeg") -> ExtractionResult:
-        jpeg, width, height = prepare(
-            image_bytes,
-            max_edge=self.settings.max_image_edge,
-            quality=self.settings.jpeg_quality,
-        )
-        encoded = base64.standard_b64encode(jpeg).decode("ascii")
+    async def extract(
+        self, images: Sequence[bytes] | bytes, mime_type: str = "image/jpeg"
+    ) -> ExtractionResult:
+        parts = as_parts(images)
+        prepared = [
+            prepare(
+                image,
+                max_edge=self.settings.max_image_edge,
+                quality=self.settings.jpeg_quality,
+            )
+            for image in parts
+        ]
+        encoded = [base64.standard_b64encode(jpeg).decode("ascii") for jpeg, _, _ in prepared]
+        dimensions = " ".join(f"{width}x{height}" for _, width, height in prepared)
 
         started = time.monotonic()
         try:
@@ -170,9 +176,9 @@ class OpenRouterExtractor:
         output_tokens = usage.get("completion_tokens")
 
         log.info(
-            "extracted receipt via openrouter model=%s image=%dx%d in=%s out=%s cost=%s "
-            "latency=%dms",
-            self.model, width, height, input_tokens, output_tokens, cost, latency_ms,
+            "extracted receipt via openrouter model=%s parts=%d images=%s in=%s out=%s "
+            "cost=%s latency=%dms",
+            self.model, len(parts), dimensions, input_tokens, output_tokens, cost, latency_ms,
         )
 
         return ExtractionResult(

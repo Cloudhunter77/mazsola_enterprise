@@ -19,7 +19,7 @@ from app.config import Settings, get_settings
 from app.db import SessionLocal
 from app.extraction.base import ExtractionError, ReceiptExtractor
 from app.extraction.factory import build_extractor
-from app.models import Receipt, ReceiptStatus
+from app.models import Receipt, ReceiptImage, ReceiptStatus
 from app.services.persist import persist_extraction, record_attempt
 
 log = logging.getLogger(__name__)
@@ -141,15 +141,16 @@ class ExtractionWorker:
             if receipt is None:
                 return False
 
-            image = await asyncio.to_thread(self._read_image, receipt.image_path)
-            if image is None:
+            paths = await self._image_paths(session, receipt)
+            images = await asyncio.to_thread(self._read_images, paths)
+            if images is None:
                 await self._fail(
-                    session, receipt, f"Image file is missing: {receipt.image_path}", terminal=True
+                    session, receipt, f"An image file is missing: {', '.join(paths)}", terminal=True
                 )
                 return True
 
             try:
-                result = await self.extractor.extract(image, receipt.image_mime)
+                result = await self.extractor.extract(images, receipt.image_mime)
             except ExtractionError as exc:
                 await self._fail(session, receipt, str(exc))
                 return True
@@ -173,11 +174,35 @@ class ExtractionWorker:
             return True
 
     @staticmethod
-    def _read_image(path: str) -> bytes | None:
+    async def _image_paths(session: AsyncSession, receipt: Receipt) -> list[str]:
+        """Every photograph of this receipt, in reading order.
+
+        Falls back to the mirrored `image_path` column so a receipt whose parts row is
+        somehow missing still gets read rather than failing outright.
+        """
+        paths = list(
+            (
+                await session.scalars(
+                    select(ReceiptImage.path)
+                    .where(ReceiptImage.receipt_id == receipt.id)
+                    .order_by(ReceiptImage.part_no)
+                )
+            ).all()
+        )
+        return paths or [receipt.image_path]
+
+    @staticmethod
+    def _read_images(paths: list[str]) -> list[bytes] | None:
+        """All parts, or None if any one of them is gone - a partial receipt is worse than none."""
         from pathlib import Path
 
-        file = Path(path)
-        return file.read_bytes() if file.is_file() else None
+        images = []
+        for path in paths:
+            file = Path(path)
+            if not file.is_file():
+                return None
+            images.append(file.read_bytes())
+        return images
 
     async def _fail(
         self, session: AsyncSession, receipt: Receipt, message: str, *, terminal: bool = False

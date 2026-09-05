@@ -59,6 +59,7 @@ export interface ReceiptDetail extends ReceiptSummary {
   payment_method: string; receipt_no: string | null; nav_ap_code: string | null;
   notes: string | null; error: string | null; attempts: number;
   parsed_at: string | null; confirmed_at: string | null; items: Item[];
+  pages: number;
 }
 
 export interface Category { id: string; parent_id: string | null; name: string; slug: string; color: string | null; sort_order: number }
@@ -77,7 +78,7 @@ export interface PriceHistory { product_id: string; product_name: string; points
 export interface BasketMerchant { merchant_id: string; merchant_name: string; covered_products: number; basket_total: Money }
 export interface BasketComparison { product_count: number; merchants: BasketMerchant[]; potential_saving: Money; window_days: number }
 export interface InflationPoint { month: string; index: number; product_count: number }
-export interface CostByMonth { month: string; model: string | null; receipts: number; total_usd: Money; avg_usd: Money }
+export interface CostByMonth { month: string; model: string | null; receipts: number; total_usd: Money; avg_usd: Money; avg_input_tokens: number | null; avg_output_tokens: number | null }
 export interface CostSummary { total_usd: Money; receipts_extracted: number; average_usd: Money; projected_yearly_usd: Money; by_month: CostByMonth[]; failures: number }
 export interface Budget { id: string; category_id: string | null; month: string; amount: Money | null }
 
@@ -87,12 +88,14 @@ export const api = {
   login: (password: string) => request<SessionInfo>("/api/auth/login", json("POST", { password })),
   logout: () => request<SessionInfo>("/api/auth/logout", { method: "POST" }),
 
-  upload(file: File, onProgress?: (fraction: number) => void): Promise<UploadResponse> {
+  upload(files: File | File[], onProgress?: (fraction: number) => void): Promise<UploadResponse> {
     // XHR rather than fetch: upload progress matters on a phone pushing a photo
     // over a VPN, and fetch still cannot report it.
     return new Promise((resolve, reject) => {
       const form = new FormData();
-      form.append("file", file);
+      // Several photos of one long receipt go up as repeats of the same field, in reading
+      // order, and the server reads them as a single document.
+      for (const file of Array.isArray(files) ? files : [files]) form.append("file", file);
       const xhr = new XMLHttpRequest();
       xhr.open("POST", "/api/receipts?source=web");
       xhr.upload.onprogress = (event) => {
@@ -119,7 +122,7 @@ export const api = {
     return request<ReceiptSummary[]>(`/api/receipts?${query}`);
   },
   receipt: (id: string) => request<ReceiptDetail>(`/api/receipts/${id}`),
-  imageUrl: (id: string) => `/api/receipts/${id}/image`,
+  imageUrl: (id: string, part = 0) => `/api/receipts/${id}/image?part=${part}`,
   patchReceipt: (id: string, patch: Record<string, unknown>) =>
     request<ReceiptDetail>(`/api/receipts/${id}`, json("PATCH", patch)),
   confirm: (id: string) => request<ReceiptDetail>(`/api/receipts/${id}/confirm`, { method: "POST" }),

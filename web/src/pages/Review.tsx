@@ -78,14 +78,8 @@ export default function Review() {
           )}
 
           <div className="grid cols-2" style={{ marginTop: 14 }}>
-            <Card title="A blokk">
-              <a href={api.imageUrl(receipt.id)} target="_blank" rel="noreferrer">
-                <img
-                  src={api.imageUrl(receipt.id)}
-                  alt="A blokk fotója"
-                  style={{ width: "100%", borderRadius: 8, border: "1px solid var(--border)" }}
-                />
-              </a>
+            <Card title={receipt.pages > 1 ? `A blokk (${receipt.pages} rész)` : "A blokk"}>
+              <ReceiptPhoto id={receipt.id} pages={receipt.pages} />
             </Card>
 
             <div>
@@ -165,6 +159,44 @@ export default function Review() {
         </>
       )}
     </AsyncBlock>
+  );
+}
+
+/** The photograph, or a switcher across the sections of a receipt captured in parts.
+ *
+ *  Reviewing a multi-part receipt means checking lines against the section they came from,
+ *  so the parts stay separate and numbered rather than being stitched into one image. The
+ *  page number is the same one the extraction saw, in the same order.
+ */
+function ReceiptPhoto({ id, pages }: { id: string; pages: number }) {
+  const [page, setPage] = useState(0);
+  // A different receipt may have fewer pages than the one shown before it.
+  const current = Math.min(page, pages - 1);
+
+  return (
+    <>
+      {pages > 1 && (
+        <div className="row" style={{ gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+          {Array.from({ length: pages }, (_, index) => (
+            <button
+              key={index}
+              className={`btn${index === current ? " primary" : ""}`}
+              onClick={() => setPage(index)}
+              aria-pressed={index === current}
+            >
+              {index + 1}. rész
+            </button>
+          ))}
+        </div>
+      )}
+      <a href={api.imageUrl(id, current)} target="_blank" rel="noreferrer">
+        <img
+          src={api.imageUrl(id, current)}
+          alt={pages > 1 ? `A blokk ${current + 1}. része` : "A blokk fotója"}
+          style={{ width: "100%", borderRadius: 8, border: "1px solid var(--border)" }}
+        />
+      </a>
+    </>
   );
 }
 

@@ -140,7 +140,13 @@ curl http://<nas>:8088/health
 
 Open `http://<nas>:8088` over your VPN and add it to the home screen (iOS: Share →
 Add to Home Screen; Android: menu → Install app). It then opens full-screen, and
-**Fotó készítése** goes straight to the camera.
+**Fotó készítése** goes straight to the camera. **Tallózás** picks from the photo library
+instead, for receipts you have already photographed.
+
+A receipt too long to fit one legible frame goes up in sections: take the first photo, then
+**📷 További rész** for each further one, top to bottom with a few lines of overlap, and
+**Feldolgozás** when the whole receipt is covered. Up to eight sections make one receipt;
+they are read together as a single document.
 
 ### iOS Shortcut (optional)
 
@@ -205,3 +211,21 @@ prompt adjustment in `app/extraction/prompt.py`. If the numbers are genuinely wr
 
 **Photos are huge and extraction is slow or pricey.** Lower `MAX_IMAGE_EDGE` to `1280`.
 Below about 1000 the small print on thermal receipts starts to fail.
+
+**Extraction costs more per receipt than the model's list price suggests.** Look at the
+token columns on **Felismerési költség** before changing model: cost is tokens x rate, and
+the photo is most of the input. `MAX_IMAGE_EDGE=1280` roughly halves the input tokens. To
+compare models on your own numbers rather than headline prices:
+
+```sh
+docker run --rm ghcr.io/cloudhunter77/receipt-tracker:latest \
+    python scripts/list_models.py --in <your input tokens> --out <your output tokens>
+```
+
+It lists only models that can do both vision and strict structured outputs, cheapest first
+for this workload. Try any candidate on the sample receipt before switching to it.
+
+**A long receipt comes out unreadable.** Photograph it in sections instead: press
+**📷 További rész** on the capture screen for each one, working top to bottom with a few
+lines of overlap between them, then **Feldolgozás**. They are read together as one receipt,
+and the review screen lets you page between the sections.

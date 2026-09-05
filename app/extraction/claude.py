@@ -5,14 +5,15 @@ from __future__ import annotations
 import base64
 import logging
 import time
+from collections.abc import Sequence
 from decimal import Decimal
 
 import anthropic
 
 from app.config import Settings
-from app.extraction.base import ExtractionError, ExtractionResult
+from app.extraction.base import ExtractionError, ExtractionResult, as_parts
 from app.extraction.preprocess import prepare
-from app.extraction.prompt import SYSTEM_PROMPT, USER_INSTRUCTION
+from app.extraction.prompt import SYSTEM_PROMPT, instruction_for
 from app.schemas.extraction import ExtractedReceipt
 
 log = logging.getLogger(__name__)
@@ -86,13 +87,33 @@ class ClaudeExtractor:
                 max_retries=3,
             )
 
-    async def extract(self, image_bytes: bytes, mime_type: str = "image/jpeg") -> ExtractionResult:
-        jpeg, width, height = prepare(
-            image_bytes,
-            max_edge=self.settings.max_image_edge,
-            quality=self.settings.jpeg_quality,
-        )
-        encoded = base64.standard_b64encode(jpeg).decode("ascii")
+    async def extract(
+        self, images: Sequence[bytes] | bytes, mime_type: str = "image/jpeg"
+    ) -> ExtractionResult:
+        parts = as_parts(images)
+        prepared = [
+            prepare(
+                image,
+                max_edge=self.settings.max_image_edge,
+                quality=self.settings.jpeg_quality,
+            )
+            for image in parts
+        ]
+        # Images first, instruction last: the instruction refers to "these images", and on
+        # a multi-part receipt it has to be read knowing how many there are.
+        content: list[dict] = [
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/jpeg",
+                    "data": base64.standard_b64encode(jpeg).decode("ascii"),
+                },
+            }
+            for jpeg, _, _ in prepared
+        ]
+        content.append({"type": "text", "text": instruction_for(len(parts))})
+        dimensions = " ".join(f"{width}x{height}" for _, width, height in prepared)
 
         started = time.monotonic()
         try:
@@ -106,22 +127,7 @@ class ClaudeExtractor:
                         "cache_control": {"type": "ephemeral"},
                     }
                 ],
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": "image/jpeg",
-                                    "data": encoded,
-                                },
-                            },
-                            {"type": "text", "text": USER_INSTRUCTION},
-                        ],
-                    }
-                ],
+                messages=[{"role": "user", "content": content}],
                 output_format=ExtractedReceipt,
                 thinking={"type": "adaptive"},
                 output_config={"effort": self.settings.extractor_effort},
@@ -157,8 +163,9 @@ class ClaudeExtractor:
         )
 
         log.info(
-            "extracted receipt image=%dx%d in=%s out=%s cache_read=%s cost=%s latency=%dms",
-            width, height, usage.input_tokens, usage.output_tokens, cache_read, cost, latency_ms,
+            "extracted receipt parts=%d images=%s in=%s out=%s cache_read=%s cost=%s latency=%dms",
+            len(parts), dimensions, usage.input_tokens, usage.output_tokens,
+            cache_read, cost, latency_ms,
         )
 
         return ExtractionResult(

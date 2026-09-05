@@ -78,6 +78,9 @@ class ReceiptDetail(ReceiptSummary):
     parsed_at: datetime | None
     confirmed_at: datetime | None
     items: list[ItemOut] = []
+    # How many photographs make up this receipt. 1 for everything captured in one frame,
+    # which is nearly all of them; the review screen only shows a page switcher above that.
+    pages: int = 1
 
 
 class ReceiptPatch(BaseModel):
@@ -238,6 +241,12 @@ class CostByMonth(BaseModel):
     receipts: int
     total_usd: Decimal
     avg_usd: Decimal
+    # The token counts are here so a surprising bill can be diagnosed rather than just
+    # observed. A per-receipt cost far above the model's list price is almost always an
+    # input-token count far above expectation - usually the image - and the only way to
+    # tell that apart from simply having picked a dear model is to see both numbers.
+    avg_input_tokens: int | None = None
+    avg_output_tokens: int | None = None
 
 
 class CostSummary(BaseModel):

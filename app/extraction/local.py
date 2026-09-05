@@ -23,6 +23,8 @@ Two routes, if you take them:
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from app.config import Settings
 from app.extraction.base import ExtractionError, ExtractionResult
 
@@ -33,7 +35,9 @@ class TesseractExtractor:
     def __init__(self, settings: Settings):
         self.settings = settings
 
-    async def extract(self, image_bytes: bytes, mime_type: str = "image/jpeg") -> ExtractionResult:
+    async def extract(
+        self, images: Sequence[bytes] | bytes, mime_type: str = "image/jpeg"
+    ) -> ExtractionResult:
         raise ExtractionError(
             "The tesseract extractor is not implemented yet. "
             "See app/extraction/local.py for the intended shape, or set EXTRACTOR=claude."
@@ -46,7 +50,9 @@ class OllamaExtractor:
     def __init__(self, settings: Settings):
         self.settings = settings
 
-    async def extract(self, image_bytes: bytes, mime_type: str = "image/jpeg") -> ExtractionResult:
+    async def extract(
+        self, images: Sequence[bytes] | bytes, mime_type: str = "image/jpeg"
+    ) -> ExtractionResult:
         raise ExtractionError(
             "The ollama extractor is not implemented yet. "
             "See app/extraction/local.py for the intended shape, or set EXTRACTOR=claude."
