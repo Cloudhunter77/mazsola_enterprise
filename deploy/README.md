@@ -1,7 +1,8 @@
 # Installing on TrueNAS SCALE
 
 > Handing the install to another Claude session instead? `COWORK_PROMPT.md` next to this
-> file is a self-contained brief covering the same ground.
+> file is a self-contained brief covering the same ground, and `COWORK_UPDATE.md` is the
+> equivalent for updating an install that is already running.
 
 Tested against the Docker-based app system (TrueNAS 24.10 "Electric Eel" and later).
 TrueNAS 25.10 requires the top-level `services:` key in custom YAML, which

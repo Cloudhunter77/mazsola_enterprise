@@ -1,4 +1,7 @@
-# Handover prompt for a fresh session
+# Handover prompt for a fresh install
+
+For a NAS that does not have Receipt Tracker yet. To update one that is already running,
+use `COWORK_UPDATE.md` instead - it skips the datasets and secrets, which do not change.
 
 Paste everything below the line into Claude Cowork (or any new Claude session with shell
 access to the NAS) to have it carry out the installation. It is written to be understood

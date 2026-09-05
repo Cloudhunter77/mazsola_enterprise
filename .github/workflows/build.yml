@@ -102,11 +102,15 @@ jobs:
       # `--help` passing said nothing about whether the fixture the deploy guide tells
       # the user to point at is actually in the image - it was not, and the very first
       # command of the install failed. So check the real paths, read out of the docs,
-      # rather than a hand-copied list that can drift away from them.
+      # rather than a hand-copied list that can drift away from them. The docs are
+      # discovered too, so a new one is covered the day it is written - a list of
+      # filenames here would be one more thing to forget to update.
       - name: Every script and fixture the docs reference must exist in the image
         run: |
+          docs=$(git ls-files '*.md' ':!:web/**')
+          echo "docs scanned: $docs"
           paths=$(grep -hoE '(scripts|tests)/[A-Za-z0-9_./-]+\.(py|sh|jpg|png)' \
-            README.md deploy/README.md deploy/COWORK_PROMPT.md | sort -u)
+            $docs | sort -u)
           echo "checking: $paths"
           test -n "$paths"
           for f in $paths; do
