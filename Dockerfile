@@ -22,12 +22,17 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends curl \
  && rm -rf /var/lib/apt/lists/*
 
+# Dependencies come from pyproject.toml, never a list repeated here. A hardcoded copy
+# drifted once already: httpx was added for the OpenRouter engine and not mirrored here,
+# so the published image could not import app.extraction.factory - which every engine
+# goes through - and the container would not start at all.
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir \
-      "fastapi>=0.115" "uvicorn[standard]>=0.32" "sqlalchemy[asyncio]>=2.0.36" \
-      "asyncpg>=0.30" "alembic>=1.14" "pydantic>=2.10" "pydantic-settings>=2.7" \
-      "python-multipart>=0.0.20" "anthropic>=0.69" "pillow>=11.0" \
-      "itsdangerous>=2.2" "argon2-cffi>=23.1"
+RUN python -c "\
+import tomllib; \
+print('\\n'.join(tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']))\
+" > /tmp/requirements.txt \
+ && cat /tmp/requirements.txt \
+ && pip install --no-cache-dir -r /tmp/requirements.txt
 
 COPY alembic.ini ./
 COPY app/ ./app/

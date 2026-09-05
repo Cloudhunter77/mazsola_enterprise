@@ -51,6 +51,18 @@ jobs:
     permissions:
       contents: read
       packages: write
+    services:
+      # Here so the built image can actually be started before it is published.
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: receipts
+          POSTGRES_PASSWORD: receipts
+          POSTGRES_DB: receipts
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U receipts"
+          --health-interval 5s --health-timeout 3s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -67,6 +79,41 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch
             type=sha,format=short
+      # Build into the local daemon and prove the image works before publishing it.
+      # A green test job says the source is fine; it says nothing about whether the
+      # image was assembled correctly. Publishing an image that could not import its
+      # own modules is exactly what happened once, and only a real run catches that.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: receipt-tracker:smoke
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Every extraction engine must import inside the image
+        run: |
+          docker run --rm receipt-tracker:smoke python -c \
+            "import app.main, app.extraction.factory, app.extraction.claude, \
+             app.extraction.openrouter, app.extraction.local; print('modules import')"
+          docker run --rm receipt-tracker:smoke python scripts/try_extract.py --help > /dev/null
+          echo "the extraction CLI runs"
+
+      - name: The image must start and serve health
+        run: |
+          docker run -d --name smoke --network host \
+            -e DATABASE_URL=postgresql+asyncpg://receipts:receipts@127.0.0.1:5432/receipts \
+            -e AUTH_DISABLED=true -e WORKER_ENABLED=false \
+            receipt-tracker:smoke
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/health; then found=yes; break; fi
+            sleep 2
+          done
+          echo
+          docker logs smoke
+          docker rm -f smoke > /dev/null
+          test "${found:-no}" = yes
+
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -74,4 +121,3 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max

@@ -56,6 +56,43 @@ def test_the_dsn_matches_what_postgres_is_configured_with(relative: str):
     )
 
 
+def test_the_dockerfile_does_not_keep_its_own_dependency_list():
+    """The image must install what pyproject declares, not a copy of it.
+
+    A second list drifted once: httpx was added for the OpenRouter engine and never
+    mirrored into the Dockerfile, so the published image could not import
+    app.extraction.factory - which every engine goes through - and the container would
+    not start at all. The source was green throughout, because the source was fine.
+    """
+    dockerfile = (ROOT / "Dockerfile").read_text()
+
+    assert "pyproject.toml" in dockerfile, "the Dockerfile should install from pyproject"
+
+    declared = re.findall(r'"([a-zA-Z0-9_.\-]+)(?:\[[^\]]+\])?[><=~!]', dockerfile)
+    pinned_by_hand = {name for name in declared if name not in {"python", "pip"}}
+    assert not pinned_by_hand, (
+        f"the Dockerfile pins {sorted(pinned_by_hand)} itself; these will drift from "
+        f"pyproject.toml. Install from pyproject instead."
+    )
+
+
+def test_every_runtime_dependency_is_actually_installable_by_name():
+    """Guard the mechanism the Dockerfile now relies on."""
+    import tomllib
+
+    data = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    dependencies = data["project"]["dependencies"]
+
+    assert dependencies, "pyproject declares no runtime dependencies"
+    assert any(d.startswith("httpx") for d in dependencies), (
+        "httpx is imported by app/extraction/openrouter.py and must be a runtime dependency"
+    )
+    for dependency in dependencies:
+        assert re.match(r"^[a-zA-Z0-9_.\-]+(\[[^\]]+\])?[><=~!]", dependency), (
+            f"{dependency!r} is not a form pip can install from a requirements file"
+        )
+
+
 def test_the_compose_file_and_the_image_the_workflow_publishes_agree():
     """A compose file pointing at an image name CI never publishes cannot be installed."""
     workflow = (ROOT / ".github/workflows/build.yml").read_text()
