@@ -61,12 +61,17 @@ And a key for whichever extraction engine you chose:
 Before installing, check the key and model actually work on a real image. One API call,
 nothing else needed:
 
+Load the key into your shell first, so it never reaches a command line or your history —
+run these one at a time, pasting the key at the silent prompt:
+
 ```sh
-docker run --rm \
-  -e EXTRACTOR=openrouter -e OPENROUTER_API_KEY=sk-or-... \
-  ghcr.io/cloudhunter77/receipt-tracker:latest \
-  python scripts/try_extract.py tests/fixtures/receipts/synthetic_tesco.jpg
+read -rs OPENROUTER_API_KEY && export OPENROUTER_API_KEY
 ```
+```sh
+docker run --rm -e EXTRACTOR=openrouter -e OPENROUTER_API_KEY ghcr.io/cloudhunter77/receipt-tracker:latest python scripts/try_extract.py tests/fixtures/receipts/synthetic_tesco.jpg
+```
+
+`-e OPENROUTER_API_KEY` with no `=` passes the variable through from your shell.
 
 It prints the lines it read, the real cost, and whether the totals balanced. If the model
 answers with prose instead of structured data, it does not support strict structured
