@@ -7,9 +7,12 @@ import Capture from "./pages/Capture";
 import Costs from "./pages/Costs";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
+import Manual from "./pages/Manual";
 import Prices from "./pages/Prices";
 import Receipts from "./pages/Receipts";
+import RecurringPage from "./pages/Recurring";
 import Review from "./pages/Review";
+import TableView from "./pages/Table";
 
 type Theme = "light" | "dark" | "system";
 
@@ -39,6 +42,7 @@ function useTheme(): [Theme, (theme: Theme) => void] {
 const TABS = [
   { to: "/", glyph: "📷", label: "Rögzítés", end: true },
   { to: "/blokkok", glyph: "🧾", label: "Blokkok", end: false },
+  { to: "/tabla", glyph: "📋", label: "Tábla", end: false },
   { to: "/statisztika", glyph: "📊", label: "Statisztika", end: false },
   { to: "/arak", glyph: "🏷️", label: "Árak", end: false },
 ];
@@ -87,6 +91,9 @@ export default function App() {
           <Route path="/" element={<Capture />} />
           <Route path="/blokkok" element={<Receipts />} />
           <Route path="/blokkok/:id" element={<Review />} />
+          <Route path="/tabla" element={<TableView />} />
+          <Route path="/kezi" element={<Manual />} />
+          <Route path="/elofizetesek" element={<RecurringPage />} />
           <Route path="/statisztika" element={<Dashboard />} />
           <Route path="/arak" element={<Prices />} />
           <Route path="/koltseg" element={<Costs />} />

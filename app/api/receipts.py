@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, Query, Response, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
@@ -24,6 +24,7 @@ from app.models import (
 from app.schemas.api import (
     ItemOut,
     ItemPatch,
+    ManualReceiptIn,
     ReceiptDetail,
     ReceiptPatch,
     ReceiptSummary,
@@ -31,8 +32,17 @@ from app.schemas.api import (
 )
 from app.services.catalog import link_product, resolve_merchant
 from app.services.ingest import IngestError, ingest_images
+from app.services.manual import ManualEntryError, create_manual_receipt
 
 router = APIRouter(prefix="/api/receipts", tags=["receipts"])
+
+# What counts as spending: anything read successfully or entered by hand. Pending,
+# processing and failed receipts have no trustworthy total to put in a row.
+READY_STATUSES = (
+    ReceiptStatus.PARSED.value,
+    ReceiptStatus.NEEDS_REVIEW.value,
+    ReceiptStatus.CONFIRMED.value,
+)
 
 
 def _to_summary(receipt: Receipt, merchant_name: str | None, item_count: int) -> ReceiptSummary:
@@ -74,6 +84,33 @@ async def upload_receipt(
     return UploadResponse(id=receipt.id, status=receipt.status, duplicate=not created)
 
 
+@router.post("/manual", response_model=ReceiptDetail, status_code=status.HTTP_201_CREATED)
+async def create_manual(
+    _: AuthDep, session: SessionDep, body: ManualReceiptIn
+) -> ReceiptDetail:
+    """Type in a receipt you no longer have.
+
+    It becomes an ordinary receipt with no photograph, already confirmed - you entered the
+    numbers, so there is nothing for the review queue to second-guess.
+    """
+    try:
+        receipt = await create_manual_receipt(
+            session,
+            merchant_name=body.merchant_name,
+            purchased_at=body.purchased_at,
+            items=[item.model_dump() for item in body.items],
+            total_gross=body.total_gross,
+            payment_method=body.payment_method,
+            currency=body.currency,
+            notes=body.notes,
+        )
+    except ManualEntryError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    await session.commit()
+    return await get_receipt(_, session, receipt.id)
+
+
 @router.get("", response_model=list[ReceiptSummary])
 async def list_receipts(
     _: AuthDep,
@@ -103,6 +140,38 @@ async def list_receipts(
 
     rows = (await session.execute(stmt)).all()
     return [_to_summary(receipt, name, count) for receipt, name, count in rows]
+
+
+@router.get("/export.csv", response_class=PlainTextResponse)
+async def export_csv(_: AuthDep, session: SessionDep) -> PlainTextResponse:
+    """Every receipt as one row: date, shop, amount. The table view, as a file.
+
+    Semicolon-separated with a comma decimal, because that is what a Hungarian Excel opens
+    without an import dialogue. The BOM is what makes it read the accents correctly.
+    """
+    rows = (
+        await session.execute(
+            select(Receipt, Merchant.name)
+            .outerjoin(Merchant, Receipt.merchant_id == Merchant.id)
+            .where(Receipt.status.in_(READY_STATUSES))
+            .order_by(Receipt.purchased_at.desc().nullslast(), Receipt.created_at.desc())
+        )
+    ).all()
+
+    out = ["Dátum;Bolt;Összeg;Pénznem;Forrás;Állapot"]
+    for receipt, merchant_name in rows:
+        purchased = receipt.purchased_at.date().isoformat() if receipt.purchased_at else ""
+        shop = (merchant_name or receipt.merchant_raw_name or "").replace(";", ",")
+        total = f"{receipt.total_gross:.2f}".replace(".", ",") if receipt.total_gross else ""
+        out.append(
+            f"{purchased};{shop};{total};{receipt.currency};{receipt.source};{receipt.status}"
+        )
+
+    return PlainTextResponse(
+        "\ufeff" + "\r\n".join(out),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="receipt-tracker.csv"'},
+    )
 
 
 @router.get("/{receipt_id}", response_model=ReceiptDetail)
@@ -144,10 +213,12 @@ async def get_receipt_image(
     )
     if image is not None:
         path, media_type = Path(image.path), image.mime
-    elif part == 0:
+    elif part == 0 and receipt.image_path:
         # A receipt from before multi-part capture whose backfill did not run.
         path, media_type = Path(receipt.image_path), receipt.image_mime
     else:
+        # Typed-in and recurring receipts have no photograph at all, which is a 404 rather
+        # than an error: there is nothing missing from storage.
         raise HTTPException(status_code=404, detail="This receipt has no such page.")
 
     if not path.is_file():
@@ -231,7 +302,7 @@ async def delete_receipt(
         for image in await session.scalars(
             select(ReceiptImage).where(ReceiptImage.receipt_id == receipt_id)
         )
-    ] or [Path(receipt.image_path)]
+    ] or ([Path(receipt.image_path)] if receipt.image_path else [])
 
     await session.delete(receipt)
     await session.commit()

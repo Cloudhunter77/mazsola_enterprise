@@ -59,10 +59,16 @@ class Receipt(Base, TimestampMixin):
     id: Mapped[uuid.UUID] = pk()
 
     # --- image ---------------------------------------------------------------
-    image_path: Mapped[str] = mapped_column(String(500), nullable=False)
-    image_sha256: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    # Null for a receipt that was typed in rather than photographed - a lost receipt you
+    # still remember, or a subscription that never printed one. Postgres allows any number
+    # of NULLs under a unique index, so those rows do not collide with each other.
+    image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    image_sha256: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, unique=True, index=True
+    )
     image_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     image_mime: Mapped[str] = mapped_column(String(60), default="image/jpeg", nullable=False)
+    # web | shortcut | folder | manual (typed in) | recurring (generated from a subscription)
     source: Mapped[str] = mapped_column(String(20), default="web", nullable=False)
 
     # --- extracted header ----------------------------------------------------

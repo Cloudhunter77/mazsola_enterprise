@@ -10,3 +10,4 @@ web/dist/
 data/
 .env
 *.local
+web/tsconfig.tsbuildinfo

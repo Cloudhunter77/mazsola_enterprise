@@ -165,7 +165,22 @@ For a one-tap capture from the lock screen or Action Button:
 The upload returns immediately; the reading happens on the NAS. Open the app later to
 review anything flagged.
 
-## 6. Backups
+## 6. Things that never printed a receipt
+
+Two extra ways into the same database, both reachable from the **Tábla** tab:
+
+- **Kézi** — a receipt you lost but remember. Shop, date, one or more lines. It is saved
+  as already confirmed and counts in every statistic.
+- **Előfizetések** — Spotify, YouTube and the like. Amount, day of the month, start date;
+  each month's charge then appears on its own. The app generates anything already due when
+  you save the rule, and checks hourly after that. Running it twice never charges twice —
+  the periods are keyed so a repeat is a no-op.
+
+A subscription set to the 31st charges on the last day of a short month rather than
+skipping it. Pausing a rule keeps its history; deleting the rule also keeps the receipts it
+generated.
+
+## 7. Backups
 
 Copy `scripts/backup.sh` to `/mnt/tank/apps/receipt-tracker/`, then **System → Advanced →
 Cron Jobs**, daily as root:
@@ -178,7 +193,7 @@ It writes a compressed `pg_dump` into the `backups` dataset and keeps the last 1
 the container name first (`docker ps | grep receipt-tracker`) and set `DB_CONTAINER` if it is not
 `receipt-tracker-db-1`.
 
-## 7. Updating
+## 8. Updating
 
 The image is built by GitHub Actions on every push and published to
 `ghcr.io/cloudhunter77/receipt-tracker:latest`. To update: **Apps → receipt-tracker → ⋮ → Pull image**,

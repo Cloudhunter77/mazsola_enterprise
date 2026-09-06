@@ -183,10 +183,15 @@ export default function Capture() {
 
           {message && <p className="error" style={{ marginBottom: 0 }}>{message}</p>}
 
-          <p className="muted" style={{ fontSize: "0.84rem", marginBottom: 0 }}>
+          <p className="muted" style={{ fontSize: "0.84rem" }}>
             Hosszú blokknál fotózd több részletben, felülről lefelé haladva, és hagyj pár sor
             átfedést a részek között – így az apró betű is olvasható marad. Egy blokként
             dolgozom fel őket.
+          </p>
+
+          <p className="muted" style={{ fontSize: "0.84rem", marginBottom: 0 }}>
+            Nincs meg a blokk? <Link to="/kezi">Írd be kézzel</Link> – vagy ha havonta
+            ismétlődik, vedd fel <Link to="/elofizetesek">előfizetésként</Link>.
           </p>
         </Card>
       )}

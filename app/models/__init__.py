@@ -11,10 +11,12 @@ from app.models.receipt import (
     ReceiptItem,
     ReceiptStatus,
 )
+from app.models.recurring import Cadence, RecurringCharge, RecurringPayment
 
 __all__ = [
     "Base",
     "Budget",
+    "Cadence",
     "Category",
     "Correction",
     "ExtractionAttempt",
@@ -24,6 +26,8 @@ __all__ = [
     "PaymentMethod",
     "Product",
     "ProductAlias",
+    "RecurringCharge",
+    "RecurringPayment",
     "Receipt",
     "ReceiptImage",
     "ReceiptItem",

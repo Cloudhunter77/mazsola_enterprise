@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import and_, or_, select
@@ -21,8 +22,13 @@ from app.extraction.base import ExtractionError, ReceiptExtractor
 from app.extraction.factory import build_extractor
 from app.models import Receipt, ReceiptImage, ReceiptStatus
 from app.services.persist import persist_extraction, record_attempt
+from app.services.recurring import materialise_due
 
 log = logging.getLogger(__name__)
+
+# Subscriptions come due once a month; checking hourly is already far more often than
+# needed, and the check is a no-op the rest of the time.
+RECURRING_INTERVAL_SECONDS = 3600
 
 
 class ExtractionWorker:
@@ -31,6 +37,8 @@ class ExtractionWorker:
         self._extractor: ReceiptExtractor | None = None
         self._task: asyncio.Task | None = None
         self._stopping = asyncio.Event()
+        # None means never checked, so the first loop iteration does it.
+        self._recurring_checked_at: float | None = None
 
     @property
     def extractor(self) -> ReceiptExtractor:
@@ -59,6 +67,11 @@ class ExtractionWorker:
     async def run_forever(self) -> None:
         while not self._stopping.is_set():
             try:
+                await self.materialise_recurring()
+            except Exception:  # a broken subscription rule must not stop extraction
+                log.exception("recurring materialisation failed")
+
+            try:
                 did_work = await self.process_next()
             except Exception:  # never let one bad receipt kill the loop
                 log.exception("worker iteration failed")
@@ -71,6 +84,28 @@ class ExtractionWorker:
                     )
                 except TimeoutError:
                     pass
+
+    # --- recurring payments --------------------------------------------------
+    async def materialise_recurring(self) -> int:
+        """Generate any subscription charge that has come due. Cheap and idempotent.
+
+        Rate-limited to once an hour because it is a whole-table scan that almost always
+        finds nothing - the queue loop runs every few seconds and this does not need to.
+        Repeating it early would still be harmless: `recurring_charges` has a unique key on
+        (rule, period), so a second pass over the same period is a no-op, not a double
+        charge.
+        """
+        now = time.monotonic()
+        if self._recurring_checked_at is not None and (
+            now - self._recurring_checked_at < RECURRING_INTERVAL_SECONDS
+        ):
+            return 0
+
+        async with SessionLocal() as session:
+            created = await materialise_due(session)
+            await session.commit()
+        self._recurring_checked_at = now
+        return len(created)
 
     # --- work ----------------------------------------------------------------
     async def _claim(self, session: AsyncSession) -> Receipt | None:

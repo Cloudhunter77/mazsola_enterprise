@@ -51,6 +51,22 @@ Every extraction is then checked:
 `sum(items) − discounts + rounding == total`, plus the ÁFA block's own arithmetic. A
 receipt that does not balance goes to a review queue instead of into your statistics.
 
+## Spending that never printed a receipt
+
+Not everything you spend produces a photograph, and anything left out quietly makes the
+statistics wrong.
+
+- **Kézi rögzítés** — type in a receipt you lost. Shop, date, lines; the total defaults to
+  the sum, so "Lidl, 4 200 Ft" as a single line is a valid entry. It is stored `confirmed`
+  rather than queued for review: you entered the numbers, so there is nothing to check.
+- **Előfizetések** — Spotify, YouTube, the gym. Set the amount and the day once and each
+  month's charge appears by itself, as an ordinary receipt. A start date in the past
+  backfills. Pausing stops future charges and keeps everything already recorded, because a
+  cancelled subscription is still part of last year's spending.
+
+Both become ordinary `receipts` rows, so every statistic counts them without knowing they
+were never photographed.
+
 ## Getting started
 
 **On the NAS:** see [`deploy/README.md`](deploy/README.md).

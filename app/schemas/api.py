@@ -256,3 +256,68 @@ class CostSummary(BaseModel):
     projected_yearly_usd: Decimal
     by_month: list[CostByMonth]
     failures: int
+
+
+# --- manual entry ------------------------------------------------------------
+class ManualItemIn(BaseModel):
+    raw_name: str = Field(min_length=1, max_length=300)
+    gross_amount: Decimal
+    quantity: Decimal | None = None
+    unit: str | None = None
+    unit_price: Decimal | None = None
+    vat_rate: Decimal | None = None
+    kind: str = "item"
+    category_id: uuid.UUID | None = None
+
+
+class ManualReceiptIn(BaseModel):
+    """A receipt you remember but no longer have."""
+
+    merchant_name: str = Field(min_length=1, max_length=300)
+    purchased_at: datetime
+    items: list[ManualItemIn] = Field(min_length=1)
+    # Omit to take the sum of the lines, which is what you usually know.
+    total_gross: Decimal | None = None
+    payment_method: str = "card"
+    currency: str = "HUF"
+    notes: str | None = None
+
+
+# --- recurring payments ------------------------------------------------------
+class RecurringIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    merchant_name: str = Field(min_length=1, max_length=300)
+    amount: Decimal = Field(gt=0)
+    currency: str = "HUF"
+    cadence: str = "monthly"
+    day_of_month: int = Field(default=1, ge=1, le=31)
+    month_of_year: int | None = Field(default=None, ge=1, le=12)
+    payment_method: str = "card"
+    starts_on: date
+    ends_on: date | None = None
+    active: bool = True
+    category_id: uuid.UUID | None = None
+    notes: str | None = None
+
+
+class RecurringOut(ORMModel):
+    id: uuid.UUID
+    name: str
+    merchant_name: str
+    amount: Decimal
+    currency: str
+    cadence: str
+    day_of_month: int
+    month_of_year: int | None
+    payment_method: str
+    starts_on: date
+    ends_on: date | None
+    active: bool
+    category_id: uuid.UUID | None
+    notes: str | None
+    # Filled by the API: how many receipts this rule has generated, and when it next will.
+    # Deliberately not called `charges`: that is the ORM relationship, and a field of the
+    # same name makes pydantic lazy-load it, which in an async session is an error rather
+    # than a query.
+    charge_count: int = 0
+    next_charge: date | None = None

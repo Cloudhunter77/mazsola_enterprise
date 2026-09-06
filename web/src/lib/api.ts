@@ -82,6 +82,24 @@ export interface CostByMonth { month: string; model: string | null; receipts: nu
 export interface CostSummary { total_usd: Money; receipts_extracted: number; average_usd: Money; projected_yearly_usd: Money; by_month: CostByMonth[]; failures: number }
 export interface Budget { id: string; category_id: string | null; month: string; amount: Money | null }
 
+// Request bodies, not responses: money goes out as a plain number and pydantic converts it.
+// `Money` is a string because that is how Decimal comes back, which is the wrong type here.
+export interface ManualItem {
+  raw_name: string; gross_amount: number;
+  quantity?: number | null; unit?: string | null; unit_price?: number | null; kind?: string;
+}
+export interface ManualReceipt {
+  merchant_name: string; purchased_at: string; items: ManualItem[];
+  total_gross?: number | null; payment_method?: string; notes?: string | null;
+}
+export interface Recurring {
+  id: string; name: string; merchant_name: string; amount: Money; currency: string;
+  cadence: string; day_of_month: number; month_of_year: number | null;
+  payment_method: string; starts_on: string; ends_on: string | null; active: boolean;
+  category_id: string | null; notes: string | null;
+  charge_count: number; next_charge: string | null;
+}
+
 // --- endpoints -------------------------------------------------------------
 export const api = {
   me: () => request<SessionInfo>("/api/auth/me"),
@@ -151,6 +169,18 @@ export const api = {
   inflation: () => request<InflationPoint[]>("/api/stats/inflation"),
 
   costs: () => request<CostSummary>("/api/costs/summary"),
+  createManual: (body: ManualReceipt) =>
+    request<ReceiptDetail>("/api/receipts/manual", json("POST", body)),
+  exportCsvUrl: () => "/api/receipts/export.csv",
+
+  recurring: () => request<Recurring[]>("/api/recurring"),
+  createRecurring: (body: Record<string, unknown>) =>
+    request<Recurring>("/api/recurring", json("POST", body)),
+  updateRecurring: (id: string, body: Record<string, unknown>) =>
+    request<Recurring>(`/api/recurring/${id}`, json("PATCH", body)),
+  deleteRecurring: (id: string) => request<void>(`/api/recurring/${id}`, { method: "DELETE" }),
+  runRecurring: () => request<Recurring[]>("/api/recurring/run", { method: "POST" }),
+
   budgets: () => request<Budget[]>("/api/budgets"),
   putBudget: (body: Record<string, unknown>) => request<Budget>("/api/budgets", json("PUT", body)),
 };
