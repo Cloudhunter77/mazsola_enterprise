@@ -9,8 +9,8 @@ access to the NAS). It is written to be understood cold.
 ---
 
 I already run a self-hosted app called **Receipt Tracker** on my TrueNAS SCALE NAS. It is
-installed, healthy, and has successfully read a real Hungarian receipt. A new version has
-been published and I want you to update to it and then help me with two follow-ups.
+installed, healthy, and reading real Hungarian receipts. A new version has been published
+and I want you to update to it and check what is new actually works.
 
 I will be at the keyboard the whole time. Stop and tell me if anything does not match what
 is described here.
@@ -29,6 +29,7 @@ cheapest for my usual basket.
 - TrueNAS app name: `receipt-tracker`, containers `receipt-tracker-app-1` and
   `receipt-tracker-db-1`, web UI on port 8088, reachable over my VPN only
 - Deployment guide in the repo: `deploy/README.md`
+- The web UI is in Hungarian.
 
 ## Ground rules
 
@@ -42,30 +43,33 @@ Each of these has already cost me time:
 3. **I am `truenas_admin`, not root.** Anything touching Docker needs `sudo -i` first.
 4. **Prefer the TrueNAS web UI for anything TrueNAS owns** (datasets, apps, cron).
 5. **Do NOT run `chown -R 568:568` over the app directory.** This already broke my
-   database once. That command is in the *install* guide and applies only to a fresh,
-   empty dataset. PostgreSQL sets its own internal ownership inside `pgdata`, and
-   recursively chowning it caused `InsufficientPrivilegeError` on `pg_filenode.map`.
-   Nothing in this update needs a permission change. (If it somehow happens again: the
-   fix is to restart the `db` container, whose entrypoint re-asserts ownership as root,
-   and then restart `app`.)
+   database once. That command is in the *install* guide and applies only to a fresh, empty
+   dataset. PostgreSQL sets its own internal ownership inside `pgdata`, and recursively
+   chowning it caused `InsufficientPrivilegeError` on `pg_filenode.map`. Nothing in this
+   update needs a permission change. (If it happens anyway: restart the `db` container,
+   whose entrypoint re-asserts ownership as root, then restart `app`.)
 6. **Verify each step before moving on**, and tell me what you expect so I can say if it
    differs.
 
 ## What is new in this version
 
-- **Upload from the photo library**, not only the camera.
-- **Multi-part receipts**: a receipt too long to photograph legibly in one frame can be
-  captured as up to eight overlapping photos and is read as a single document.
-- **A database migration** creating a `receipt_images` table, which backfills every
-  existing receipt as a one-part receipt. It runs automatically at startup.
-- **Token counts on the Costs page**, and `scripts/list_models.py` for comparing models.
+- **A fix for dropped thousands separators.** The model was reading `8 999 Ft` as `999` and
+  `-4 500` as `-500` — every amount containing a thousands space lost the group before it,
+  while `929` came back fine. The prompt now drills that specific case, and the total is
+  cross-checked against the model's own character-by-character transcription of it.
+- **Kézi rögzítés** — type in a receipt you lost.
+- **Előfizetések** — Spotify, YouTube and the like, charged automatically each month.
+- **Tábla** — a new tab: one row per receipt (date, shop, amount), sortable, with CSV export.
+- **A width floor on tall photos** (`MIN_IMAGE_WIDTH`, default 800), because capping the
+  longest edge left a long receipt only ~500px wide.
+- **Database migrations**, which run automatically at startup.
 
 ## Step 1 — Update the image
 
 **Apps → receipt-tracker → ⋮ → Pull image**, then restart the app. No compose changes are
-needed for this step, and no dataset or secret changes at all.
+needed, and no dataset or secret changes at all.
 
-The first start after the pull applies the migration. Give it a minute, then:
+The first start after the pull applies any outstanding migrations. Give it a minute, then:
 
 ```
 curl http://localhost:8088/health
@@ -73,7 +77,7 @@ curl http://localhost:8088/health
 
 Expect `{"status":"ok","database":true,...,"worker":true}`.
 
-Then confirm the migration actually ran:
+Then confirm the migration ran:
 
 ```
 docker logs receipt-tracker-app-1 2>&1 | tail -40
@@ -84,118 +88,111 @@ serve traffic until migrations succeed, so a healthy `/health` is already good e
 
 ## Step 2 — Confirm nothing was lost
 
-My existing receipts must still be there and still openable.
+Open `http://<nas-ip>:8088` over my VPN and check that my existing receipts are still
+listed, and that opening one still shows its photo beside the parsed lines. If the list is
+empty or an image 404s, stop and tell me before doing anything else.
 
-1. Open `http://<nas-ip>:8088` over my VPN.
-2. Check that the receipts I already had are listed.
-3. Open one and confirm the photo still displays beside the parsed lines.
+## Step 3 — Check the thousands-separator fix on the receipt that failed
 
-Existing receipts should each show as a single-page receipt. If a receipt list is empty or
-an image 404s, stop and tell me before doing anything else.
+I have a Rossmann receipt in the app that was read wrong, and **the right answer is known**,
+which makes it the best test available.
 
-## Step 3 — Work out why extraction costs what it does
-
-Three receipts cost me about **$0.15** — roughly $0.05 each. I thought I was using Haiku,
-which should be about $0.009. So either I am not on the model I think, or the token counts
-are higher than expected. Find out which; do not just switch me to something cheaper.
-
-**First, the most likely cause.** The two extraction engines read *different* environment
-variables, and setting the wrong one fails silently:
-
-| Engine | Reads |
-|---|---|
-| `EXTRACTOR=openrouter` | **`OPENROUTER_MODEL`** |
-| `EXTRACTOR=claude` | `EXTRACTOR_MODEL` |
-
-I am on OpenRouter. If I set `EXTRACTOR_MODEL` expecting it to take effect, it was ignored
-and I stayed on the compose default `anthropic/claude-sonnet-4.5` — which at $3/$15 per
-million tokens would land close to the $0.05 I actually paid. Check with:
+The receipt prints:
 
 ```
-docker exec receipt-tracker-app-1 env | grep MODEL
+CIKKSZ M:  67960 1 DB X 8 999 Ft
+* POLICE TO BE EXOTI          8 999
+ENGEDMÉNY                    -4 500
+CIKKSZ M:  67960 1 DB X 8 999 Ft
+* POLICE FREETODARE           8 999
+ENGEDMÉNY                    -4 500
+CIKKSZ M:  59028 1 DB X 929 Ft
+VIGO SZ.ZSAK 60L               929
+ÖSSZESEN:                    9 927 Ft
 ```
 
-The **Felismerési költség** page also records the model each extraction actually used, per
-month. That page is the authority — it reports what OpenRouter charged, not an estimate.
+Previously it came back as 999, −500, 999, −500, 929 — total 1 927 instead of 9 927.
 
-**Then get my real token counts.** That page now has *Token be* and *Token ki* columns:
-average input and output tokens per receipt. Cost is tokens x rate, so these explain the
-bill. Tell me both numbers.
+Find it under **Blokkok** (Rossmann, 9 927 Ft, probably flagged *Ellenőrzendő*) and press
+**Újrafeldolgozás**. That re-runs extraction on the stored photo with the new prompt; it
+costs one API call.
 
-**Then rank the models on my numbers**, substituting the token counts you just read:
+What I want to know:
 
-```
-docker run --rm ghcr.io/cloudhunter77/receipt-tracker:latest python scripts/list_models.py --in 3000 --out 1200
-```
+- Are the two POLICE lines now **8 999** each and the two ENGEDMÉNY lines **−4 500**?
+- Is the total **9 927** and does it say the arithmetic balances?
+- If it is still wrong, tell me exactly which numbers came back — the pattern matters more
+  than the fact it failed.
 
-It reads OpenRouter's live catalogue, keeps only models that support **both** vision and
-strict structured outputs (the app needs both), and ranks them by what one of my receipts
-would cost. No API key needed. If the NAS cannot reach openrouter.ai, run it from another
-machine with Python 3.11+ and the repo checked out.
+There is also a new review reason, *"A végösszeg számként és leírt formában nem egyezik"*.
+That one means the model's number and its own transcription of the printed total disagree —
+which is precisely this bug being caught rather than slipping through. Seeing it would be
+the system working, not failing.
 
-**Before switching to any candidate**, try it on the sample receipt bundled in the image:
+## Step 4 — The new Tábla tab
 
-```
-read -rs OPENROUTER_API_KEY && export OPENROUTER_API_KEY
-```
+There should now be five tabs along the bottom: Rögzítés, Blokkok, **Tábla**, Statisztika,
+Árak. Open Tábla and check:
 
-I paste the key at the silent prompt. Then, with `<id>` being the candidate:
+- one row per receipt: date, shop, amount, and where it came from;
+- clicking a column heading sorts by it, clicking again reverses;
+- the shop filter box works;
+- the **CSV** button downloads a file. Open it in Excel or LibreOffice and tell me whether
+  the accented characters and the amounts come through correctly — it is
+  semicolon-separated with a comma decimal, which is meant to open without an import
+  dialogue on a Hungarian locale.
 
-```
-docker run --rm -e EXTRACTOR=openrouter -e OPENROUTER_API_KEY -e OPENROUTER_MODEL=<id> ghcr.io/cloudhunter77/receipt-tracker:latest python scripts/try_extract.py tests/fixtures/receipts/synthetic_tesco.jpg
-```
+## Step 5 — Type in a lost receipt
 
-`-e OPENROUTER_API_KEY` with **no `=`** passes the variable through from my shell; writing
-`-e OPENROUTER_API_KEY=<key>` would put the key on the command line.
+**Tábla → + Kézi** (or the link at the bottom of the Rögzítés screen).
 
-That fixture is synthetic, so the correct answer is known: total **5230 Ft**, rounding
-**−2**, **six** goods lines, plus one deposit (`BETÉTDÍJ`), one discount
-(`KEDVEZMÉNY AKCIÓ`) and one rounding line (`KEREKÍTÉS`), and the arithmetic balancing. A
-model that gets that wrong is not cheaper, whatever it costs. If it answers with prose
-instead of structured data, it does not honour strict structured outputs — try another.
+Enter something real that I have lost: shop, date, one or more lines. Note that the total
+defaults to the sum of the lines, so a single line reading "Bevásárlás / 4 200" is a
+complete entry when that is all I remember.
 
-**To switch**, edit `OPENROUTER_MODEL` in the app's YAML (**Apps → receipt-tracker → ⋮ →
-Edit**) and restart. Nothing else changes.
+Check that it saves, lands as **Feldolgozva** (not in the review queue — I typed it, so
+there is nothing to verify), and appears in Tábla and in Statisztika.
 
-**One free saving regardless of model**: `MAX_IMAGE_EDGE: "1280"` (from `1600`) roughly
-halves the input tokens, and the photo is most of the input. Below about 1000 the small
-print on thermal receipts starts to fail. Worth trying after we know the token counts.
+## Step 6 — Set up my subscriptions
 
-## Step 4 — Test a long receipt captured in sections
+**Tábla → Előfizetések → + Új előfizetés.** Add these two:
 
-This is the part I most want checked, because it has only been tested with synthetic
-images and a stubbed engine. Whether a real model reads overlapping photos without
-double-counting is genuinely unproven.
+- **Spotify Premium** — I will tell you the amount and the day of the month.
+- **YouTube Premium** — same.
 
-On my phone, over the VPN:
+Set the start date to the beginning of this year if I have been paying that long; a past
+start date backfills every month that has come due since.
 
-1. Take a long receipt — the kind where one photo makes the small print unreadable.
-2. **📷 Fotó készítése** for the top section.
-3. **📷 További rész** for each following section, working down the receipt and leaving a
-   few lines of **overlap** between consecutive photos.
-4. **Feldolgozás**.
+Then check the important property, because this runs automatically every hour forever and
+must never charge twice:
 
-It should become **one** receipt, not several. Then open it and check, in this order:
+1. Note the number in the **Eddig** column for Spotify.
+2. Press **Futtatás most** twice.
+3. That number must not change, and no new Spotify rows may appear in Tábla.
 
-- Is every line present exactly once? A line visible in two photos being transcribed
-  **twice** is the specific failure mode to look for.
-- Does the total match the receipt?
-- Does the review screen offer `1. rész / 2. rész` buttons, and does each show the right
-  section?
+If it does change, stop and tell me immediately — that would be a real bug and I would
+rather fix it than let it inflate a month.
 
-If it lands in **Ellenőrzendő**, that is the arithmetic check working, not a crash — the
-reason is shown at the top. Tell me the reason and what you see in the lines.
+Also worth confirming: the generated charges show up in **Statisztika** as ordinary
+spending, not in some separate list.
 
-Also try **🖼️ Tallózás** once, to confirm picking an existing photo from the library works.
+## Step 7 — Optional, only if the numbers look tight
+
+The width floor (`MIN_IMAGE_WIDTH`, default 800) makes long receipts cost more tokens —
+roughly 2.5x on a very tall one, unchanged on an ordinary photo. Check **Felismerési
+költség** after a few receipts and tell me the per-receipt figure and the token columns. If
+it has jumped more than I like, the cheaper answer is to photograph long receipts in
+sections (📷 További rész) rather than lowering the floor, because sections keep their full
+width anyway.
 
 ## Finally
 
 Tell me plainly:
 
-- whether the update went through cleanly and my old receipts survived,
-- which model I was **actually** being billed for, and my real token counts,
-- what you would switch to and why, on those numbers,
-- and how the multi-part read behaved on a real receipt — especially any duplicated line.
+- whether the update went through cleanly and my old receipts survived;
+- what the Rossmann receipt read this time, number by number;
+- whether the double-run test on Spotify held;
+- and anything that did not work, with the exact error rather than a summary.
 
-If anything needs a code change rather than configuration, say so rather than working
-around it; I have a session that can make it.
+If something needs a code change rather than configuration, say so rather than working
+around it — I have a session that can make it.
