@@ -121,6 +121,7 @@ class OpenRouterExtractor:
                 image,
                 max_edge=self.settings.max_image_edge,
                 quality=self.settings.jpeg_quality,
+                min_width=self.settings.min_image_width,
             )
             for image in parts
         ]

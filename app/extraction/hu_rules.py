@@ -233,6 +233,18 @@ def validate(receipt: ExtractedReceipt, *, now: datetime | None = None) -> Valid
         # engine put something else on this line.
         result.flag("rounding_out_of_range")
 
+    # The arithmetic below is a *relative* check: it compares the lines against the total.
+    # That makes it blind to an error that scales every number on the receipt the same way -
+    # and a dropped thousands separator does exactly that. A receipt reading `8 999` as 999
+    # with a total of `8 999` read as 999 balances perfectly and is wrong by a factor of nine.
+    #
+    # So cross-check the number against the model's own character-by-character transcription
+    # of the same figure. Copying and converting are different jobs; when the conversion drops
+    # a digit group the copy still has it, and the two stop agreeing.
+    printed = to_decimal(receipt.total_printed)
+    if printed is not None and total is not None and abs(printed - total) > TOLERANCE:
+        result.flag("total_transcription_mismatch")
+
     subtotal = items_subtotal(receipt.items)
     computed = (subtotal + rounding).quantize(Decimal("0.01"))
     result.computed_total = computed

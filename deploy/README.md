@@ -211,7 +211,15 @@ prompt adjustment in `app/extraction/prompt.py`. If the numbers are genuinely wr
 `EXTRACTOR_MODEL=claude-opus-5` (if you had moved to a cheaper model) and reprocess.
 
 **Photos are huge and extraction is slow or pricey.** Lower `MAX_IMAGE_EDGE` to `1280`.
-Below about 1000 the small print on thermal receipts starts to fail.
+
+Note that `MAX_IMAGE_EDGE` caps the **longest** edge, and a receipt is a tall ribbon: a
+1200x3757 photo fitted to 1600 leaves only 511px of width for ~40 characters a line. It is
+the width that carries legibility, so `MIN_IMAGE_WIDTH` (default `800`) is a floor that
+overrides the cap for tall photos. It only affects receipts that would otherwise be
+squeezed — an ordinary photo is untouched — and on the one that needed it, the image went
+from ~1090 to ~2670 tokens. Set it to `0` for the old longest-edge-only behaviour.
+Photographing a long receipt in sections is the cheaper fix: each section is nearer square,
+so the cap never bites.
 
 **Extraction costs more per receipt than the model's list price suggests.** Look at the
 token columns on **Felismerési költség** before changing model: cost is tokens x rate, and

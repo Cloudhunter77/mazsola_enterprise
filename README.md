@@ -41,7 +41,11 @@ misclassification. So the app knows that:
   sections and read as **one** document — a line visible in two sections is counted once.
 - ÁFA collector letters (A=27%, B=18%, C=5%, AM=mentes) are read from the legend printed
   on the receipt.
-- `1 234,56` is one thousand two hundred thirty-four, and `2026.08.14.` is a date.
+- `1 234,56` is one thousand two hundred thirty-four, and `2026.08.14.` is a date. The
+  thousands separator is a **space**, and dropping the group before it — reading `8 999` as
+  `999` — is the one misreading that can be wrong by an order of magnitude while still
+  looking plausible, so the prompt drills it and the total is cross-checked against the
+  model's own transcription of the printed figure.
 
 Every extraction is then checked:
 `sum(items) − discounts + rounding == total`, plus the ÁFA block's own arithmetic. A
@@ -93,6 +97,7 @@ python scripts/seed_demo.py --clear   # removes exactly what it created
 | `EXTRACTOR_EFFORT` | `medium` | Transcription does not repay deep reasoning |
 | `ANTHROPIC_API_KEY` | – | Required when `EXTRACTOR=claude`; a Console key, not a Pro/Max subscription |
 | `MAX_IMAGE_EDGE` | `1600` | The main cost lever; images bill at `w×h/750` tokens |
+| `MIN_IMAGE_WIDTH` | `800` | Floor on width, overriding the edge cap on tall receipts |
 | `MAX_PARTS` | `8` (in code) | Most photos one receipt may be captured in |
 | `SECRET_KEY` | – | Signs the session cookie |
 | `APP_PASSWORD_HASH` | – | `python scripts/hash_password.py` |

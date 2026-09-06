@@ -71,7 +71,8 @@ async def run(image_paths: list[Path], show_json: bool) -> int:
 
     print(f"shop      {receipt.merchant_name}")
     print(f"date      {receipt.purchased_at}")
-    print(f"total     {receipt.total_gross}  (rounding {receipt.rounding})")
+    printed = f"  printed as {receipt.total_printed!r}" if receipt.total_printed else ""
+    print(f"total     {receipt.total_gross}  (rounding {receipt.rounding}){printed}")
     print(f"confidence {receipt.confidence}\n")
 
     for item in receipt.items:

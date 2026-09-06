@@ -70,6 +70,13 @@ class ExtractedReceipt(BaseModel):
     total_gross: float | None = Field(
         description="Final amount actually paid (ÖSSZESEN / FIZETENDŐ)."
     )
+    total_printed: str | None = Field(
+        description=(
+            "The ÖSSZESEN / FIZETENDŐ amount copied character for character as printed, "
+            "including any spaces inside the number, e.g. '9 927' or '12 480'. "
+            "Transcribe what you see; do not convert or tidy it."
+        )
+    )
     total_net: float | None = Field(description="Sum of net amounts, if the ÁFA block prints it.")
     total_vat: float | None = Field(description="Sum of VAT amounts, if printed.")
     rounding: float | None = Field(

@@ -29,9 +29,32 @@ A Hungarian receipt runs in this order:
 
 # Numbers, dates, money
 
-- Hungarian decimal separator is a comma and the thousands separator is a space or a dot: \
-`1 234,56` and `1.234` are one thousand two hundred thirty-four. Emit plain JSON numbers: \
-`1234.56` and `1234`.
+**The thousands separator is a space, and dropping the group before it is the single most \
+damaging mistake you can make here.** `8 999` is eight thousand nine hundred and ninety-nine. \
+It is NOT 999. A space inside a run of digits never separates two numbers - it separates \
+thousands from hundreds. Emit `8999`.
+
+Work through these, which are real lines from real receipts:
+
+| Printed | Correct | Wrong |
+|---|---|---|
+| `8 999 Ft` | `8999` | ~~`999`~~ |
+| `-4 500` | `-4500` | ~~`-500`~~ |
+| `1 DB X 8 999 Ft` | quantity `1`, unit `db`, unit price `8999` | ~~unit price `999`~~ |
+| `2 DB X 1 250 Ft` | quantity `2`, unit `db`, unit price `1250` | ~~quantity `2`, price `250`~~ |
+| `ÖSSZESEN: 12 480 Ft` | `12480` | ~~`480`~~ |
+| `929 Ft` | `929` | - |
+| `1.234` | `1234` | - |
+| `1 234,56` | `1234.56` | - |
+
+In `N DB X <price>` the quantity is the number immediately before `DB`, and **everything \
+after the `X` is one price**, however many spaces it contains. Read the amount column the \
+same way: the whole run of digits and spaces at the end of the line is one number.
+
+Before you answer, look back at every amount you emitted. If the receipt showed a space inside \
+a number and your value has fewer digits than the printed one, you dropped a thousands group - \
+fix it.
+
 - Forint amounts are usually whole numbers. Unit prices for weighed goods can have decimals.
 - Dates print as `2026.09.01.` or `2026. 09. 01.`, times as `14:32`. Convert to \
 `YYYY-MM-DDTHH:MM:SS`. If only a date is printed, emit `YYYY-MM-DD`.
@@ -56,7 +79,9 @@ Set `kind` on every line:
 - `deposit` - `BETÉTDÍJ`, `REPOHÁR`, bottle/crate deposit. It is money you really paid, so keep \
 the line, but it is not groceries.
 - `discount` - `KEDVEZMÉNY`, `AKCIÓ`, `ENGEDMÉNY`, coupon and loyalty-card reductions. \
-`gross_amount` is **negative**.
+`gross_amount` is **negative**. A bracketed label printed with no amount beside it, such as \
+`[AKCIÓ          ]`, is a caption for the discount line above it - **do not emit it as a line \
+of its own**. Never emit a line whose amount is 0.
 - `rounding` - the `KEREKÍTÉS` line on cash payments. Signed: `-2`, `+3`, etc. Hungarian cash \
 totals round to the nearest 5 Ft, so this is between -2 and +2.
 - `fee` - `SZATYOR`/`TÁSKA` (bag), service or packaging charges.
@@ -94,6 +119,9 @@ Never emit the quantity line as its own item. When only a single amount is print
 
 - `total_gross` is what was actually paid: the `ÖSSZESEN` or `FIZETENDŐ` figure. On a cash \
 receipt this is the rounded figure, **not** the amount tendered.
+- `total_printed` is that same figure **copied out character for character**, spaces and all, \
+before you convert it: `9 927`, `12 480`, `1 234`. Copy first, convert second - these are two \
+different jobs and doing them separately is what catches a dropped thousands group.
 - `discount_total` is the sum of all discount lines, as a **positive** number.
 - `rounding` carries its printed sign, or 0 when there is no rounding line.
 - If the ÁFA block prints net and VAT totals, fill `total_net` and `total_vat`; otherwise null.

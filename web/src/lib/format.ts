@@ -57,6 +57,8 @@ export const qty = (value: number | string | null | undefined, unit?: string | n
 /** Review reasons come from the API as machine keys; these are what a person reads. */
 export const REVIEW_REASONS: Record<string, string> = {
   items_total_mismatch: "A tételek összege nem egyezik a végösszeggel",
+  total_transcription_mismatch:
+    "A végösszeg számként és leírt formában nem egyezik – valószínűleg lemaradt egy ezres jegy",
   vat_summary_mismatch: "Az ÁFA-blokk nem egyezik a végösszeggel",
   vat_row_mismatch: "Egy ÁFA-sor nettó + ÁFA értéke nem adja ki a bruttót",
   missing_total: "Hiányzik a végösszeg",

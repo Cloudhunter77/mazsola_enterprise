@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     # Image preprocessing. Claude bills images at (width * height) / 750 tokens, so the
     # longest-edge cap is the main cost lever in the whole app.
     max_image_edge: int = 1600
+    # A floor on the width, not a second ceiling. A receipt is a tall ribbon, and fitting one
+    # to a 1600px long edge can leave barely 500px across ~40 characters a line. Set to 0 to
+    # go back to a pure longest-edge cap; raising it costs tokens and buys legibility.
+    min_image_width: int = 800
     jpeg_quality: int = 85
 
     # --- worker --------------------------------------------------------------

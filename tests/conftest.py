@@ -46,6 +46,7 @@ def build_receipt(**overrides) -> ExtractedReceipt:
         payment_method="cash",
         currency="HUF",
         total_gross=3595.0,
+        total_printed="3 595",
         total_net=None,
         total_vat=None,
         rounding=-2.0,
