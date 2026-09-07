@@ -53,7 +53,8 @@ export default function TableView() {
         <h1 style={{ flex: 1 }}>Tábla</h1>
         <Link className="btn" to="/kezi">+ Kézi</Link>{" "}
         <Link className="btn" to="/elofizetesek">Előfizetések</Link>{" "}
-        <a className="btn" href={api.exportCsvUrl()}>CSV</a>
+        <a className="btn" href={api.exportCsvUrl()}>CSV</a>{" "}
+        <Link className="btn" to="/rendszer" title="Verzió és állapot">⚙</Link>
       </div>
 
       <AsyncBlock state={receipts} empty="Még nincs rögzített kiadás.">

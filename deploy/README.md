@@ -195,9 +195,22 @@ the container name first (`docker ps | grep receipt-tracker`) and set `DB_CONTAI
 
 ## 8. Updating
 
-The image is built by GitHub Actions on every push and published to
-`ghcr.io/cloudhunter77/receipt-tracker:latest`. To update: **Apps → receipt-tracker → ⋮ → Pull image**,
-then restart. Schema migrations run automatically on start.
+No shell needed, and nothing to type.
+
+1. **Apps → receipt-tracker → ⋮ → Pull image.**
+2. Restart the app from the same menu.
+3. Open **Tábla → ⚙ Rendszer** in the app and check two lines: the **commit** matches the
+   latest one in the repository, and the schema says *naprakész*.
+
+That last step is the point of the Rendszer page. Proving a pull took used to mean SSHing
+in to compare image digests and read container logs; now it is a page. Schema migrations
+run automatically at start, and the app serves no traffic until they succeed — so if the
+page loads at all, they applied.
+
+If you would rather a plain restart always fetch the newest image, add `pull_policy: always`
+to the `app` service. The trade-off is real and worth knowing: with it set, a restart while
+GHCR is unreachable — a reboot before the network is up, or expired credentials — fails to
+start instead of running the image already on disk. The manual pull is the safer default.
 
 ## Troubleshooting
 

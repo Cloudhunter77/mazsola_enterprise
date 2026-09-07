@@ -178,6 +178,25 @@ class Validation:
             self.reasons.append(reason)
 
 
+def drop_captions(items: list[ExtractedItem]) -> list[ExtractedItem]:
+    """Remove lines the receipt never gave an amount to.
+
+    A bracketed label like `[AKCIÓ          ]` names the promotion behind the discount line
+    above it; it is not a line and has no amount. Told merely not to emit it, a model has
+    emitted it anyway - first as 0 Ft, and then, once the prompt said never to emit a zero,
+    with an amount borrowed from the line above. That second version is the dangerous one,
+    because zeros do not move a total and -500 does.
+
+    So the model is asked to copy each line's printed amount, and a line that reports none
+    is dropped here regardless of the number it invented. Engines that do not fill
+    `amount_printed` at all are left alone - the rule needs at least one line to have used
+    it before it can read silence as meaning anything.
+    """
+    if not any(item.amount_printed for item in items):
+        return items
+    return [item for item in items if item.amount_printed]
+
+
 def items_subtotal(items: list[ExtractedItem]) -> Decimal:
     """Sum of what was actually charged, using each line's own sign."""
     total = Decimal("0.00")
@@ -244,6 +263,24 @@ def validate(receipt: ExtractedReceipt, *, now: datetime | None = None) -> Valid
     printed = to_decimal(receipt.total_printed)
     if printed is not None and total is not None and abs(printed - total) > TOLERANCE:
         result.flag("total_transcription_mismatch")
+
+    # A caption the model emitted anyway is not a reason to send the receipt for review -
+    # it is simply not a line, so it is dropped before the arithmetic rather than counted
+    # and then complained about.
+    receipt.items = drop_captions(receipt.items)
+
+    # Each line's number against its own transcription, for the same reason the total has
+    # one: copying and converting are different jobs, and only the conversion drops digits.
+    for item in receipt.items:
+        printed = to_decimal(item.amount_printed)
+        stated = to_decimal(item.gross_amount)
+        if printed is None or stated is None:
+            continue
+        # Compared unsigned: a discount prints as `-4 500` on some tills and `4 500` on
+        # others, and the sign is the app's business, not the transcription's.
+        if abs(abs(printed) - abs(stated)) > TOLERANCE:
+            result.flag("line_transcription_mismatch")
+            break
 
     subtotal = items_subtotal(receipt.items)
     computed = (subtotal + rounding).quantize(Decimal("0.01"))

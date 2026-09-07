@@ -17,11 +17,12 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from app.api import auth, catalog, costs, receipts, recurring, stats
+from app.api import auth, catalog, costs, receipts, recurring, stats, system
 from app.config import get_settings
 from app.db import SessionLocal, engine
 from app.security import check_configuration
 from app.services.seed import seed_if_empty
+from app.version import app_version, build_info
 from app.worker import ExtractionWorker
 
 logging.basicConfig(
@@ -94,6 +95,7 @@ def create_app() -> FastAPI:
     app.include_router(stats.router)
     app.include_router(costs.router)
     app.include_router(recurring.router)
+    app.include_router(system.router)
 
     @app.get("/health", tags=["ops"])
     async def health() -> JSONResponse:
@@ -109,6 +111,8 @@ def create_app() -> FastAPI:
 
         payload = {
             "status": "ok" if database_ok else "degraded",
+            "version": app_version(),
+            "commit": build_info()["commit"],
             "database": database_ok,
             "extractor": settings.extractor,
             "model": _active_model(settings),

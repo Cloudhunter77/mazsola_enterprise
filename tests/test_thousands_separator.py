@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from app.extraction.hu_rules import to_decimal, validate
+from app.extraction.hu_rules import drop_captions, to_decimal, validate
 from tests.conftest import build_receipt, item
 
 # What the receipt actually says.
@@ -249,3 +249,77 @@ class TestTheWidthFloor:
         assert section[0] > whole[0]
         # Three sections cost more than one squeezed image, but not wildly so.
         assert estimate_image_tokens(*section) * 3 < estimate_image_tokens(*whole) * 3
+
+
+class TestTheCaptionLines:
+    """The second Rossmann run: the amounts came back right, two lines came back invented.
+
+    `[AKCIÓ          ]` is a bracketed caption naming the promotion behind the ENGEDMÉNY
+    line above it. The first run emitted it as a 0 Ft discount, which was harmless to the
+    arithmetic. The prompt then said "never emit a line whose amount is 0" - and the model
+    obeyed the letter of that by keeping the line and giving it -500, borrowed from the
+    -4 500 above. Zeros do not move a total; -500 twice moves it by a thousand. A rule that
+    forbids the symptom can make the disease worse, which is why the rule now says what a
+    caption *is* rather than what it must not look like.
+    """
+
+    SECOND_RUN = [
+        item(1, "POLICE TO BE EXOTI", 8999.0, unit_price=8999.0, amount_printed="8 999"),
+        item(2, "ENGEDMENY", -4500.0, kind="discount", amount_printed="-4 500"),
+        item(3, "AKCIÓ", -500.0, kind="discount", amount_printed=None),
+        item(4, "POLICE FREETODARE", 8999.0, unit_price=8999.0, amount_printed="8 999"),
+        item(5, "ENGEDMENY", -4500.0, kind="discount", amount_printed="-4 500"),
+        item(6, "AKCIÓ", -500.0, kind="discount", amount_printed=None),
+        item(7, "VIGO SZ. ZSAK 60L", 929.0, unit_price=929.0, amount_printed="929"),
+    ]
+
+    def test_the_thousands_groups_survived_this_time(self):
+        """What the previous fix bought: 8 999 and -4 500 read correctly."""
+        amounts = [item.gross_amount for item in self.SECOND_RUN]
+        assert 8999.0 in amounts and -4500.0 in amounts
+
+    def test_uncorrected_the_captions_cost_a_thousand_forint(self):
+        assert sum(item.gross_amount for item in self.SECOND_RUN) == 8927.0
+        assert 9927.0 - 8927.0 == 1000.0, "two invented -500 lines"
+
+    def test_dropping_them_gives_the_printed_total(self):
+        kept = drop_captions(list(self.SECOND_RUN))
+        assert len(kept) == 5
+        assert "AKCIÓ" not in [item.raw_name for item in kept]
+        assert sum(item.gross_amount for item in kept) == 9927.0
+
+    def test_the_receipt_then_balances(self):
+        verdict = validate(rossmann(items=list(self.SECOND_RUN), discount_total=9000.0))
+        assert verdict.ok, verdict.reasons
+        assert verdict.computed_total == Decimal("9927.00")
+
+    def test_a_zero_caption_is_dropped_the_same_way(self):
+        """The first run's shape. Harmless to the sum, but still not a line."""
+        first_run = [
+            item(1, "POLICE TO BE EXOTI", 8999.0, amount_printed="8 999"),
+            item(2, "AKCIÓ", 0.0, kind="discount", amount_printed=None),
+        ]
+        assert len(drop_captions(first_run)) == 1
+
+    def test_an_engine_that_reports_no_transcriptions_keeps_every_line(self):
+        """Local engines cannot fill the field; silence must not mean "drop everything"."""
+        silent = [
+            item(1, "KENYÉR", 599.0, amount_printed=None),
+            item(2, "TEJ", 449.0, amount_printed=None),
+        ]
+        assert drop_captions(silent) == silent
+
+    def test_a_line_whose_number_contradicts_its_transcription_is_flagged(self):
+        """The per-line version of the total's cross-check."""
+        verdict = validate(rossmann(items=[
+            item(1, "POLICE TO BE EXOTI", 999.0, amount_printed="8 999"),
+        ]))
+        assert "line_transcription_mismatch" in verdict.reasons
+
+    def test_a_discount_printed_without_its_minus_is_not_a_mismatch(self):
+        """Some tills print `4 500` under a KEDVEZMÉNY heading; the sign is ours to apply."""
+        verdict = validate(rossmann(items=[
+            item(1, "POLICE TO BE EXOTI", 8999.0, amount_printed="8 999"),
+            item(2, "ENGEDMÉNY", -4500.0, kind="discount", amount_printed="4 500"),
+        ], total_gross=4499.0, total_printed="4 499", discount_total=4500.0))
+        assert "line_transcription_mismatch" not in verdict.reasons

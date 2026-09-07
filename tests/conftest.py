@@ -6,6 +6,9 @@ import pytest
 
 from app.schemas.extraction import ExtractedItem, ExtractedReceipt, ExtractedVatLine
 
+# Distinguishes "caller said nothing" from "caller said None".
+UNSET = object()
+
 
 def item(
     line_no: int,
@@ -19,10 +22,16 @@ def item(
     vat_rate: float | None = 27,
     kind: str = "item",
     confidence: float = 0.95,
+    amount_printed: str | None | object = UNSET,
 ) -> ExtractedItem:
     return ExtractedItem(
         line_no=line_no,
         raw_name=raw_name,
+        # Left unset, it mirrors the number, so a fixture that does not care about the
+        # transcription cross-check is consistent rather than exempt from it. Passing None
+        # explicitly is a different statement - "this line had no printed amount" - and a
+        # default of None could not express both.
+        amount_printed=str(gross_amount) if amount_printed is UNSET else amount_printed,
         quantity=quantity,
         unit=unit,
         unit_price=unit_price if unit_price is not None else gross_amount,

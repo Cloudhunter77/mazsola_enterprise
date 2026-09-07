@@ -83,11 +83,19 @@ jobs:
       # A green test job says the source is fine; it says nothing about whether the
       # image was assembled correctly. Publishing an image that could not import its
       # own modules is exactly what happened once, and only a real run catches that.
+      - name: Build stamp
+        id: stamp
+        run: echo "time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       - uses: docker/build-push-action@v6
         with:
           context: .
           load: true
           tags: receipt-tracker:smoke
+          build-args: |
+            BUILD_COMMIT=${{ github.sha }}
+            BUILD_TIME=${{ steps.stamp.outputs.time }}
+            BUILD_IMAGE=ghcr.io/${{ github.repository_owner }}/receipt-tracker:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -140,4 +148,8 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BUILD_COMMIT=${{ github.sha }}
+            BUILD_TIME=${{ steps.stamp.outputs.time }}
+            BUILD_IMAGE=ghcr.io/${{ github.repository_owner }}/receipt-tracker:latest
           cache-from: type=gha

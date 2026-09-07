@@ -12,6 +12,7 @@ import Prices from "./pages/Prices";
 import Receipts from "./pages/Receipts";
 import RecurringPage from "./pages/Recurring";
 import Review from "./pages/Review";
+import System from "./pages/System";
 import TableView from "./pages/Table";
 
 type Theme = "light" | "dark" | "system";
@@ -93,6 +94,7 @@ export default function App() {
           <Route path="/blokkok/:id" element={<Review />} />
           <Route path="/tabla" element={<TableView />} />
           <Route path="/kezi" element={<Manual />} />
+          <Route path="/rendszer" element={<System />} />
           <Route path="/elofizetesek" element={<RecurringPage />} />
           <Route path="/statisztika" element={<Dashboard />} />
           <Route path="/arak" element={<Prices />} />

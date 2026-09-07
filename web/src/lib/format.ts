@@ -59,6 +59,8 @@ export const REVIEW_REASONS: Record<string, string> = {
   items_total_mismatch: "A tételek összege nem egyezik a végösszeggel",
   total_transcription_mismatch:
     "A végösszeg számként és leírt formában nem egyezik – valószínűleg lemaradt egy ezres jegy",
+  line_transcription_mismatch:
+    "Egy sor összege nem egyezik a blokkon látható számmal",
   vat_summary_mismatch: "Az ÁFA-blokk nem egyezik a végösszeggel",
   vat_row_mismatch: "Egy ÁFA-sor nettó + ÁFA értéke nem adja ki a bruttót",
   missing_total: "Hiányzik a végösszeg",

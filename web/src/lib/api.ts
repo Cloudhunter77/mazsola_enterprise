@@ -84,6 +84,15 @@ export interface Budget { id: string; category_id: string | null; month: string;
 
 // Request bodies, not responses: money goes out as a plain number and pydantic converts it.
 // `Money` is a string because that is how Decimal comes back, which is the wrong type here.
+export interface SystemInfo {
+  version: string;
+  build: { commit: string | null; built_at: string | null; image: string | null };
+  schema: { expected: string | null; applied: string | null; up_to_date: boolean };
+  extractor: string; model: string | null; worker_enabled: boolean;
+  max_image_edge: number; min_image_width: number;
+  receipts: { total: number; pending: number; needs_review: number; failed: number };
+}
+
 export interface ManualItem {
   raw_name: string; gross_amount: number;
   quantity?: number | null; unit?: string | null; unit_price?: number | null; kind?: string;
@@ -172,6 +181,8 @@ export const api = {
   createManual: (body: ManualReceipt) =>
     request<ReceiptDetail>("/api/receipts/manual", json("POST", body)),
   exportCsvUrl: () => "/api/receipts/export.csv",
+
+  system: () => request<SystemInfo>("/api/system"),
 
   recurring: () => request<Recurring[]>("/api/recurring"),
   createRecurring: (body: Record<string, unknown>) =>

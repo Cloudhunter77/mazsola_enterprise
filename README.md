@@ -114,6 +114,7 @@ python scripts/seed_demo.py --clear   # removes exactly what it created
 | `ANTHROPIC_API_KEY` | – | Required when `EXTRACTOR=claude`; a Console key, not a Pro/Max subscription |
 | `MAX_IMAGE_EDGE` | `1600` | The main cost lever; images bill at `w×h/750` tokens |
 | `MIN_IMAGE_WIDTH` | `800` | Floor on width, overriding the edge cap on tall receipts |
+| `BUILD_COMMIT` | – | Stamped by CI; shown on the Rendszer page so an update can be verified |
 | `MAX_PARTS` | `8` (in code) | Most photos one receipt may be captured in |
 | `SECRET_KEY` | – | Signs the session cookie |
 | `APP_PASSWORD_HASH` | – | `python scripts/hash_password.py` |

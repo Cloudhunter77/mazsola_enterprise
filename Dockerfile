@@ -11,9 +11,18 @@ RUN npm run build
 # --- stage 2: runtime -------------------------------------------------------
 FROM python:3.12-slim
 
+# Stamped by CI so the running app can say which build it is. Without this, answering
+# "did the update take?" means opening a shell on the NAS to compare image digests.
+ARG BUILD_COMMIT=""
+ARG BUILD_TIME=""
+ARG BUILD_IMAGE=""
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    BUILD_COMMIT=$BUILD_COMMIT \
+    BUILD_TIME=$BUILD_TIME \
+    BUILD_IMAGE=$BUILD_IMAGE
 
 WORKDIR /app
 

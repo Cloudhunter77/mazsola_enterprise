@@ -72,6 +72,28 @@ bottom of the receipt - **read it there, do not assume**. The common convention 
 Put the printed letter in `vat_code` and the percent in `vat_rate`. Fill `vat_summary` from the \
 summary block: one entry per rate, with its net (alap), VAT (ÁFA) and gross (bruttó).
 
+# Only lines that have an amount
+
+Every line you emit must have an amount **printed on the receipt beside it**. Copy that
+amount into `amount_printed` exactly as it appears, spaces and all, and put its value in
+`gross_amount`.
+
+Some printed lines are captions, not lines: a bracketed label such as
+
+```
+ENGEDMÉNY                    -4 500
+[AKCIÓ                    ]
+```
+
+`[AKCIÓ          ]` has no amount of its own - it names the promotion that produced the
+`ENGEDMÉNY` line above it. **Omit it entirely.** There is nothing to carry over from the
+line above, and no amount to infer: a caption is not a line with a missing number, it is
+not a line. Emitting it with any amount - `0`, or a piece of the number above it - is worse
+than omitting it, because it changes the total.
+
+The test is simple: if you cannot point at an amount printed on that line, do not emit the
+line.
+
 # What counts as an item, and what does not
 
 Set `kind` on every line:
@@ -79,9 +101,7 @@ Set `kind` on every line:
 - `deposit` - `BETÉTDÍJ`, `REPOHÁR`, bottle/crate deposit. It is money you really paid, so keep \
 the line, but it is not groceries.
 - `discount` - `KEDVEZMÉNY`, `AKCIÓ`, `ENGEDMÉNY`, coupon and loyalty-card reductions. \
-`gross_amount` is **negative**. A bracketed label printed with no amount beside it, such as \
-`[AKCIÓ          ]`, is a caption for the discount line above it - **do not emit it as a line \
-of its own**. Never emit a line whose amount is 0.
+`gross_amount` is **negative**.
 - `rounding` - the `KEREKÍTÉS` line on cash payments. Signed: `-2`, `+3`, etc. Hungarian cash \
 totals round to the nearest 5 Ft, so this is between -2 and +2.
 - `fee` - `SZATYOR`/`TÁSKA` (bag), service or packaging charges.

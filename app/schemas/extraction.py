@@ -28,6 +28,13 @@ class ExtractedItem(BaseModel):
     gross_amount: float = Field(
         description="Line total in HUF, VAT included. Negative for discounts and rounding."
     )
+    amount_printed: str | None = Field(
+        description=(
+            "The amount printed on this line, copied character for character including any "
+            "spaces inside the number, e.g. '8 999' or '-4 500'. Null ONLY when the line "
+            "has no amount printed beside it at all - and such a line should not be emitted."
+        )
+    )
     vat_code: str | None = Field(
         description="ÁFA collector letter printed beside the amount: A, B, C or AM."
     )
