@@ -58,6 +58,11 @@ DROP_KEYWORDS = (
     "megtakarit", "on ma megtakaritott", "pontegyenleg", "gyujtott pont",
     "hitelkartya",
     "adoszam", "nyugtaszam", "koszonjuk", "viszontlatasra", "afa osszesen", "vasarlas",
+    # Footer furniture. A Café Frei receipt printed "Sorszám: 252" below the total and the
+    # model billed it as a 490 Ft purchase - the queue number as a line item, priced with
+    # digits borrowed from the item above.
+    "sorszam", "nav ellenorzo", "ellenorzo kod", "ap kod", "terminal", "kartyaszam",
+    "tranzakcio", "penztaros", "kassza", "bizonylatszam", "kostolta", "koszonjuk a",
 )
 DEPOSIT_KEYWORDS = ("betetdij", "betet dij", "repohar", "visszavalthato", "palack")
 DISCOUNT_KEYWORDS = ("kedvezmeny", "akcio", "engedmeny", "kupon", "levonas", "torzsvasarlo")

@@ -72,6 +72,30 @@ bottom of the receipt - **read it there, do not assume**. The common convention 
 Put the printed letter in `vat_code` and the percent in `vat_rate`. Fill `vat_summary` from the \
 summary block: one entry per rate, with its net (alap), VAT (ÁFA) and gross (bruttó).
 
+# Where the item list stops
+
+**The items end at `ÖSSZESEN` (or `FIZETENDŐ`). Nothing printed below that line is a
+purchase.** Everything after it is payment, receipt identity, or advertising:
+
+```
+PISZTÁCIA-MALNA - PALERMOI      1 490   A00     <- the last item
+ÖSSZESEN:                       4 820 Ft        <- the list ends here
+BANKKÁRTYA:                     4 820 Ft
+Kóstolta már? Csak ebben a hónapban:
+Bodrum Yaz Áfonyás Iced Latte                   <- an advertisement
+Sorszám: 252                                    <- the queue number
+NYUGTASZÁM: 0594/00231
+NAV ELLENŐRZŐ KÓD:0223B
+```
+
+`Bodrum Yaz Áfonyás Iced Latte` is a drink the shop is promoting, not one that was bought:
+it sits below the total and has no price beside it. `Sorszám: 252` is the order number. On a
+real receipt both were emitted as purchases, and the second was given `490` taken from the
+`1 490` of the item above - so the receipt gained two invented lines and lost a real one.
+
+Before you finish, check the last line you emitted comes from **above** `ÖSSZESEN`, and that
+every printed line above it is present.
+
 # Only lines that have an amount
 
 Every line you emit must have an amount **printed on the receipt beside it**. Copy that
