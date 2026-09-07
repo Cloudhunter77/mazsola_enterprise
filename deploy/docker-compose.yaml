@@ -8,6 +8,8 @@
 #   /mnt/<pool>/apps/receipt-tracker/pgdata   - the PostgreSQL data directory
 #
 # Then set the environment values marked REQUIRED. See deploy/README.md.
+#
+# To update later: Apps -> receipt-tracker -> Stop, then Start. See `pull_policy` below.
 
 name: receipt-tracker
 
@@ -33,6 +35,19 @@ services:
 
   app:
     image: ghcr.io/cloudhunter77/receipt-tracker:latest
+    # Updating is then: Apps -> receipt-tracker -> Stop, then Start. Every start fetches
+    # the current :latest, so no shell and no YAML editing.
+    #
+    # TrueNAS has no "pull image" button for a custom YAML app - the three-dot menu's
+    # "Update" is for catalog apps and does nothing here - so without this line the only
+    # ways to get a new image are a shell or changing the tag below by hand.
+    #
+    # The cost: a start while GHCR is unreachable fails instead of running the image
+    # already on disk. `restart: unless-stopped` retries, so a reboot that comes up before
+    # the network does should recover on its own, but if you would rather never risk it,
+    # delete this line and pin an exact tag instead - CI publishes `sha-<short commit>`
+    # alongside `latest`, and editing the tag here forces a pull of that exact build.
+    pull_policy: always
     restart: unless-stopped
     depends_on:
       db:

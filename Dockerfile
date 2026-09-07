@@ -24,6 +24,19 @@ ENV PYTHONUNBUFFERED=1 \
     BUILD_TIME=$BUILD_TIME \
     BUILD_IMAGE=$BUILD_IMAGE
 
+# Standard OCI labels. These are what makes GHCR link the package back to this repository,
+# and what `docker inspect` reports - so "which build is this and where did it come from"
+# has an answer from outside the app as well as from the Rendszer page inside it.
+LABEL org.opencontainers.image.title="Receipt Tracker" \
+      org.opencontainers.image.description="Photograph a receipt, get a queryable expense database." \
+      org.opencontainers.image.source="https://github.com/Cloudhunter77/mazsola_enterprise" \
+      org.opencontainers.image.url="https://github.com/Cloudhunter77/mazsola_enterprise" \
+      org.opencontainers.image.documentation="https://github.com/Cloudhunter77/mazsola_enterprise/blob/main/deploy/README.md" \
+      org.opencontainers.image.licenses="NOASSERTION" \
+      org.opencontainers.image.revision=$BUILD_COMMIT \
+      org.opencontainers.image.created=$BUILD_TIME \
+      org.opencontainers.image.version=$BUILD_COMMIT
+
 WORKDIR /app
 
 # curl is here for the compose healthcheck, nothing else.

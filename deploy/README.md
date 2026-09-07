@@ -195,22 +195,37 @@ the container name first (`docker ps | grep receipt-tracker`) and set `DB_CONTAI
 
 ## 8. Updating
 
-No shell needed, and nothing to type.
+**Apps → receipt-tracker → Stop, then Start.** That is the whole procedure. The compose
+file sets `pull_policy: always` on the app, so every start fetches the current `:latest`.
 
-1. **Apps → receipt-tracker → ⋮ → Pull image.**
-2. Restart the app from the same menu.
-3. Open **Tábla → ⚙ Rendszer** in the app and check two lines: the **commit** matches the
-   latest one in the repository, and the schema says *naprakész*.
+Then open **Tábla → ⚙ Rendszer** in the app: the commit shown there should match the latest
+one in the repository, and the schema line should say *naprakész*. Migrations run at
+startup and the app serves nothing until they succeed, so if that page loads they applied.
 
-That last step is the point of the Rendszer page. Proving a pull took used to mean SSHing
-in to compare image digests and read container logs; now it is a page. Schema migrations
-run automatically at start, and the app serves no traffic until they succeed — so if the
-page loads at all, they applied.
+**There is no "Pull image" button for a custom YAML app**, whatever older notes may say.
+The three-dot menu on the Application Info panel offers *Update* and *Convert to custom
+app*; *Update* is for catalog apps and does nothing for this one. `pull_policy: always` is
+what replaces it.
 
-If you would rather a plain restart always fetch the newest image, add `pull_policy: always`
-to the `app` service. The trade-off is real and worth knowing: with it set, a restart while
-GHCR is unreachable — a reboot before the network is up, or expired credentials — fails to
-start instead of running the image already on disk. The manual pull is the safer default.
+If you would rather not have every start reach out to GHCR — a start while it is
+unreachable fails instead of running the image already on disk — remove that line and pin
+an exact tag instead. CI publishes `sha-<short commit>` beside `latest`, so **Edit** the app,
+change the tag, and save: TrueNAS pulls that build because it is not on disk yet. More
+deliberate, still no shell.
+
+### What TrueNAS shows about the app
+
+The Application Info panel reads *App Version: vcustom*, *Version: v1.0.0*, *Source: N/A*.
+That is how TrueNAS displays **every** app installed from YAML — there is no catalog entry
+behind it to read a version or a homepage from, and nothing in the compose file changes it.
+
+The real answers live in two places:
+
+- **Tábla → ⚙ Rendszer** in the app — version, commit (linked to GitHub), build time,
+  engine, model, and the schema revision.
+- The image's own OCI labels — `org.opencontainers.image.source`, `.revision`, `.created` —
+  which are what makes the GHCR package link back to this repository, and what
+  `docker inspect ghcr.io/cloudhunter77/receipt-tracker:latest` reports.
 
 ## Troubleshooting
 

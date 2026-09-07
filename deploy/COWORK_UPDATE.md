@@ -62,35 +62,40 @@ Each of these has already cost me time:
 - **Tábla** — a new tab: one row per receipt (date, shop, amount), sortable, with CSV export.
 - **A width floor on tall photos** (`MIN_IMAGE_WIDTH`, default 800), because capping the
   longest edge left a long receipt only ~500px wide.
+- **A Rendszer page** (Tábla → ⚙) showing the running commit and the schema revision, so
+  an update can be confirmed without a shell.
+- **`pull_policy: always`** in the compose file, so Stop/Start updates the image.
 - **Database migrations**, which run automatically at startup.
 
 ## Step 1 — Update the image
 
-**Apps → receipt-tracker → ⋮ → Pull image**, then restart the app. No compose changes are
-needed, and no dataset or secret changes at all.
+**Apps → receipt-tracker → Stop, then Start.**
 
-The first start after the pull applies any outstanding migrations. Give it a minute, then:
+That is it, if the app already carries `pull_policy: always` — every start then fetches the
+current `:latest`. Check the compose file (**Apps → receipt-tracker → Edit**) for that line
+under the `app` service. If it is missing, add it directly under the `image:` line and save;
+saving redeploys, which is also the update.
 
-```
-curl http://localhost:8088/health
-```
+**Do not look for a "Pull image" button — there isn't one** for an app installed from YAML.
+The three-dot menu on the Application Info panel shows *Update* and *Convert to custom app*;
+*Update* is for catalog apps and does nothing here.
 
-Expect `{"status":"ok","database":true,...,"worker":true}`.
+The first start after the pull applies any outstanding migrations, which takes a moment.
 
-Then confirm the migration ran:
+## Step 2 — Confirm the update took, and that nothing was lost
 
-```
-docker logs receipt-tracker-app-1 2>&1 | tail -40
-```
+Open `http://<nas-ip>:8088` over my VPN, then **Tábla → ⚙** (the Rendszer page).
 
-Expect a line reading `database schema is up to date` and no traceback. The app does not
-serve traffic until migrations succeed, so a healthy `/health` is already good evidence.
+- The **commit** should match the latest one in the repository — it is a link, so open it
+  and check the message is the newest.
+- The schema line should read **naprakész**.
+- **Feldolgozó** should say it is running.
 
-## Step 2 — Confirm nothing was lost
+If the ⚙ button is not on the Tábla header at all, the new image did not load — the page
+ships inside it.
 
-Open `http://<nas-ip>:8088` over my VPN and check that my existing receipts are still
-listed, and that opening one still shows its photo beside the parsed lines. If the list is
-empty or an image 404s, stop and tell me before doing anything else.
+Then check my existing receipts are still listed and that opening one still shows its photo.
+If the list is empty or an image 404s, stop and tell me before doing anything else.
 
 ## Step 3 — Check the thousands-separator fix on the receipt that failed
 
