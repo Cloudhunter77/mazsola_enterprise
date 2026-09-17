@@ -302,15 +302,18 @@ class TestLinkingWhatIsAlreadyStored:
         await session.flush()
         await link_product(session, other.id, "PEPSI 1,5L", None)
 
+        # Read before expiring below: an expired attribute would reload lazily, and a lazy
+        # load in a plain assertion is exactly the MissingGreenlet this project keeps hitting.
+        mine_id = mine.id
         line = (await session.scalars(select(ReceiptItem))).one()
-        line.product_id = mine.id
+        line.product_id = mine_id
         await session.commit()
 
         assert await autolink_stored(session) == 0
         await session.commit()
         session.expire_all()
         line = (await session.scalars(select(ReceiptItem))).one()
-        assert line.product_id == mine.id, "a link you made yourself is not ours to change"
+        assert line.product_id == mine_id, "a link you made yourself is not ours to change"
 
     async def test_running_it_twice_changes_nothing_the_second_time(self, session):
         from app.services.autolink import autolink_stored
