@@ -8,6 +8,7 @@ land on the same product row every time or price history never accumulates.
 
 from __future__ import annotations
 
+import logging
 import re
 import unicodedata
 import uuid
@@ -19,6 +20,8 @@ from app.models import Merchant, MerchantAlias, Product, ProductAlias
 
 # Known Hungarian chains, matched against the folded raw name. Collapsing every branch of a
 # chain onto one merchant is what makes "where do I spend the most" answerable.
+log = logging.getLogger(__name__)
+
 CHAIN_PATTERNS: tuple[tuple[str, str], ...] = (
     (r"\btesco\b", "Tesco"),
     (r"\blidl\b", "Lidl"),
@@ -143,7 +146,49 @@ async def resolve_product(
         .order_by(ProductAlias.merchant_id.is_(None))
     )
     alias = await session.scalar(stmt)
-    return await session.get(Product, alias.product_id) if alias else None
+    if alias is not None:
+        return await session.get(Product, alias.product_id)
+
+    # No alias for this exact spelling. Before giving up, try the normalised form: another
+    # till printing `Pepsi Cola 1.5 l` for something already mapped as `PEPSI 1,5L` is the
+    # same product, and linking it here is what stops one drink becoming five price
+    # histories. Only an exact normalised match is taken automatically - anything less
+    # certain is left for the suggestions screen, because a wrong link is silent and
+    # corrupts a price history for months before anyone notices.
+    return await _resolve_by_fingerprint(session, raw_name, merchant_id)
+
+
+async def _resolve_by_fingerprint(
+    session: AsyncSession, raw_name: str, merchant_id: uuid.UUID | None
+) -> Product | None:
+    """Find a product whose learned spelling normalises to the same thing, and learn this one."""
+    from app.services.matching import fingerprint
+
+    key = fingerprint(raw_name)[:320]
+    if not key or key.startswith("|"):
+        # Nothing but a size, or nothing at all: too little to match on.
+        return None
+
+    matches = (
+        await session.scalars(
+            select(ProductAlias)
+            .where(ProductAlias.fingerprint == key)
+            .order_by(ProductAlias.merchant_id.is_(None))
+        )
+    ).all()
+    if not matches:
+        return None
+
+    # Two products sharing a normalised name means the normalisation is not specific enough
+    # for this pair. Guessing between them is exactly the silent corruption to avoid.
+    if len({match.product_id for match in matches}) > 1:
+        log.info("fingerprint %r is ambiguous across %d products", key, len(matches))
+        return None
+
+    product = await session.get(Product, matches[0].product_id)
+    if product is not None:
+        await link_product(session, product.id, raw_name, merchant_id)
+    return product
 
 
 async def link_product(
@@ -164,9 +209,19 @@ async def link_product(
         )
     )
     if existing is not None:
+        from app.services.matching import fingerprint
+
         existing.product_id = product_id
+        existing.fingerprint = fingerprint(raw_name)[:320]
         return existing
 
-    alias = ProductAlias(product_id=product_id, raw_name=raw_name, merchant_id=merchant_id)
+    from app.services.matching import fingerprint
+
+    alias = ProductAlias(
+        product_id=product_id,
+        raw_name=raw_name,
+        merchant_id=merchant_id,
+        fingerprint=fingerprint(raw_name)[:320],
+    )
     session.add(alias)
     return alias

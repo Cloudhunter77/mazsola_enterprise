@@ -8,7 +8,17 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, { credentials: "same-origin", ...init });
+  let response: Response;
+  try {
+    response = await fetch(path, { credentials: "same-origin", ...init });
+  } catch {
+    // fetch rejects with a bare `TypeError: Failed to fetch` for anything below HTTP:
+    // a dropped VPN, a sleeping phone, a container restart. Status 0 marks it as
+    // "the request never arrived", which is retryable - unlike a 4xx, which will
+    // say the same thing however many times you ask. The upload path already uses
+    // 0 for the same meaning.
+    throw new ApiError("Nem sikerült elérni a szervert.", 0);
+  }
 
   if (!response.ok) {
     let detail = response.statusText;
@@ -93,6 +103,13 @@ export interface SystemInfo {
   receipts: { total: number; pending: number; needs_review: number; failed: number };
 }
 
+export interface Suggestion {
+  suggested_name: string; members: string[]; occurrences: number;
+  score: number; band: "green" | "yellow" | "red"; total_spent: Money;
+  product_id: string | null; product_name: string | null;
+}
+export interface Suggestions { unmapped_lines: number; groups: Suggestion[] }
+
 export interface ManualItem {
   raw_name: string; gross_amount: number;
   quantity?: number | null; unit?: string | null; unit_price?: number | null; kind?: string;
@@ -149,6 +166,8 @@ export const api = {
     return request<ReceiptSummary[]>(`/api/receipts?${query}`);
   },
   receipt: (id: string) => request<ReceiptDetail>(`/api/receipts/${id}`),
+  latestReceipt: () =>
+    request<ReceiptSummary[]>("/api/receipts?limit=1").then((rows) => rows[0] ?? null),
   imageUrl: (id: string, part = 0) => `/api/receipts/${id}/image?part=${part}`,
   patchReceipt: (id: string, patch: Record<string, unknown>) =>
     request<ReceiptDetail>(`/api/receipts/${id}`, json("PATCH", patch)),
@@ -183,6 +202,10 @@ export const api = {
   exportCsvUrl: () => "/api/receipts/export.csv",
 
   system: () => request<SystemInfo>("/api/system"),
+
+  suggestions: () => request<Suggestions>("/api/suggestions"),
+  applySuggestion: (body: Record<string, unknown>) =>
+    request<Product>("/api/suggestions/apply", json("POST", body)),
 
   recurring: () => request<Recurring[]>("/api/recurring"),
   createRecurring: (body: Record<string, unknown>) =>

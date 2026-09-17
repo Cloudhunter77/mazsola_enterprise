@@ -20,7 +20,7 @@ export default function System() {
 
   return (
     <>
-      <div className="row" style={{ marginBottom: 14 }}>
+      <div className="row page-actions" style={{ marginBottom: 14 }}>
         <h1 style={{ flex: 1 }}>Rendszer</h1>
         <Link className="btn" to="/tabla">← Tábla</Link>
       </div>

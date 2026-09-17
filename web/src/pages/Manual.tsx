@@ -96,7 +96,7 @@ export default function Manual() {
 
   return (
     <>
-      <div className="row" style={{ marginBottom: 14 }}>
+      <div className="row page-actions" style={{ marginBottom: 14 }}>
         <h1 style={{ flex: 1 }}>Kézi rögzítés</h1>
         <Link className="btn" to="/">← Fotózás</Link>
       </div>

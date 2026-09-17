@@ -3,23 +3,45 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app.api.deps import AuthDep, SessionDep
-from app.models import Budget, Category, Merchant, Product, ReceiptItem
+from app.models import (
+    Budget,
+    Category,
+    LineKind,
+    Merchant,
+    Product,
+    ProductAlias,
+    Receipt,
+    ReceiptItem,
+    ReceiptStatus,
+)
 from app.schemas.api import (
+    ApplySuggestionIn,
     BudgetIn,
     BudgetOut,
     CategoryOut,
     MerchantOut,
     ProductCreate,
     ProductOut,
+    SuggestionOut,
+    SuggestionsOut,
 )
 from app.services.catalog import link_product
+from app.services.matching import cluster, fingerprint, parse_name
 
 router = APIRouter(prefix="/api", tags=["catalog"])
+
+# A line only counts towards a suggestion once its receipt has a trustworthy reading.
+READY_FOR_STATS = (
+    ReceiptStatus.PARSED.value,
+    ReceiptStatus.NEEDS_REVIEW.value,
+    ReceiptStatus.CONFIRMED.value,
+)
 
 
 @router.get("/categories", response_model=list[CategoryOut])
@@ -128,3 +150,109 @@ async def delete_budget(_: AuthDep, session: SessionDep, budget_id: uuid.UUID) -
         raise HTTPException(status_code=404, detail="No such budget.")
     await session.delete(budget)
     await session.commit()
+
+@router.get("/suggestions", response_model=SuggestionsOut)
+async def product_suggestions(
+    _: AuthDep, session: SessionDep, limit: int = Query(40, le=200)
+) -> SuggestionsOut:
+    """Group the receipt lines that are not yet mapped to a product.
+
+    Everything here is derived on the fly rather than stored: the grouping rules can change
+    without a migration, and a suggestion nobody acted on is not worth a row.
+    """
+    rows = (
+        await session.execute(
+            select(
+                ReceiptItem.raw_name,
+                func.count(ReceiptItem.id),
+                func.coalesce(func.sum(ReceiptItem.gross_amount), 0),
+            )
+            .join(Receipt, Receipt.id == ReceiptItem.receipt_id)
+            .where(ReceiptItem.product_id.is_(None))
+            .where(ReceiptItem.kind == LineKind.ITEM.value)
+            .where(Receipt.status.in_(READY_FOR_STATS))
+            .group_by(ReceiptItem.raw_name)
+        )
+    ).all()
+
+    counts = {name: count for name, count, _ in rows}
+    spend = {name: Decimal(total) for name, _, total in rows}
+    if not counts:
+        return SuggestionsOut(unmapped_lines=0, groups=[])
+
+    # Which existing product, if any, each normalised name already belongs to - so a group
+    # can join a price history instead of starting a second one beside it.
+    known: dict[str, uuid.UUID] = {}
+    for alias in (await session.scalars(select(ProductAlias))).all():
+        if alias.fingerprint:
+            known.setdefault(alias.fingerprint, alias.product_id)
+    names = {
+        product.id: product.canonical_name
+        for product in (await session.scalars(select(Product))).all()
+    }
+
+    groups: list[SuggestionOut] = []
+    for group in cluster(counts)[:limit]:
+        product_id = next(
+            (known[fp] for fp in (fingerprint(m) for m in group.members) if fp in known), None
+        )
+        groups.append(
+            SuggestionOut(
+                suggested_name=group.suggested_name,
+                members=group.members,
+                occurrences=group.occurrences,
+                score=round(group.score, 3),
+                band=group.band,
+                total_spent=sum((spend[m] for m in group.members), Decimal("0.00")),
+                product_id=product_id,
+                product_name=names.get(product_id) if product_id else None,
+            )
+        )
+
+    return SuggestionsOut(unmapped_lines=sum(counts.values()), groups=groups)
+
+
+@router.post("/suggestions/apply", response_model=ProductOut, status_code=201)
+async def apply_suggestion(
+    _: AuthDep, session: SessionDep, body: ApplySuggestionIn
+) -> ProductOut:
+    """Confirm a group: create or reuse the product, alias every name, and backfill.
+
+    Backfilling matters more than it sounds. Without it, confirming a product would only
+    affect receipts you scan *afterwards*, and the price history you wanted it for - the
+    months already in the database - would stay empty.
+    """
+    product: Product | None = None
+    if body.product_id:
+        product = await session.get(Product, body.product_id)
+    if product is None:
+        product = await session.scalar(
+            select(Product).where(Product.canonical_name == body.canonical_name)
+        )
+    if product is None:
+        parts = parse_name(body.canonical_name)
+        product = Product(
+            canonical_name=body.canonical_name[:200],
+            category_id=body.category_id,
+            package_size=float(parts.size) if parts.size else None,
+            package_unit=parts.unit,
+        )
+        session.add(product)
+        await session.flush()
+    elif body.category_id and not product.category_id:
+        product.category_id = body.category_id
+
+    for raw_name in dict.fromkeys(body.raw_names):
+        await link_product(session, product.id, raw_name, body.merchant_id)
+
+    # Apply to what is already stored, not just to what arrives next.
+    await session.execute(
+        update(ReceiptItem)
+        .where(ReceiptItem.raw_name.in_(list(body.raw_names)))
+        .where(ReceiptItem.product_id.is_(None))
+        .values(product_id=product.id, category_id=product.category_id)
+    )
+
+    await session.commit()
+    await session.refresh(product)
+    return ProductOut.model_validate(product)

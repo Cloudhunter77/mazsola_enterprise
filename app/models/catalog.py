@@ -100,5 +100,9 @@ class ProductAlias(Base, TimestampMixin):
         ForeignKey("merchants.id", ondelete="CASCADE"), nullable=True, index=True
     )
     raw_name: Mapped[str] = mapped_column(String(300), nullable=False, index=True)
+    # The normalised form of `raw_name` - see app/services/matching.py. Stored rather than
+    # computed on read so recognising a line another till spells differently is one indexed
+    # lookup, not a re-normalisation of every alias for every receipt line.
+    fingerprint: Mapped[str | None] = mapped_column(String(320), nullable=True, index=True)
 
     product: Mapped[Product] = relationship(back_populates="aliases")

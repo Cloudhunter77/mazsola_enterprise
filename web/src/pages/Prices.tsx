@@ -6,6 +6,7 @@ import { api } from "../lib/api";
 import { IndexChart, MAX_SERIES, PriceHistoryChart, RankingChart } from "../lib/charts";
 import { date, ft, month, pct } from "../lib/format";
 import { AsyncBlock, Card, Empty, useAsync } from "../components/ui";
+import Suggestions from "../components/Suggestions";
 
 export default function Prices() {
   const tracked = useAsync(() => api.trackedProducts(), []);
@@ -22,6 +23,10 @@ export default function Prices() {
   return (
     <>
       <h1 style={{ marginBottom: 14 }}>Árak</h1>
+
+      {/* Above the charts on purpose: the charts are empty until lines are mapped to
+          products, so this is the thing to do first. */}
+      <Suggestions />
 
       <Card
         title="Egy termék ára az időben"

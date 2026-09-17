@@ -22,7 +22,7 @@ export default function Costs() {
 
   return (
     <>
-      <div className="row" style={{ marginBottom: 14 }}>
+      <div className="row page-actions" style={{ marginBottom: 14 }}>
         <h1 style={{ flex: 1 }}>Felismerési költség</h1>
         <Link className="btn" to="/statisztika">← Statisztika</Link>
       </div>

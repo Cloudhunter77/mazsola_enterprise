@@ -150,10 +150,16 @@ button, input, select, textarea { font: inherit; color: inherit; }
   padding-bottom: env(safe-area-inset-bottom);
 }
 .tabbar a {
-  flex: 1; text-align: center; padding: 10px 4px; font-size: 0.72rem;
-  color: var(--ink-muted); text-decoration: none; display: grid; gap: 2px;
+  flex: 1; text-align: center; padding: 10px 4px; font-size: 0.78rem;
+  color: var(--ink-muted); text-decoration: none;
+  display: grid; gap: 3px; align-content: center;
+  /* A thumb needs about 44px. The bar was 10px of padding around a 0.72rem label, which
+     is comfortably under that and the reason the tabs were hard to hit. */
+  min-height: 56px;
+  -webkit-tap-highlight-color: transparent;
 }
-.tabbar a .glyph { font-size: 1.15rem; line-height: 1.1; }
+.tabbar a .glyph { font-size: 1.4rem; line-height: 1.1; }
+.tabbar a:active { background: var(--surface-raised); }
 .tabbar a.active { color: var(--series-1); font-weight: 600; }
 
 /* --- surfaces ----------------------------------------------------------- */
@@ -189,20 +195,34 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* --- controls ----------------------------------------------------------- */
 .btn {
   border: 1px solid var(--border); background: var(--surface-raised);
-  border-radius: 8px; padding: 9px 14px; cursor: pointer; font-weight: 550;
+  border-radius: 8px; padding: 10px 14px; cursor: pointer; font-weight: 550;
+  /* Every button is a thumb target, not just the big ones. */
+  min-height: 44px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  text-decoration: none; color: inherit;
+  -webkit-tap-highlight-color: transparent;
 }
+.btn:active { transform: translateY(1px); }
 .btn:hover { border-color: var(--axis); }
 .btn:disabled { opacity: 0.5; cursor: default; }
 .btn.primary { background: var(--series-1); border-color: var(--series-1); color: #fff; }
 .btn.danger { color: var(--critical); }
-.btn.big { padding: 14px 20px; font-size: 1rem; border-radius: 12px; }
+.btn.big { padding: 16px 20px; font-size: 1.05rem; border-radius: 12px; min-height: 56px; }
+/* A row of buttons on a phone should stack to full width rather than shrink to fit. */
+.btn.block { width: 100%; }
 
 .field { display: grid; gap: 5px; margin-bottom: 12px; }
 .field label { font-size: 0.78rem; color: var(--ink-secondary); }
-.field input, .field select, .field textarea {
-  padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px;
+.field input, .field select, .field textarea,
+label > input, label > select, label > textarea {
+  padding: 11px 12px; border: 1px solid var(--border); border-radius: 8px;
   background: var(--surface-raised); width: 100%;
+  min-height: 44px;
+  /* 16px exactly: iOS Safari zooms the whole page in on focus for anything smaller, and
+     the zoom does not come back out. This is the single most common mobile web annoyance. */
+  font-size: 16px;
 }
+label { display: grid; gap: 5px; font-size: 0.82rem; color: var(--ink-secondary); }
 .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 
 /* --- tables ------------------------------------------------------------- */
@@ -238,4 +258,43 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 @media (prefers-reduced-motion: reduce) {
   .spinner { animation-duration: 2s; }
+}
+
+
+/* --- phones ---------------------------------------------------------------
+   Everything above is the desktop shape. This is where the app is actually used:
+   one thumb, a 390px-wide screen, often outdoors. */
+@media (max-width: 560px) {
+  body { font-size: 16px; }
+
+  .content { padding: 12px 12px 16px; }
+  .card { padding: 13px; border-radius: 12px; }
+  .card + .card { margin-top: 10px; }
+
+  h1 { font-size: 1.25rem; }
+
+  /* A row of controls at this width is a stack. Shrinking them to fit is what made
+     them too small to hit. */
+  .row > .btn { flex: 1 1 auto; }
+  .page-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .page-actions > * { width: 100%; }
+  .page-actions > h1 { grid-column: 1 / -1; }
+
+  /* Tables stay scrollable rather than crushing every column to two characters.
+     A receipt table is wide and that is fine; it just has to be swipeable. */
+  .table-wrap { margin: 0 -13px; padding: 0 13px; -webkit-overflow-scrolling: touch; }
+  table { font-size: 0.92rem; }
+  th, td { padding: 10px 8px; }
+
+  /* Tiles two-up instead of one long column of numbers. */
+  .grid.tiles { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .tile .value { font-size: 1.35rem; }
+
+  /* Side-by-side panes (the review screen's photo and fields) become one column. */
+  .grid.cols-2 { grid-template-columns: 1fr; }
+}
+
+/* Respect a reduced-motion preference for the press effect. */
+@media (prefers-reduced-motion: reduce) {
+  .btn:active { transform: none; }
 }

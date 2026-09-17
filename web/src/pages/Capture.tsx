@@ -14,13 +14,17 @@
 import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { api, type ReceiptDetail } from "../lib/api";
+import { api, ApiError, type ReceiptDetail, type ReceiptSummary } from "../lib/api";
 import { KIND_LABELS, REVIEW_REASONS, ft, dateTime } from "../lib/format";
 import { Card } from "../components/ui";
 
 type Phase = "idle" | "uploading" | "waiting" | "done" | "error";
 
 const TERMINAL = new Set(["parsed", "needs_review", "failed", "confirmed"]);
+
+const POLL_MS = 2000;
+const MAX_POLLS = 60;      // two minutes of normal polling
+const MAX_FAILURES = 8;    // consecutive dropped requests before giving up
 
 // Matches MAX_PARTS in app/services/ingest.py. Exceeding it is refused server-side; this
 // only saves the round trip.
@@ -37,6 +41,20 @@ export default function Capture() {
   const cameraInput = useRef<HTMLInputElement>(null);
   const galleryInput = useRef<HTMLInputElement>(null);
   const pollTimer = useRef<number | null>(null);
+  // The receipt currently being watched, so a tab regaining focus can resume it.
+  const pollingFor = useRef<string | null>(null);
+  const [latest, setLatest] = useState<ReceiptSummary | null>(null);
+
+  // Refreshed whenever we return to idle, so the shortcut points at the one just taken
+  // rather than the one before it.
+  useEffect(() => {
+    if (phase !== "idle") return;
+    let cancelled = false;
+    api.latestReceipt()
+      .then((row) => { if (!cancelled) setLatest(row); })
+      .catch(() => { /* a missing shortcut is not worth an error on the capture screen */ });
+    return () => { cancelled = true; };
+  }, [phase]);
 
   // Object URLs are revoked explicitly wherever parts are dropped, so this only has to
   // catch the case of leaving the page mid-flow.
@@ -47,23 +65,63 @@ export default function Capture() {
     for (const part of partsRef.current) URL.revokeObjectURL(part.preview);
   }, []);
 
-  const poll = useCallback((id: string, attempt = 0) => {
+  const poll = useCallback((id: string, attempt = 0, failures = 0) => {
+    pollingFor.current = id;
     api.receipt(id)
       .then((detail) => {
         setReceipt(detail);
+        setMessage(null);
         if (TERMINAL.has(detail.status)) {
           setPhase("done");
+          pollingFor.current = null;
           return;
         }
-        if (attempt > 60) {
+        if (attempt > MAX_POLLS) {
           setPhase("error");
           setMessage("A feldolgozás szokatlanul sokáig tart. Nézd meg a Blokkok között.");
+          pollingFor.current = null;
           return;
         }
-        pollTimer.current = window.setTimeout(() => poll(id, attempt + 1), 2000);
+        pollTimer.current = window.setTimeout(() => poll(id, attempt + 1), POLL_MS);
       })
-      .catch((err: Error) => { setPhase("error"); setMessage(err.message); });
+      .catch((err: ApiError) => {
+        // A dropped request is not a failed receipt. Polling for two minutes over a VPN
+        // from a phone that dims its screen will lose one sooner or later, and treating
+        // the first one as fatal used to abandon a receipt the worker went on to read
+        // perfectly well - leaving "Failed to fetch" on screen next to a finished job.
+        // Only a real answer from the server (a 4xx, a 5xx) is worth stopping for.
+        const transient = err.status === 0 || err.status >= 500;
+        if (transient && failures < MAX_FAILURES && attempt <= MAX_POLLS) {
+          setMessage("Gyenge a kapcsolat, újrapróbálom…");
+          pollTimer.current = window.setTimeout(
+            // Back off a little so a flapping link is not hammered.
+            () => poll(id, attempt + 1, failures + 1), POLL_MS * (1 + failures),
+          );
+          return;
+        }
+        setPhase("error");
+        setMessage(
+          transient
+            ? "Nem érem el a szervert. A blokk feltöltve – nézd meg a Blokkok között."
+            : err.message,
+        );
+        pollingFor.current = null;
+      });
   }, []);
+
+  // A phone that locks the screen suspends the timer and kills the request in flight.
+  // Coming back to the tab, ask again straight away rather than waiting out the backoff.
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState !== "visible") return;
+      const id = pollingFor.current;
+      if (!id) return;
+      if (pollTimer.current) window.clearTimeout(pollTimer.current);
+      poll(id);
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [poll]);
 
   function onPick(event: ChangeEvent<HTMLInputElement>) {
     const picked = Array.from(event.target.files ?? []);
@@ -114,6 +172,7 @@ export default function Capture() {
 
   function reset() {
     if (pollTimer.current) window.clearTimeout(pollTimer.current);
+    pollingFor.current = null;
     for (const part of parts) URL.revokeObjectURL(part.preview);
     setParts([]);
     setReceipt(null);
@@ -189,10 +248,24 @@ export default function Capture() {
             dolgozom fel őket.
           </p>
 
-          <p className="muted" style={{ fontSize: "0.84rem", marginBottom: 0 }}>
+          <p className="muted" style={{ fontSize: "0.84rem" }}>
             Nincs meg a blokk? <Link to="/kezi">Írd be kézzel</Link> – vagy ha havonta
             ismétlődik, vedd fel <Link to="/elofizetesek">előfizetésként</Link>.
           </p>
+
+          {latest && (
+            <Link
+              className="btn big"
+              to={`/blokkok/${latest.id}`}
+              style={{ width: "100%", display: "block", textAlign: "center" }}
+            >
+              ↗ Legutóbbi blokk
+              <span className="muted" style={{ display: "block", fontSize: "0.8rem" }}>
+                {latest.merchant_name ?? "Ismeretlen bolt"} · {ft(latest.total_gross)}
+                {latest.review_reasons?.length ? " · ⚠ ellenőrzendő" : ""}
+              </span>
+            </Link>
+          )}
         </Card>
       )}
 

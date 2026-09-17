@@ -321,3 +321,38 @@ class RecurringOut(ORMModel):
     # than a query.
     charge_count: int = 0
     next_charge: date | None = None
+
+
+# --- product suggestions -----------------------------------------------------
+class SuggestionOut(BaseModel):
+    """One group of receipt lines that look like the same product."""
+
+    suggested_name: str
+    members: list[str]
+    occurrences: int
+    score: float
+    # green: the names normalise identically, so it links itself.
+    # yellow: close enough to be worth one tap. red: a starting point, nothing more.
+    band: str
+    total_spent: Decimal
+    # Set when an existing product already looks like this group, so confirming extends a
+    # price history rather than starting a parallel one.
+    product_id: uuid.UUID | None = None
+    product_name: str | None = None
+
+
+class SuggestionsOut(BaseModel):
+    unmapped_lines: int
+    groups: list[SuggestionOut]
+
+
+class ApplySuggestionIn(BaseModel):
+    """Confirm that these printed names are one product."""
+
+    raw_names: list[str] = Field(min_length=1)
+    canonical_name: str = Field(min_length=1, max_length=200)
+    product_id: uuid.UUID | None = None
+    category_id: uuid.UUID | None = None
+    # Aliases default to every shop: a branded product is the same wherever it is bought,
+    # which is the point of recognising it across chains.
+    merchant_id: uuid.UUID | None = None
