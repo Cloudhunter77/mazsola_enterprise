@@ -9,8 +9,8 @@ access to the NAS). It is written to be understood cold.
 ---
 
 I already run a self-hosted app called **Receipt Tracker** on my TrueNAS SCALE NAS. It is
-installed, healthy, and reading real Hungarian receipts. A new version has been published
-and I want you to update to it and check what is new actually works.
+installed, healthy, and I photograph every receipt I get with it. A new version has been
+published and I want you to update to it and check what is new actually works.
 
 I will be at the keyboard the whole time. Stop and tell me if anything does not match what
 is described here.
@@ -24,8 +24,8 @@ cheapest for my usual basket.
 
 - Repository: `https://github.com/Cloudhunter77/mazsola_enterprise` (private)
 - Branch: `claude/receipt-expense-tracker-mux58h`
-- Image: `ghcr.io/cloudhunter77/receipt-tracker:latest` (private GHCR package; this NAS is
-  already logged in to GHCR as root)
+- Image: `ghcr.io/cloudhunter77/receipt-tracker:latest` (private GHCR package; this NAS has
+  been logged in to GHCR as root — see Step 1, that login expires)
 - TrueNAS app name: `receipt-tracker`, containers `receipt-tracker-app-1` and
   `receipt-tracker-db-1`, web UI on port 8088, reachable over my VPN only
 - Deployment guide in the repo: `deploy/README.md`
@@ -35,52 +35,131 @@ cheapest for my usual basket.
 
 Each of these has already cost me time:
 
-1. **Give me one command at a time.** My shell is zsh over the TrueNAS web console. A
+1. **The database is the app.** Every receipt I own is in it and there is no other copy of
+   any of it. Nothing in this update is allowed to risk it: no dropping, no recreating, no
+   reinstalling the app, no deleting the `pgdata` dataset, no `docker volume` anything. If
+   you ever find yourself about to suggest a fresh install, stop and tell me instead.
+   Step 0 takes a backup before anything else, and it is not optional.
+2. **Give me one command at a time.** My shell is zsh over the TrueNAS web console. A
    multi-line block pasted at once gets its newlines collapsed and the commands run into
    each other. One command, I run it, I paste you the output.
-2. **Never put a secret on a command line, and never print one back to me.** If I paste a
+3. **Never put a secret on a command line, and never print one back to me.** If I paste a
    secret into the chat by mistake, tell me immediately to revoke it.
-3. **I am `truenas_admin`, not root.** Anything touching Docker needs `sudo -i` first.
-4. **Prefer the TrueNAS web UI for anything TrueNAS owns** (datasets, apps, cron).
-5. **Do NOT run `chown -R 568:568` over the app directory.** This already broke my
+4. **I am `truenas_admin`, not root.** Anything touching Docker needs `sudo -i` first.
+5. **Prefer the TrueNAS web UI for anything TrueNAS owns** (datasets, apps, cron).
+6. **Do NOT run `chown -R 568:568` over the app directory.** This already broke my
    database once. That command is in the *install* guide and applies only to a fresh, empty
    dataset. PostgreSQL sets its own internal ownership inside `pgdata`, and recursively
    chowning it caused `InsufficientPrivilegeError` on `pg_filenode.map`. Nothing in this
    update needs a permission change. (If it happens anyway: restart the `db` container,
    whose entrypoint re-asserts ownership as root, then restart `app`.)
-6. **Verify each step before moving on**, and tell me what you expect so I can say if it
+7. **Verify each step before moving on**, and tell me what you expect so I can say if it
    differs.
 
 ## What is new in this version
 
-- **A fix for dropped thousands separators.** The model was reading `8 999 Ft` as `999` and
-  `-4 500` as `-500` — every amount containing a thousands space lost the group before it,
-  while `929` came back fine. The prompt now drills that specific case, and the total is
-  cross-checked against the model's own character-by-character transcription of it.
-- **Kézi rögzítés** — type in a receipt you lost.
-- **Előfizetések** — Spotify, YouTube and the like, charged automatically each month.
-- **Tábla** — a new tab: one row per receipt (date, shop, amount), sortable, with CSV export.
-- **A width floor on tall photos** (`MIN_IMAGE_WIDTH`, default 800), because capping the
-  longest edge left a long receipt only ~500px wide.
-- **A Rendszer page** (Tábla → ⚙) showing the running commit and the schema revision, so
-  an update can be confirmed without a shell.
-- **`pull_policy: always`** in the compose file, so Stop/Start updates the image.
+- **Automatic product recognition.** Every till spells things differently — `PEPSI 1,5L`,
+  `Pepsi Cola 1.5 l`, `PEPSI COLA 1500ML` — and until now each one was a separate line I had
+  to map by hand. The app now groups them and gives each group a confidence: **green** means
+  the names normalise identically and it links them itself, **yellow** means very close but
+  worth a look, **red** is only a starting point. Different package sizes are always kept
+  apart: 1,5 l and 0,5 l are different products.
+- **It reaches backwards.** Mapping a product now also fills in the receipts *already* in
+  the database, not just the ones I scan afterwards, and there is a button and an hourly
+  pass that link old lines to products they letter-for-letter match.
+- **The "failed to fetch" bug is fixed.** Staying on the first tab while a receipt finished
+  processing showed an error even though it had worked. The page now retries a dropped
+  request instead of giving up on the first one, and keeps polling when the phone screen
+  comes back on.
+- **A phone-friendly layout** — bigger tap targets, taller tab bar, no zoom-on-focus in
+  form fields, and rows that stack instead of squeezing on a narrow screen.
+- **A jump-to-latest-receipt button** on the capture screen.
 - **Database migrations**, which run automatically at startup.
+
+## Step 0 — Back up the database, before touching anything
+
+Not because this update is risky — it adds one nullable column and an index, and there is a
+test in the repo that seeds a database, runs the upgrade over it and checks every row is
+still there. Because I have no other copy of my receipts, and a backup I have is worth more
+than a promise that I will not need one.
+
+As root (`sudo -i` first), one command:
+
+```
+docker exec receipt-tracker-db-1 pg_dump -U receipts -d receipts --clean --if-exists | gzip -9 > /mnt/tank/apps/receipt-tracker/backup-before-update.sql.gz
+```
+
+Adjust the pool name if mine is not `tank` — ask me rather than guessing. No password goes
+on that line: `pg_dump` runs inside the container over the local socket.
+
+Then check the file is not empty and looks like a dump:
+
+```
+ls -lh /mnt/tank/apps/receipt-tracker/backup-before-update.sql.gz
+```
+
+A few hundred KB or more is normal; a few hundred *bytes* means it failed and we stop there.
+
+If I do not already have the nightly backup running, remind me at the end —
+`scripts/backup.sh` in the repo is meant to be a TrueNAS cron job.
 
 ## Step 1 — Update the image
 
-**Apps → receipt-tracker → Stop, then Start.**
+**Apps → receipt-tracker → Stop.** Wait until it actually reads *Stopped*, then **Start.**
 
-That is it, if the app already carries `pull_policy: always` — every start then fetches the
-current `:latest`. Check the compose file (**Apps → receipt-tracker → Edit**) for that line
-under the `app` service. If it is missing, add it directly under the `image:` line and save;
-saving redeploys, which is also the update.
+That is the whole update *when the pull works*: the compose file carries `pull_policy: always`
+on the `app` service, so every start fetches the current `:latest`. The first start after a
+pull applies any outstanding migrations, which takes a moment.
 
 **Do not look for a "Pull image" button — there isn't one** for an app installed from YAML.
-The three-dot menu on the Application Info panel shows *Update* and *Convert to custom app*;
-*Update* is for catalog apps and does nothing here.
+The three-dot menu shows *Update* and *Convert to custom app*; *Update* is for catalog apps
+and does nothing here.
 
-The first start after the pull applies any outstanding migrations, which takes a moment.
+### When Stop/Start does not actually update anything
+
+This has failed on me before and I expect you to work through it rather than tell me to try
+again. Go in this order, and show me each output.
+
+**1. Is `pull_policy` on the right service?** Open **Apps → receipt-tracker → Edit**. TrueNAS
+re-sorts the YAML keys alphabetically when it saves, which pulls the two `image:` lines far
+apart and makes it very easy to have added the line to `db` instead of `app` — I have done
+exactly that. `pull_policy: always` must sit in the same indented block as
+`image: ghcr.io/cloudhunter77/receipt-tracker:latest`, **not** the one with
+`image: postgres:17-alpine`. If it is in the wrong place, move it and save; saving redeploys,
+which is also the update.
+
+**2. Read the deploy log.** As root:
+
+```
+tail -n 5 /var/log/app_lifecycle.log
+```
+
+That file is where TrueNAS records what happened when the app started, and it is the only
+place the real reason shows up. What to look for:
+
+- **`unauthorized`, `denied`, or a 401 on a manifest request** → the GHCR login expired.
+  This is what it was last time. The token is a GitHub personal access token and they do
+  expire; when it lapses, the pull of a *private* package fails and the app either starts
+  on the stale cached image or does not start at all.
+  Fix, as root: `docker login ghcr.io -u cloudhunter77` — and paste the token **at the
+  password prompt only**, never on the command line, never into this chat. The token needs
+  `read:packages`. If I do not have one to hand, tell me to make a new one at
+  GitHub → Settings → Developer settings → Personal access tokens, and say what scope it
+  needs. Then Stop/Start again.
+- **No mention of a pull at all** → the policy is not being honoured. Force it by hand as
+  root: `docker pull ghcr.io/cloudhunter77/receipt-tracker:latest`, then Stop/Start. If the
+  manual pull says `Image is up to date` while the Rendszer page still shows an old commit,
+  the new image was never published — check the repository's Actions tab before blaming the
+  NAS.
+- **`no space left on device`** → the pool is full; stop and tell me.
+
+**3. Last resort: pin the exact build.** CI publishes `sha-<short commit>` alongside
+`latest`. Changing the tag in the YAML to the exact one always forces a pull, because it is
+an image the NAS has never seen. Tell me the tag you want to use and I will confirm it
+against the repository first.
+
+Whatever we end up doing, none of it touches `pgdata` — the database container is not being
+replaced and my receipts are not involved in any of it.
 
 ## Step 2 — Confirm the update took, and that nothing was lost
 
@@ -91,112 +170,54 @@ Open `http://<nas-ip>:8088` over my VPN, then **Tábla → ⚙** (the Rendszer p
 - The schema line should read **naprakész**.
 - **Feldolgozó** should say it is running.
 
-If the ⚙ button is not on the Tábla header at all, the new image did not load — the page
-ships inside it.
+Then, and this matters more than the version number:
 
-Then check my existing receipts are still listed and that opening one still shows its photo.
-If the list is empty or an image 404s, stop and tell me before doing anything else.
+- **Blokkok** still lists my receipts, and the count is what it was before.
+- Opening one still shows its photo.
+- **Statisztika** still shows my months, not an empty chart.
 
-## Step 3 — Check the thousands-separator fix on the receipt that failed
+If anything there is empty or a photo 404s, **stop immediately** and tell me — we have the
+Step 0 backup and I would rather restore than keep going.
 
-I have a Rossmann receipt in the app that was read wrong, and **the right answer is known**,
-which makes it the best test available.
+## Step 3 — The product recognition
 
-The receipt prints:
+This is the main new thing. Open **Árak**; the "Termékek felismerése" card is at the top.
 
-```
-CIKKSZ M:  67960 1 DB X 8 999 Ft
-* POLICE TO BE EXOTI          8 999
-ENGEDMÉNY                    -4 500
-CIKKSZ M:  67960 1 DB X 8 999 Ft
-* POLICE FREETODARE           8 999
-ENGEDMÉNY                    -4 500
-CIKKSZ M:  59028 1 DB X 929 Ft
-VIGO SZ.ZSAK 60L               929
-ÖSSZESEN:                    9 927 Ft
-```
+1. Tell me how many unmapped lines it found, and roughly how many groups.
+2. Press **Régiek összekapcsolása**. That pass links only lines that normalise
+   letter-for-letter to a product I have already mapped — it fills in blanks and never
+   overwrites anything. Tell me how many it linked.
+3. Look at the groups themselves and tell me whether the colours make sense:
+   - Does anything **green** group two things that are actually different products? That is
+     the one failure that would matter, because green links itself.
+   - Do the **yellow** ones look like genuine "same thing, different spelling" pairs?
+   - Are two sizes of the same drink ever in one group? They must never be.
+4. Confirm a couple of the obvious yellow ones with **Összekapcsolás** and check that the
+   count of unmapped lines drops, and that the product then appears under **Árak** with its
+   price history — including purchases from *before* I mapped it. That backfill is the point
+   of the feature; if the history starts today, something is wrong and I want to know.
 
-Previously it came back as 999, −500, 999, −500, 929 — total 1 927 instead of 9 927.
+## Step 4 — The phone
 
-Find it under **Blokkok** (Rossmann, 9 927 Ft, probably flagged *Ellenőrzendő*) and press
-**Újrafeldolgozás**. That re-runs extraction on the stored photo with the new prompt; it
-costs one API call.
+Do this on my phone, not the desktop browser.
 
-What I want to know:
-
-- Are the two POLICE lines now **8 999** each and the two ENGEDMÉNY lines **−4 500**?
-- Is the total **9 927** and does it say the arithmetic balances?
-- If it is still wrong, tell me exactly which numbers came back — the pattern matters more
-  than the fact it failed.
-
-There is also a new review reason, *"A végösszeg számként és leírt formában nem egyezik"*.
-That one means the model's number and its own transcription of the printed total disagree —
-which is precisely this bug being caught rather than slipping through. Seeing it would be
-the system working, not failing.
-
-## Step 4 — The new Tábla tab
-
-There should now be five tabs along the bottom: Rögzítés, Blokkok, **Tábla**, Statisztika,
-Árak. Open Tábla and check:
-
-- one row per receipt: date, shop, amount, and where it came from;
-- clicking a column heading sorts by it, clicking again reverses;
-- the shop filter box works;
-- the **CSV** button downloads a file. Open it in Excel or LibreOffice and tell me whether
-  the accented characters and the amounts come through correctly — it is
-  semicolon-separated with a comma decimal, which is meant to open without an import
-  dialogue on a Hungarian locale.
-
-## Step 5 — Type in a lost receipt
-
-**Tábla → + Kézi** (or the link at the bottom of the Rögzítés screen).
-
-Enter something real that I have lost: shop, date, one or more lines. Note that the total
-defaults to the sum of the lines, so a single line reading "Bevásárlás / 4 200" is a
-complete entry when that is all I remember.
-
-Check that it saves, lands as **Feldolgozva** (not in the review queue — I typed it, so
-there is nothing to verify), and appears in Tábla and in Statisztika.
-
-## Step 6 — Set up my subscriptions
-
-**Tábla → Előfizetések → + Új előfizetés.** Add these two:
-
-- **Spotify Premium** — I will tell you the amount and the day of the month.
-- **YouTube Premium** — same.
-
-Set the start date to the beginning of this year if I have been paying that long; a past
-start date backfills every month that has come due since.
-
-Then check the important property, because this runs automatically every hour forever and
-must never charge twice:
-
-1. Note the number in the **Eddig** column for Spotify.
-2. Press **Futtatás most** twice.
-3. That number must not change, and no new Spotify rows may appear in Tábla.
-
-If it does change, stop and tell me immediately — that would be a real bug and I would
-rather fix it than let it inflate a month.
-
-Also worth confirming: the generated charges show up in **Statisztika** as ordinary
-spending, not in some separate list.
-
-## Step 7 — Optional, only if the numbers look tight
-
-The width floor (`MIN_IMAGE_WIDTH`, default 800) makes long receipts cost more tokens —
-roughly 2.5x on a very tall one, unchanged on an ordinary photo. Check **Felismerési
-költség** after a few receipts and tell me the per-receipt figure and the token columns. If
-it has jumped more than I like, the cheaper answer is to photograph long receipts in
-sections (📷 További rész) rather than lowering the floor, because sections keep their full
-width anyway.
+- Upload a receipt and **stay on the Rögzítés tab** until it finishes. It must not say
+  *failed to fetch* — that was the bug. If it does, tell me the exact wording, because the
+  new code puts a Hungarian message there instead of the browser's.
+- Lock the phone mid-processing and unlock it. The result should still arrive.
+- Check the tab bar and the buttons are comfortable to hit one-handed.
+- Tapping a text field must not zoom the page in.
+- The **latest receipt** button on the capture screen should jump straight to the last one.
 
 ## Finally
 
 Tell me plainly:
 
-- whether the update went through cleanly and my old receipts survived;
-- what the Rossmann receipt read this time, number by number;
-- whether the double-run test on Spotify held;
+- whether the backup was taken, and where it is;
+- whether the update went through, and if it did not, what
+  `tail -n 5 /var/log/app_lifecycle.log` actually said;
+- that my receipt count and images survived;
+- what the product recognition found, and whether any green group was wrong;
 - and anything that did not work, with the exact error rather than a summary.
 
 If something needs a code change rather than configuration, say so rather than working

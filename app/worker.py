@@ -21,14 +21,16 @@ from app.db import SessionLocal
 from app.extraction.base import ExtractionError, ReceiptExtractor
 from app.extraction.factory import build_extractor
 from app.models import Receipt, ReceiptImage, ReceiptStatus
+from app.services.autolink import autolink_stored
 from app.services.persist import persist_extraction, record_attempt
 from app.services.recurring import materialise_due
 
 log = logging.getLogger(__name__)
 
-# Subscriptions come due once a month; checking hourly is already far more often than
-# needed, and the check is a no-op the rest of the time.
-RECURRING_INTERVAL_SECONDS = 3600
+# Subscriptions come due once a month and product mappings change when you sit down and map
+# them; checking hourly is already far more often than either needs, and both checks are
+# no-ops the rest of the time.
+HOUSEKEEPING_INTERVAL_SECONDS = 3600
 
 
 class ExtractionWorker:
@@ -37,8 +39,10 @@ class ExtractionWorker:
         self._extractor: ReceiptExtractor | None = None
         self._task: asyncio.Task | None = None
         self._stopping = asyncio.Event()
-        # None means never checked, so the first loop iteration does it.
-        self._recurring_checked_at: float | None = None
+        # None means never checked, so the first loop iteration does it. That first pass
+        # is the one that matters after an update: it is what brings receipts stored by the
+        # previous version up to date with the current matching rules.
+        self._housekept_at: float | None = None
 
     @property
     def extractor(self) -> ReceiptExtractor:
@@ -67,9 +71,9 @@ class ExtractionWorker:
     async def run_forever(self) -> None:
         while not self._stopping.is_set():
             try:
-                await self.materialise_recurring()
-            except Exception:  # a broken subscription rule must not stop extraction
-                log.exception("recurring materialisation failed")
+                await self.housekeeping()
+            except Exception:  # housekeeping must never stop extraction
+                log.exception("housekeeping pass failed")
 
             try:
                 did_work = await self.process_next()
@@ -85,27 +89,53 @@ class ExtractionWorker:
                 except TimeoutError:
                     pass
 
-    # --- recurring payments --------------------------------------------------
-    async def materialise_recurring(self) -> int:
-        """Generate any subscription charge that has come due. Cheap and idempotent.
+    # --- periodic housekeeping -----------------------------------------------
+    async def housekeeping(self) -> dict[str, int]:
+        """The once-an-hour jobs: subscriptions coming due, and stored lines to link.
 
-        Rate-limited to once an hour because it is a whole-table scan that almost always
-        finds nothing - the queue loop runs every few seconds and this does not need to.
-        Repeating it early would still be harmless: `recurring_charges` has a unique key on
-        (rule, period), so a second pass over the same period is a no-op, not a double
-        charge.
+        Rate-limited because both are whole-table scans that almost always find nothing -
+        the queue loop runs every few seconds and neither needs that. Repeating one early
+        would still be harmless: `recurring_charges` has a unique key on (rule, period) so
+        a second pass over the same period is a no-op rather than a double charge, and
+        auto-linking only ever fills in a NULL.
+
+        The two are run in separate sessions so a failure in one cannot roll back the
+        other's work.
         """
         now = time.monotonic()
-        if self._recurring_checked_at is not None and (
-            now - self._recurring_checked_at < RECURRING_INTERVAL_SECONDS
+        if self._housekept_at is not None and (
+            now - self._housekept_at < HOUSEKEEPING_INTERVAL_SECONDS
         ):
-            return 0
+            return {}
 
+        done: dict[str, int] = {}
+        for name, job in (("charges", self.materialise_recurring), ("linked", self.autolink)):
+            try:
+                done[name] = await job()
+            except Exception:  # one broken rule must not stop the other job
+                log.exception("%s pass failed", name)
+
+        self._housekept_at = now
+        return done
+
+    async def materialise_recurring(self) -> int:
+        """Generate any subscription charge that has come due. Cheap and idempotent."""
         async with SessionLocal() as session:
             created = await materialise_due(session)
             await session.commit()
-        self._recurring_checked_at = now
         return len(created)
+
+    async def autolink(self) -> int:
+        """Link stored receipt lines to products they letter-for-letter match.
+
+        Without this, recognising a product across tills would only ever apply to receipts
+        scanned after the mapping existed, and everything already in the database would
+        stay unmapped for good.
+        """
+        async with SessionLocal() as session:
+            linked = await autolink_stored(session)
+            await session.commit()
+        return linked
 
     # --- work ----------------------------------------------------------------
     async def _claim(self, session: AsyncSession) -> Receipt | None:

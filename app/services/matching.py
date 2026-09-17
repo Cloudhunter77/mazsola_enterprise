@@ -53,9 +53,8 @@ NOISE_TOKENS = frozenset({
     "kiszereles", "termek", "ft", "x", "db",
 })
 
-# An identical normalised name. Anything below this is a suggestion, never automatic.
-EXACT = Decimal("1")
-# Above this a pair is worth showing as a likely match; below, it is a guess.
+# Above this a pair is worth showing as a likely match; below, it is a guess. An identical
+# normalised name scores exactly 1, and that is the only score that links itself.
 LIKELY = 0.72
 
 

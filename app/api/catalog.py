@@ -18,7 +18,6 @@ from app.models import (
     ProductAlias,
     Receipt,
     ReceiptItem,
-    ReceiptStatus,
 )
 from app.schemas.api import (
     ApplySuggestionIn,
@@ -31,17 +30,11 @@ from app.schemas.api import (
     SuggestionOut,
     SuggestionsOut,
 )
+from app.services.autolink import READY_FOR_STATS, autolink_stored
 from app.services.catalog import link_product
 from app.services.matching import cluster, fingerprint, parse_name
 
 router = APIRouter(prefix="/api", tags=["catalog"])
-
-# A line only counts towards a suggestion once its receipt has a trustworthy reading.
-READY_FOR_STATS = (
-    ReceiptStatus.PARSED.value,
-    ReceiptStatus.NEEDS_REVIEW.value,
-    ReceiptStatus.CONFIRMED.value,
-)
 
 
 @router.get("/categories", response_model=list[CategoryOut])
@@ -250,9 +243,27 @@ async def apply_suggestion(
         update(ReceiptItem)
         .where(ReceiptItem.raw_name.in_(list(body.raw_names)))
         .where(ReceiptItem.product_id.is_(None))
-        .values(product_id=product.id, category_id=product.category_id)
+        .values(
+            product_id=product.id,
+            # Never replace a category you set on the line yourself with the product's
+            # empty default - confirming a name must not undo a categorisation.
+            category_id=func.coalesce(ReceiptItem.category_id, product.category_id),
+        )
     )
 
     await session.commit()
     await session.refresh(product)
     return ProductOut.model_validate(product)
+
+
+@router.post("/suggestions/autolink")
+async def autolink(_: AuthDep, session: SessionDep) -> dict:
+    """Link every stored line that letter-for-letter matches a product you already have.
+
+    The same pass the worker runs hourly, on demand - because the moment you want it is
+    right after mapping a product, not an hour later. Only exact normalised matches, so
+    there is nothing here to review afterwards.
+    """
+    linked = await autolink_stored(session)
+    await session.commit()
+    return {"linked": linked}

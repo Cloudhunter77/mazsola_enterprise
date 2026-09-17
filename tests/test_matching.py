@@ -242,3 +242,104 @@ class TestTheApi:
 
     async def test_it_needs_a_login(self, client):
         assert (await client.get("/api/suggestions")).status_code == 401
+
+
+@requires_db
+class TestLinkingWhatIsAlreadyStored:
+    """Recognising a product must reach backwards, not only forwards.
+
+    `resolve_product` runs on the way in, so it only ever helps the next receipt. Everything
+    bought before the mapping existed was stored with no product, and nothing would look at
+    those rows again - which would mean a year of shopping stays unmapped while every new
+    receipt lands correctly.
+    """
+
+    async def test_an_old_line_gets_the_product_mapped_later(self, session):
+        from app.models import ReceiptItem
+        from app.services.autolink import autolink_stored
+
+        receipt = await _receipt_with(session, ["PEPSI 1500ML"])
+
+        # The mapping arrives afterwards, spelled the way a different till prints it.
+        product = Product(canonical_name="Pepsi 1,5 l")
+        session.add(product)
+        await session.flush()
+        await link_product(session, product.id, "PEPSI 1,5L", None)
+        await session.commit()
+
+        assert await autolink_stored(session) == 1
+        await session.commit()
+
+        line = (await session.scalars(
+            select(ReceiptItem).where(ReceiptItem.receipt_id == receipt.id)
+        )).one()
+        assert line.product_id == product.id
+
+    async def test_it_leaves_a_merely_similar_line_alone(self, session):
+        """Yellow waits for you. Taking it automatically is the silent-corruption case."""
+        from app.models import ReceiptItem
+        from app.services.autolink import autolink_stored
+
+        await _receipt_with(session, ["Pepsi Cola Zero 1,5L"])
+        product = Product(canonical_name="Pepsi 1,5 l")
+        session.add(product)
+        await session.flush()
+        await link_product(session, product.id, "PEPSI 1,5L", None)
+        await session.commit()
+
+        assert await autolink_stored(session) == 0
+        await session.commit()
+        line = (await session.scalars(select(ReceiptItem))).one()
+        assert line.product_id is None
+
+    async def test_it_does_not_touch_a_line_you_already_mapped(self, session):
+        from app.models import ReceiptItem
+        from app.services.autolink import autolink_stored
+
+        await _receipt_with(session, ["PEPSI 1,5L"])
+        mine, other = Product(canonical_name="Az én termékem"), Product(canonical_name="Másik")
+        session.add_all([mine, other])
+        await session.flush()
+        await link_product(session, other.id, "PEPSI 1,5L", None)
+
+        line = (await session.scalars(select(ReceiptItem))).one()
+        line.product_id = mine.id
+        await session.commit()
+
+        assert await autolink_stored(session) == 0
+        await session.commit()
+        session.expire_all()
+        line = (await session.scalars(select(ReceiptItem))).one()
+        assert line.product_id == mine.id, "a link you made yourself is not ours to change"
+
+    async def test_running_it_twice_changes_nothing_the_second_time(self, session):
+        from app.services.autolink import autolink_stored
+
+        await _receipt_with(session, ["PEPSI 1500ML"])
+        product = Product(canonical_name="Pepsi 1,5 l")
+        session.add(product)
+        await session.flush()
+        await link_product(session, product.id, "PEPSI 1,5L", None)
+        await session.commit()
+
+        assert await autolink_stored(session) == 1
+        await session.commit()
+        assert await autolink_stored(session) == 0, "the pass must be safe to run on a timer"
+
+    async def test_the_button_reports_what_it_did(self, auth_client, session):
+        await _receipt_with(session, ["PEPSI 1500ML"])
+        product = Product(canonical_name="Pepsi 1,5 l")
+        session.add(product)
+        await session.flush()
+        await link_product(session, product.id, "PEPSI 1,5L", None)
+        await session.commit()
+
+        response = await auth_client.post("/api/suggestions/autolink")
+        assert response.status_code == 200, response.text
+        assert response.json() == {"linked": 1}
+
+        # And the line has stopped asking to be classified.
+        assert (await auth_client.get("/api/suggestions")).json()["unmapped_lines"] == 0
+
+    async def test_the_button_needs_a_login(self, client):
+        assert (await client.post("/api/suggestions/autolink")).status_code == 401

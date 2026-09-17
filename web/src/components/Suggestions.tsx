@@ -40,6 +40,24 @@ export default function Suggestions() {
   const suggestions = useAsync(() => api.suggestions(), [reload]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [linked, setLinked] = useState<number | null>(null);
+
+  // What is already in the database, brought up to date with what you have mapped since.
+  // Only letter-for-letter matches, so there is nothing to check afterwards.
+  async function autolink() {
+    setBusy("__autolink");
+    setError(null);
+    setLinked(null);
+    try {
+      const result = await api.autolink();
+      setLinked(result.linked);
+      setReload((n) => n + 1);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function confirm(group: Suggestion, canonicalName: string) {
     setBusy(group.suggested_name);
@@ -65,7 +83,17 @@ export default function Suggestions() {
           title="Termékek felismerése"
           note={`${data.unmapped_lines} besorolatlan sor`}
           action={
-            <button className="btn" onClick={() => setReload((n) => n + 1)}>Frissítés</button>
+            <>
+              <button
+                className="btn"
+                onClick={autolink}
+                disabled={busy === "__autolink"}
+                title="A már eltárolt sorokat összekapcsolja a betűre egyező termékekkel"
+              >
+                {busy === "__autolink" ? "Keresés…" : "Régiek összekapcsolása"}
+              </button>{" "}
+              <button className="btn" onClick={() => setReload((n) => n + 1)}>Frissítés</button>
+            </>
           }
         >
           <p className="muted" style={{ marginTop: 0 }}>
@@ -73,6 +101,16 @@ export default function Suggestions() {
             ártörténetté válnak – és összehasonlíthatóvá, melyik boltban olcsóbb.
           </p>
 
+          {linked !== null && (
+            <p
+              className="muted"
+              style={{ fontSize: "0.86rem", color: linked ? "var(--good-text)" : undefined }}
+            >
+              {linked
+                ? `${linked} korábbi sor kapott terméket.`
+                : "A régi sorok közül egyik sem egyezett betűre – ezek lent várnak rád."}
+            </p>
+          )}
           {error && <p className="error">{error}</p>}
           {data.groups.length === 0 && (
             <p className="muted" style={{ marginBottom: 0 }}>Nincs több javaslat.</p>

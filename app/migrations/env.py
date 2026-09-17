@@ -16,7 +16,13 @@ from app.config import get_settings
 from app.models import Base
 
 config = context.config
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+# A caller that has already set a URL on the Config wins - that is how the migration tests
+# point a run at a throwaway database. Everything else, the app included, gets the one URL
+# the application settings define, so the two can never disagree.
+config.set_main_option(
+    "sqlalchemy.url",
+    config.get_main_option("sqlalchemy.url", None) or get_settings().database_url,
+)
 target_metadata = Base.metadata
 
 

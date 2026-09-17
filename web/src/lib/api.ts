@@ -206,6 +206,8 @@ export const api = {
   suggestions: () => request<Suggestions>("/api/suggestions"),
   applySuggestion: (body: Record<string, unknown>) =>
     request<Product>("/api/suggestions/apply", json("POST", body)),
+  autolink: () =>
+    request<{ linked: number }>("/api/suggestions/autolink", { method: "POST" }),
 
   recurring: () => request<Recurring[]>("/api/recurring"),
   createRecurring: (body: Record<string, unknown>) =>
