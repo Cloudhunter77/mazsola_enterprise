@@ -140,7 +140,9 @@ async def upgraded():
 
     async with engine.begin() as conn:
         for statement in SEED:
-            await conn.execute(text(statement), {k: str(v) for k, v in IDS.items()})
+            # UUID objects rather than strings: asyncpg types a parameter from the
+            # prepared statement, and a uuid column wants a uuid.
+            await conn.execute(text(statement), IDS)
 
     await _alembic(command.upgrade, "head")
     try:
@@ -168,7 +170,7 @@ class TestYourReceiptsSurviveAnUpgrade:
     async def test_the_money_is_unchanged(self, upgraded):
         async with upgraded.connect() as conn:
             total = await conn.scalar(
-                text("SELECT total_gross FROM receipts WHERE id = :id"), {"id": str(IDS["receipt"])}
+                text("SELECT total_gross FROM receipts WHERE id = :id"), {"id": IDS["receipt"]}
             )
         assert str(total) == "1798.00", "a receipt total must round-trip exactly"
 
@@ -179,7 +181,7 @@ class TestYourReceiptsSurviveAnUpgrade:
                     "SELECT p.canonical_name FROM receipt_items i "
                     "JOIN products p ON p.id = i.product_id WHERE i.id = :id"
                 ),
-                {"id": str(IDS["mapped"])},
+                {"id": IDS["mapped"]},
             )
         assert row.scalar_one() == "Pepsi 1,5 l"
 
