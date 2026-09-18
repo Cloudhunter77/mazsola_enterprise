@@ -181,12 +181,13 @@ class TestFailures:
     async def test_a_model_that_ignores_the_schema_fails_loudly(self, settings, photo):
         """The failure this engine is most likely to hit: prose instead of the structure."""
         prose = "Sure! This receipt is from Tesco and the total was 5230 Ft."
-        expected = "did not return the required structure|text rather than JSON"
+        expected = "does not match the required structure|text rather than JSON"
         with pytest.raises(ExtractionError, match=expected):
             await extractor_with(settings, lambda r: completion(prose)).extract(photo)
 
     async def test_valid_json_of_the_wrong_shape_fails_loudly(self, settings, photo):
-        with pytest.raises(ExtractionError, match="did not return the required structure"):
+        """And names the finish reason, so a truncated answer is never mistaken for this one."""
+        with pytest.raises(ExtractionError, match="does not match the required structure"):
             await extractor_with(settings, lambda r: completion('{"shop": "Tesco"}')).extract(photo)
 
     async def test_an_empty_message_suggests_the_cause(self, settings, photo):
