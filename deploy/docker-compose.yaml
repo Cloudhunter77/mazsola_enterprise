@@ -42,10 +42,11 @@ services:
     # "Update" is for catalog apps and does nothing here - so without this line the only
     # ways to get a new image are a shell or changing the tag below by hand.
     #
-    # This only works if the NAS is authorised to pull. Note that the Apps subsystem has
-    # its own registry credential store and does NOT read /root/.docker/config.json - a
-    # `docker login` at the shell does not make an app deploy able to pull. The simplest
-    # answer is a public package, which needs no credential at all; see deploy/README.md.
+    # This package is public, so the pull is anonymous and needs no credential. That is
+    # deliberate: the Apps subsystem keeps its own registry credentials and does NOT read
+    # /root/.docker/config.json, so a `docker login` at the shell does not make an app
+    # deploy able to pull - which made every update silently do nothing while every check
+    # by hand passed. See deploy/README.md.
     #
     # The cost: a start while GHCR is unreachable fails instead of running the image
     # already on disk. `restart: unless-stopped` retries, so a reboot that comes up before

@@ -97,16 +97,18 @@ whether the app will start. If the Apps store has no entry for `ghcr.io`, every 
 fails `unauthorized` while every test you run by hand succeeds — which looks exactly like
 a flaky registry and is not one. Test by starting the app, never by pulling at the shell.
 
-**Recommended — make the GHCR package public.** Then no credential exists to expire, get
-out of sync between those two stores, or be forgotten after a TrueNAS upgrade, and
-`pull_policy: always` works anonymously. On the package's page in GitHub, open its
-settings and change the visibility to public.
+**This package is already public, so there is nothing to do.** `ghcr.io/cloudhunter77/receipt-tracker`
+pulls anonymously; `pull_policy: always` works with no credential at all. That was the
+fix for the problem described above, and it was chosen precisely because it leaves no
+credential to expire, to get out of sync between those two stores, or to be lost in a
+TrueNAS upgrade.
 
-The cost, stated plainly: the image layers *are* the application source, so a public
-package publishes the code even though the repository itself stays private. Nothing
-secret is baked in — every credential the app uses arrives as a runtime environment
-variable — but the source becomes readable by anyone who knows the image name. If that is
-not acceptable, use one of the two below.
+The cost, for anyone weighing the same call: the image layers *are* the application
+source, so a public package publishes the code even when the repository stays private.
+Nothing secret is baked in — every credential the app uses arrives as a runtime
+environment variable — but the source becomes readable by anyone who knows the image
+name. If you fork this and publish a private image of your own, one of the two below
+applies to you.
 
 **Or — add the credential to the Apps store** (keeps everything private). Create a token
 at <https://github.com/settings/tokens> (classic) with only the **`read:packages`** scope,

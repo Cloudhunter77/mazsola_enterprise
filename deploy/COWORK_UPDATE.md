@@ -33,8 +33,8 @@ cheapest for my usual basket.
 
 - Repository: `https://github.com/Cloudhunter77/mazsola_enterprise` (private)
 - Branch: `claude/receipt-expense-tracker-mux58h`
-- Image: `ghcr.io/cloudhunter77/receipt-tracker:latest` on GHCR — see Step 1 for how the
-  NAS is authorised to pull it, which is not what you would assume
+- Image: `ghcr.io/cloudhunter77/receipt-tracker:latest` — a **public** GHCR package, so
+  the NAS pulls it anonymously and no registry credential is involved
 - TrueNAS app name: `receipt-tracker`, containers `receipt-tracker-app-1` and
   `receipt-tracker-db-1`, web UI on port 8088, reachable over my VPN only
 - Deployment guide in the repo: `deploy/README.md`
@@ -163,12 +163,10 @@ place the real reason shows up. What to look for:
   about whether the app can start — and chasing that appearance is how this went
   unsolved twice. **Test by starting the app, never by pulling at the shell.**
 
-  The fix is whichever I have chosen; ask me which before doing either:
-  *(a)* the GHCR package is public, in which case no credential is needed at all and a
-  failure here means something else; or *(b)* an entry for `ghcr.io` exists in the
-  **Apps** credential store. If it is (b) and the entry is missing or stale, tell me — I
-  have to type the token into the TrueNAS UI myself. Never ask me to paste a token to
-  you, and never put one on a command line.
+  **This was found and fixed: the GHCR package is now public**, so the pull is anonymous
+  and no credential is involved anywhere. A 401 here would therefore mean something new —
+  the package visibility was changed back, or the image name is wrong. Tell me rather
+  than reaching for a token; there is no longer one to use.
 
 - **No mention of a pull at all** → the policy is not being honoured. A manual
   `docker pull` here is a *diagnostic only*, and a misleading one: it exercises the OS
