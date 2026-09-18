@@ -31,6 +31,10 @@ async def _photographed_receipt(session, sessionmaker, tmp_path, receipt_photo) 
     )
     receipt, _ = await ingest_image(session, receipt_photo, settings)
     await session.commit()
+    # Keep the id as a plain value. The worker commits in its own session and this one is
+    # expired below, after which reading `receipt.id` would try to reload the row from a
+    # plain attribute access - the MissingGreenlet this project keeps walking into.
+    receipt_id = receipt.id
 
     worker = ExtractionWorker(settings)
     worker._extractor = StubExtractor()
@@ -44,7 +48,7 @@ async def _photographed_receipt(session, sessionmaker, tmp_path, receipt_photo) 
         worker_module.SessionLocal = original
 
     session.expire_all()
-    return await session.get(Receipt, receipt.id)
+    return await session.get(Receipt, receipt_id)
 
 
 @requires_db
