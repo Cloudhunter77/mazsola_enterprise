@@ -9,8 +9,17 @@ access to the NAS). It is written to be understood cold.
 ---
 
 I already run a self-hosted app called **Receipt Tracker** on my TrueNAS SCALE NAS. It is
-installed, healthy, and I photograph every receipt I get with it. A new version has been
-published and I want you to update to it and check what is new actually works.
+installed, healthy, and I photograph every receipt I get with it.
+
+I want three things from this session:
+
+1. **Deploy the new version** and check that what is new actually works.
+2. **Fix the automatic update properly.** Stop/Start is supposed to pull the new image and
+   it does not. I do not want a workaround this time — I want the cause found and fixed, so
+   that the next update is Stop/Start and nothing else. Step 1 has what I know so far.
+3. **Export every receipt I have not confirmed**, and give me the result. I have been
+   leaving the misread ones unconfirmed on purpose so they can be studied; Step 5 is how to
+   get them out and what format I need them in.
 
 I will be at the keyboard the whole time. Stop and tell me if anything does not match what
 is described here.
@@ -117,8 +126,12 @@ and does nothing here.
 
 ### When Stop/Start does not actually update anything
 
-This has failed on me before and I expect you to work through it rather than tell me to try
-again. Go in this order, and show me each output.
+**This is the part I most want fixed.** It has failed on me twice and both times the answer
+was "try again", which is not an answer. Work through the list below in order, show me each
+output, and keep going until either the app is running the new commit *because a pull
+happened*, or you can tell me exactly which step fails and why. A manual `docker pull` that
+gets me onto the new version is a diagnosis, not a fix — if that is where we end up, say so
+plainly and tell me what would have to change for Stop/Start to do it by itself.
 
 **1. Is `pull_policy` on the right service?** Open **Apps → receipt-tracker → Edit**. TrueNAS
 re-sorts the YAML keys alphabetically when it saves, which pulls the two `image:` lines far
@@ -209,6 +222,47 @@ Do this on my phone, not the desktop browser.
 - Tapping a text field must not zoom the page in.
 - The **latest receipt** button on the capture screen should jump straight to the last one.
 
+## Step 5 — Export the receipts I never confirmed
+
+This is the part I care about beyond the update itself.
+
+A receipt I left **unconfirmed** is one whose reading was wrong. I have been leaving them
+that way deliberately rather than correcting and confirming them, so that the mistakes are
+still on file with their photographs. That pile is the raw material for improving the
+extraction prompt, and I want it out of the NAS and into a form I can hand to the session
+that writes the prompt.
+
+There is a script in the image for exactly this. As root:
+
+```
+docker exec receipt-tracker-app-1 python scripts/export_unconfirmed.py
+```
+
+It reads only — it writes nothing to the database. It produces, in `/data/export` inside the
+container, which is `/mnt/tank/apps/receipt-tracker/images/export` on the NAS (adjust the
+pool name if mine is not `tank`, and ask me rather than guessing):
+
+- `unconfirmed.md` — one section per receipt: status, review reasons, the header fields, a
+  table of every line in printed order, and the model's own raw JSON response.
+- `images/` — the photographs, each named after the same short id the Markdown uses.
+
+Then:
+
+1. Tell me how many receipts it exported.
+2. **Paste the entire contents of `unconfirmed.md` to me in the chat**, as text. Not a
+   summary, not the highlights — the whole file, including the raw JSON blocks. If it is too
+   long for one message, split it across several and say which receipts are in each. The
+   exact numbers are the evidence; a paraphrase is useless.
+3. Tell me the filenames in `images/` and where the folder is on the NAS, so I can attach
+   the photographs myself. Do not describe what is in the photographs — I need the pictures,
+   not your reading of them, because comparing your reading against the model's would just
+   be a third opinion.
+4. If any receipt in the export is one I have since fixed by hand, say which — a correction
+   I made is itself evidence of what went wrong.
+
+If the script is not in the image, the update did not take; go back to Step 1. If it errors,
+paste the whole traceback.
+
 ## Finally
 
 Tell me plainly:
@@ -218,6 +272,7 @@ Tell me plainly:
   `tail -n 5 /var/log/app_lifecycle.log` actually said;
 - that my receipt count and images survived;
 - what the product recognition found, and whether any green group was wrong;
+- how many unconfirmed receipts were exported, with `unconfirmed.md` pasted in full;
 - and anything that did not work, with the exact error rather than a summary.
 
 If something needs a code change rather than configuration, say so rather than working
