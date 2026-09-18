@@ -25,7 +25,8 @@ A Hungarian receipt runs in this order:
 4. Discount, deposit and rounding lines.
 5. `ÖSSZESEN` / `FIZETENDŐ` - the total.
 6. Payment: `KÉSZPÉNZ` (cash), `BANKKÁRTYA` (card), then possibly `VISSZAJÁRÓ` (change).
-7. The ÁFA summary block, then the AP code (`AP A12345678`) and NAV control code.
+7. The ÁFA summary block, then the AP code (the letters `AP` followed by a letter and
+   eight digits) and the NAV control code.
 
 # Numbers, dates, money
 
@@ -62,15 +63,31 @@ fix it.
 
 # ÁFA (VAT)
 
-Each item line ends with a collector letter. The mapping is printed in the summary block at the \
-bottom of the receipt - **read it there, do not assume**. The common convention is:
+Hungarian receipts print a collector letter per line and the legend for it in the summary
+block at the bottom. The conventional meanings are:
 - `A` = 27% (the standard rate)
 - `B` = 18% (dairy, bakery, some prepared food)
 - `C` = 5% (books, medicine, some meat, milk)
 - `AM` = mentes (exempt, 0%)
 
-Put the printed letter in `vat_code` and the percent in `vat_rate`. Fill `vat_summary` from the \
-summary block: one entry per rate, with its net (alap), VAT (ÁFA) and gross (bruttó).
+**A code with characters after the letter is not a collector letter.** Aldi, Spar, JYSK,
+Tiger and C&A print a store-internal category code instead: `C00`, `B00`, `A00`, `E00`,
+`C39`, `C48`. These look like a letter and are not one - Aldi prints `C00` on both soup
+vegetables and a chocolate bar, and those cannot both be 5%.
+
+When a line carries a code of that shape:
+- leave `vat_code` and `vat_rate` **null** unless the ÁFA summary block at the bottom of
+  the receipt tells you the rate;
+- and **do not put the code in `raw_name`**. `C00 Choceur tejcs.300g` is a chocolate bar
+  called `Choceur tejcs.300g`. The code belongs to the till, not to the product.
+
+The zeros in these codes are printed narrow and are easy to read as letters. If you find
+yourself about to emit a name beginning `COO `, `BDD ` or `800 `, that is a category code
+you have misread - drop it.
+
+Fill `vat_summary` from the summary block only: one entry per rate, with its net (alap),
+VAT (ÁFA) and gross (bruttó). A receipt with no summary block gets an empty `vat_summary`
+and null rates, and that is a correct answer - guessing a rate is not.
 
 # Where the item list stops
 
@@ -128,7 +145,13 @@ the line, but it is not groceries.
 `gross_amount` is **negative**.
 - `rounding` - the `KEREKÍTÉS` line on cash payments. Signed: `-2`, `+3`, etc. Hungarian cash \
 totals round to the nearest 5 Ft, so this is between -2 and +2.
-- `fee` - `SZATYOR`/`TÁSKA` (bag), service or packaging charges.
+- `fee` - a charge for the transaction rather than for goods: a carrier bag, a service or
+packaging charge, a delivery charge (`SZÁLLÍTÁSI DÍJ`).
+
+**Anything with a product name is an `item`**, including things you do not recognise and
+things that are not food. A handbag from a clothes shop, a bathroom bin, a phone charger:
+all `item`. `fee` is for the shop's charges, not for merchandise - a `Női táska` booked as
+a fee disappears from what you spent on goods. When unsure between the two, choose `item`.
 
 **These are never lines in `items`:**
 - `VISSZAJÁRÓ` (change handed back) - this is the single most common mistake. Ignore it.
@@ -155,6 +178,22 @@ ALMA IDARED                        C
 ```
 
 → `quantity` 0.412, `unit` "kg", `unit_price` 599, `gross_amount` 247.
+
+Scales print the gross weight, the tare, and then the net weight that was actually charged:
+
+```
+COO Vöröshagyma lédig
+0,688 kg - 0,004 kg Tára
+0,684 kg * 205 Ft/kg              140
+```
+
+That is **one** item at `quantity` 0.684 - the line with the price on it. Not 0.688, which
+is before the bag is subtracted, and **not 0.690**: copy the digits as printed and never
+round a weight. `0,124 kg` is `0.124`, not `0.12`. A rounded weight makes the unit price
+wrong for as long as the product is tracked.
+
+Transcribe a name as one run of characters: `DUPLA CSOKIS XXL FORNETTI` is `DUPLA`, never
+`DU PLA`. Do not insert a space into a word or close one that is printed.
 
 Never emit the quantity line as its own item. When only a single amount is printed, set \
 `quantity` to 1 and `unit_price` equal to `gross_amount`.

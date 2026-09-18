@@ -282,7 +282,10 @@ class ExtractionWorker:
             session,
             receipt,
             extractor=self.settings.extractor,
-            model=self.settings.extractor_model,
+            # `extractor_model` is the Anthropic setting; reading it here recorded
+            # `claude-opus-5` against failures that were actually the OpenRouter model, so
+            # the Costs page blamed the wrong engine for every failure.
+            model=self.settings.active_model,
             error=message,
         )
         await session.commit()

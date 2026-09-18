@@ -102,6 +102,19 @@ class Settings(BaseSettings):
     def image_dir(self) -> Path:
         return self.data_dir / "receipts"
 
+    @property
+    def active_model(self) -> str:
+        """The model the configured engine will actually call.
+
+        Two settings hold a model name and only one of them is in use, so anything that
+        reports or records "which model" has to pick. Written twice it drifts: the worker's
+        failure path read the Anthropic setting while the OpenRouter engine was running,
+        and so recorded the wrong model against every failed receipt.
+        """
+        return (
+            self.openrouter_model if self.extractor == "openrouter" else self.extractor_model
+        )
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -41,11 +41,7 @@ async def system(_: AuthDep, session: SessionDep, settings: SettingsDep) -> dict
             "up_to_date": bool(expected and applied and expected == applied),
         },
         "extractor": settings.extractor,
-        "model": (
-            settings.openrouter_model
-            if settings.extractor == "openrouter"
-            else settings.extractor_model
-        ),
+        "model": settings.active_model,
         "worker_enabled": settings.worker_enabled,
         "max_image_edge": settings.max_image_edge,
         "min_image_width": settings.min_image_width,

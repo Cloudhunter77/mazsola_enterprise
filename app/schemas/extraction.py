@@ -70,7 +70,13 @@ class ExtractedReceipt(BaseModel):
         )
     )
     receipt_no: str | None = Field(description="Nyugtaszám / bizonylatszám.")
-    nav_ap_code: str | None = Field(description="AP code from the till, e.g. 'AP A12345678'.")
+    # Deliberately describes the shape rather than showing a specimen: given an invoice
+    # with no AP code at all, a model copied the example out of this description and
+    # emitted it as though it had read it off the paper. An identifier is exactly the kind
+    # of field where an invented value looks real.
+    nav_ap_code: str | None = Field(
+        description="AP code from the till: the letters AP, then a letter and eight digits."
+    )
     payment_method: PaymentLiteral = Field(description="How it was paid.")
 
     currency: str = Field(description="ISO code, almost always HUF.")

@@ -127,6 +127,44 @@ def parse_purchased_at(raw: str | None) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=BUDAPEST)
 
 
+# Aldi, Spar, JYSK, Tiger and C&A all print a store-internal ÁFA category code at the start
+# of each line: `C00`, `B00`, `A00`, `E00`. It is not the product's name and it is not the
+# collector letter - Aldi puts `C00` on both soup vegetables and a chocolate bar, which cannot
+# both be 5%.
+#
+# Left in place it does real damage twice over. In `raw_name` it means `COO Choceur
+# tejcs.300g` never matches the same chocolate bought anywhere else, so the product never
+# accumulates a price history - which is the thing the app is for. Read as a collector letter
+# it puts 5% VAT on a plastic bag.
+#
+# A small vision model reads the zeros as letters, so the codes arrive spelled `COO`, `BDD`
+# and `800` as often as `C00`. The pattern below accepts all of those.
+CATEGORY_CODE = re.compile(r"^[A-Za-z0-9][0OoDd]{2}\s+(?=\S)")
+
+# A unit right after the token means it was a size, not a code: `100 g fokhagyma` starts with
+# something that looks exactly like a category code and is not one.
+SIZE_UNITS = frozenset({"g", "dkg", "kg", "ml", "cl", "dl", "l", "db", "x"})
+
+
+def strip_category_code(raw_name: str) -> str:
+    """Remove a leading store ÁFA category code, so the name is just the product.
+
+    Conservative on purpose: it only strips a three-character leading token, only when what
+    follows is not a unit of measure, and never when that would leave nothing behind. A
+    wrongly stripped name is a silently mismatched product, which is the failure this exists
+    to prevent - so when in doubt it leaves the name alone.
+    """
+    match = CATEGORY_CODE.match(raw_name)
+    if not match:
+        return raw_name
+
+    remainder = raw_name[match.end():]
+    first_word = remainder.split(maxsplit=1)[0].lower().rstrip(".,")
+    if first_word in SIZE_UNITS:
+        return raw_name
+    return remainder
+
+
 def resolve_vat(
     code: str | None, rate: float | Decimal | None
 ) -> tuple[str | None, Decimal | None]:

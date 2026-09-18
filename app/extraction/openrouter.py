@@ -98,6 +98,11 @@ class OpenRouterExtractor:
         content.append({"type": "text", "text": instruction_for(len(encoded))})
         return {
             "model": self.model,
+            # Copying digits off a photograph has one right answer, so sample the most
+            # likely token every time. Left at a provider's default of 1.0 the same receipt
+            # can read differently on a re-run, which makes a misreading impossible to
+            # reproduce and therefore impossible to fix.
+            "temperature": 0,
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": content},

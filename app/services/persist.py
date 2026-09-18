@@ -6,7 +6,7 @@ import logging
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.extraction.base import ExtractionResult
@@ -15,6 +15,7 @@ from app.extraction.hu_rules import (
     classify_line,
     parse_purchased_at,
     resolve_vat,
+    strip_category_code,
     to_decimal,
     validate,
 )
@@ -61,6 +62,41 @@ async def record_attempt(
     return attempt
 
 
+async def _has_earlier_copy(session: AsyncSession, receipt: Receipt) -> bool:
+    """Is this the same receipt as one already stored, photographed a second time?
+
+    `image_sha256` only catches the identical *file* being uploaded twice. Two photographs
+    of one receipt - a retake, a clearer angle, a PDF opened and screenshotted - hash
+    differently and become two receipts, and the month is counted twice. That happened to a
+    currency-exchange slip and a delivery invoice in the same fortnight.
+
+    Every Hungarian receipt prints a nyugtaszám, and it identifies the transaction rather
+    than the photograph, which makes it the key the image hash never was. It is only unique
+    per till, so the shop and the amount have to agree too. Flagging rather than refusing is
+    deliberate: a wrongly refused upload loses a receipt, while a wrongly flagged one costs
+    a glance at the review screen.
+    """
+    if not receipt.receipt_no or receipt.total_gross is None:
+        return False
+
+    twin = await session.scalar(
+        select(Receipt.id)
+        .where(Receipt.id != receipt.id)
+        .where(Receipt.receipt_no == receipt.receipt_no)
+        .where(Receipt.total_gross == receipt.total_gross)
+        .where(
+            Receipt.merchant_id == receipt.merchant_id
+            if receipt.merchant_id
+            else Receipt.merchant_id.is_(None)
+        )
+        .where(Receipt.status != ReceiptStatus.FAILED.value)
+        .limit(1)
+    )
+    if twin is not None:
+        log.info("receipt %s looks like a second photo of %s", receipt.id, twin)
+    return twin is not None
+
+
 async def persist_extraction(
     session: AsyncSession, receipt: Receipt, result: ExtractionResult
 ) -> Validation:
@@ -95,6 +131,9 @@ async def persist_extraction(
     except ValueError:
         receipt.payment_method = PaymentMethod.UNKNOWN.value
 
+    if await _has_earlier_copy(session, receipt):
+        verdict.flag("duplicate_receipt")
+
     await session.execute(delete(ReceiptItem).where(ReceiptItem.receipt_id == receipt.id))
 
     line_no = 0
@@ -106,20 +145,23 @@ async def persist_extraction(
             continue
 
         line_no += 1
+        # The shop's own ÁFA category code is not part of the product's name; left in place
+        # it starts a separate price history per till.
+        raw_name = strip_category_code(raw_item.raw_name)
         vat_code, vat_rate = resolve_vat(raw_item.vat_code, raw_item.vat_rate)
         gross = to_decimal(raw_item.gross_amount) or Decimal("0.00")
         if kind == LineKind.DISCOUNT.value:
             gross = -abs(gross)
 
         product = await resolve_product(
-            session, raw_item.raw_name, receipt.merchant_id
+            session, raw_name, receipt.merchant_id
         ) if kind == LineKind.ITEM.value else None
 
         session.add(
             ReceiptItem(
                 receipt_id=receipt.id,
                 line_no=line_no,
-                raw_name=raw_item.raw_name[:300],
+                raw_name=raw_name[:300],
                 quantity=to_decimal(raw_item.quantity),
                 unit=(raw_item.unit or "")[:10] or None,
                 unit_price=to_decimal(raw_item.unit_price),
