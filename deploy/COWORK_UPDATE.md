@@ -33,8 +33,8 @@ cheapest for my usual basket.
 
 - Repository: `https://github.com/Cloudhunter77/mazsola_enterprise` (private)
 - Branch: `claude/receipt-expense-tracker-mux58h`
-- Image: `ghcr.io/cloudhunter77/receipt-tracker:latest` (private GHCR package; this NAS has
-  been logged in to GHCR as root — see Step 1, that login expires)
+- Image: `ghcr.io/cloudhunter77/receipt-tracker:latest` on GHCR — see Step 1 for how the
+  NAS is authorised to pull it, which is not what you would assume
 - TrueNAS app name: `receipt-tracker`, containers `receipt-tracker-app-1` and
   `receipt-tracker-db-1`, web UI on port 8088, reachable over my VPN only
 - Deployment guide in the repo: `deploy/README.md`
@@ -150,20 +150,32 @@ tail -n 5 /var/log/app_lifecycle.log
 That file is where TrueNAS records what happened when the app started, and it is the only
 place the real reason shows up. What to look for:
 
-- **`unauthorized`, `denied`, or a 401 on a manifest request** → the GHCR login expired.
-  This is what it was last time. The token is a GitHub personal access token and they do
-  expire; when it lapses, the pull of a *private* package fails and the app either starts
-  on the stale cached image or does not start at all.
-  Fix, as root: `docker login ghcr.io -u cloudhunter77` — and paste the token **at the
-  password prompt only**, never on the command line, never into this chat. The token needs
-  `read:packages`. If I do not have one to hand, tell me to make a new one at
-  GitHub → Settings → Developer settings → Personal access tokens, and say what scope it
-  needs. Then Stop/Start again.
-- **No mention of a pull at all** → the policy is not being honoured. Force it by hand as
-  root: `docker pull ghcr.io/cloudhunter77/receipt-tracker:latest`, then Stop/Start. If the
-  manual pull says `Image is up to date` while the Rendszer page still shows an old commit,
-  the new image was never published — check the repository's Actions tab before blaming the
-  NAS.
+- **`unauthorized`, `denied`, or a 401 on a manifest request** → this is the known one,
+  and the cause is **not** the OS-level `docker login`. TrueNAS keeps registry
+  credentials in two separate places:
+
+  * `docker login` at the shell writes `/root/.docker/config.json`, which is what a
+    manual `docker pull` reads;
+  * the **Apps subsystem has its own registry credential store**, which is what an app
+    deploy reads. It does not look at the file above.
+
+  So `docker login` succeeding, and `docker pull` succeeding by hand, tell you nothing
+  about whether the app can start — and chasing that appearance is how this went
+  unsolved twice. **Test by starting the app, never by pulling at the shell.**
+
+  The fix is whichever I have chosen; ask me which before doing either:
+  *(a)* the GHCR package is public, in which case no credential is needed at all and a
+  failure here means something else; or *(b)* an entry for `ghcr.io` exists in the
+  **Apps** credential store. If it is (b) and the entry is missing or stale, tell me — I
+  have to type the token into the TrueNAS UI myself. Never ask me to paste a token to
+  you, and never put one on a command line.
+
+- **No mention of a pull at all** → the policy is not being honoured. A manual
+  `docker pull` here is a *diagnostic only*, and a misleading one: it exercises the OS
+  credential path, not the one the app deploy uses, so it can succeed while the deploy
+  still cannot pull. If it says `Image is up to date` while the Rendszer page shows an
+  old commit, check the repository's Actions tab — the image may never have been
+  published — before blaming the NAS.
 - **`no space left on device`** → the pool is full; stop and tell me.
 
 **3. Last resort: pin the exact build.** CI publishes `sha-<short commit>` alongside

@@ -32,8 +32,10 @@ is cheapest for my usual basket.
 
 Do not redo these:
 
-- The NAS is logged in to GHCR as root (`docker login ghcr.io`), so private image pulls
-  work. Verify with a pull rather than assuming.
+- The NAS can pull the image. Be careful how you verify that: TrueNAS keeps registry
+  credentials for the **Apps** subsystem separately from the `docker login` at the shell,
+  and an app deploy reads only the former. A successful `docker pull` by hand therefore
+  proves nothing about whether the app will start — verify by starting the app.
 - CI is green and the image is published.
 
 ## Start by pulling the current image

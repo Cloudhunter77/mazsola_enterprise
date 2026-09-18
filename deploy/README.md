@@ -80,29 +80,39 @@ outputs — pick another model and try again.
 
 ## 3. Let the NAS pull the image
 
-This repository is private, so the image GitHub Actions publishes to GHCR is private
-too, and a plain `docker pull` from the NAS fails with `denied`. Pick one of these once,
-before installing.
+This repository is private, so the image GitHub Actions publishes to GHCR is private too,
+and the NAS cannot pull it without being told how. Pick one of these once, before
+installing.
 
-**Either — log the NAS in to GHCR (keeps everything private).** Create a token at
-<https://github.com/settings/tokens> (classic) with only the **`read:packages`** scope.
-Then over SSH on the NAS, run these **one at a time** — the second prompts for the
-password, so paste the token there rather than putting it on a command line:
+**Read this first, because it cost a day to learn.** TrueNAS has *two* separate places a
+registry credential can live, and only one of them is used when an app starts:
 
-```sh
-sudo -i
-docker login ghcr.io -u Cloudhunter77
-docker pull ghcr.io/cloudhunter77/receipt-tracker:latest
-```
+* `docker login` at the shell writes `/root/.docker/config.json`. This is what a manual
+  `docker pull` uses.
+* The **Apps subsystem keeps its own registry credentials**, and that is what an app
+  deploy uses. It does not read the file above.
 
-`sudo -i` matters: the Apps system pulls images as root and reads
-`/root/.docker/config.json`. Logging in as your admin user writes to that user's home
-instead, and the pull would still be denied at install time even though the login said
-it succeeded.
+So a successful `docker login` and a successful manual `docker pull` prove *nothing* about
+whether the app will start. If the Apps store has no entry for `ghcr.io`, every deploy
+fails `unauthorized` while every test you run by hand succeeds — which looks exactly like
+a flaky registry and is not one. Test by starting the app, never by pulling at the shell.
 
-The credentials persist across reboots, so every later pull and update just works. A
-major TrueNAS upgrade builds a new boot environment and may not carry them over — if a
-pull is denied after one, just run the login again. To undo: `docker logout ghcr.io`.
+**Recommended — make the GHCR package public.** Then no credential exists to expire, get
+out of sync between those two stores, or be forgotten after a TrueNAS upgrade, and
+`pull_policy: always` works anonymously. On the package's page in GitHub, open its
+settings and change the visibility to public.
+
+The cost, stated plainly: the image layers *are* the application source, so a public
+package publishes the code even though the repository itself stays private. Nothing
+secret is baked in — every credential the app uses arrives as a runtime environment
+variable — but the source becomes readable by anyone who knows the image name. If that is
+not acceptable, use one of the two below.
+
+**Or — add the credential to the Apps store** (keeps everything private). Create a token
+at <https://github.com/settings/tokens> (classic) with only the **`read:packages`** scope,
+and enter it as a registry credential in the TrueNAS Apps UI, not with `docker login`.
+A token has an expiry date; when it lapses, updates stop happening silently, so put the
+date somewhere you will see it.
 
 **Or — build the image on the NAS instead**, and skip the registry entirely:
 
@@ -113,9 +123,6 @@ cd /mnt/tank/apps/receipt-tracker/src && docker build -t receipt-tracker:local .
 
 Then in the compose file below, change the app's `image:` to `receipt-tracker:local` and add
 `pull_policy: never` beside it. Updating then means `git pull` and building again.
-
-Making the GHCR package public is a third option, but the image contains the application
-source, so it would publish the code that this private repository is keeping private.
 
 ## 4. Install
 
