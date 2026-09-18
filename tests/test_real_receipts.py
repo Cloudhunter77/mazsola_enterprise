@@ -203,10 +203,11 @@ class TestASecondPhotoOfOneReceipt:
     async def test_the_first_copy_is_left_alone(self, session):
         """Only the later arrival is questioned; the one already in your statistics stands."""
         first = await _store(session, "a" * 64, receipt_no="2255/00066", total_gross=325.0)
+        first_id = first.id  # read before the expire below turns it into a query
         await _store(session, "b" * 64, receipt_no="2255/00066", total_gross=325.0)
 
         session.expire_all()
-        stored = await session.get(Receipt, first.id)
+        stored = await session.get(Receipt, first_id)
         assert "duplicate_receipt" not in (stored.review_reasons or [])
 
     async def test_it_is_flagged_not_refused(self, session):
@@ -215,7 +216,15 @@ class TestASecondPhotoOfOneReceipt:
         second = await _store(session, "b" * 64, receipt_no="2255/00066", total_gross=325.0)
 
         assert second.total_gross == Decimal("325.00")
-        assert second.items, "the reading is kept in full, so it can be compared and judged"
+
+        from sqlalchemy import select
+
+        from app.models import ReceiptItem
+
+        stored = (await session.scalars(
+            select(ReceiptItem).where(ReceiptItem.receipt_id == second.id)
+        )).all()
+        assert stored, "the reading is kept in full, so it can be compared and judged"
 
     async def test_two_real_receipts_from_one_till_are_not_duplicates(self, session):
         """A nyugtaszám only counts up within one shop, so the amount has to agree too."""
@@ -247,3 +256,89 @@ class TestASecondPhotoOfOneReceipt:
         await session.commit()
 
         assert "duplicate_receipt" not in (receipt.review_reasons or [])
+
+
+class TestARunOutOfRoomIsNotABadPhotograph:
+    """Two long receipts 'failed', and the message blamed structured-output support.
+
+    Neither was true. Both read the shop, address, tax number and date correctly, then
+    stopped mid-field - `"receipt_n` - which is a reply cut off at the token limit, not a
+    model that cannot follow a schema and certainly not a photograph that cannot be read.
+    An error that names the wrong cause sends the next person after the wrong thing, so the
+    reason the answer stopped is now read before its contents are judged.
+    """
+
+    def _extractor(self):
+        from app.config import Settings
+        from app.extraction.openrouter import OpenRouterExtractor
+
+        return OpenRouterExtractor(
+            Settings(secret_key="x" * 64, openrouter_api_key="sk-or-test")
+        )
+
+    def test_the_request_leaves_room_for_a_long_receipt(self):
+        from app.extraction.openrouter import MAX_OUTPUT_TOKENS
+
+        payload = self._extractor()._payload(["dGVzdA=="])
+        assert payload["max_tokens"] == MAX_OUTPUT_TOKENS
+        # The longest real receipt so far needed 6 215 output tokens.
+        assert MAX_OUTPUT_TOKENS > 6215 * 2
+
+    async def test_being_cut_off_says_so(self, monkeypatch):
+        """And says the photo is fine, because that is the question it gets asked."""
+        from app.extraction.base import ExtractionError
+
+        extractor = self._extractor()
+        truncated = '{"merchant_name": "SPAR Magyarország Kereskedelmi Kft.", "receipt_n'
+        self._answer_with(monkeypatch, extractor, truncated, finish_reason="length")
+
+        with pytest.raises(ExtractionError) as caught:
+            await extractor.extract(_one_jpeg())
+
+        message = str(caught.value)
+        assert "cut off" in message
+        assert "photo is fine" in message
+        assert "sections" in message, "tell me what to do about it"
+
+    async def test_a_genuinely_malformed_answer_is_not_called_truncation(self, monkeypatch):
+        from app.extraction.base import ExtractionError
+
+        extractor = self._extractor()
+        self._answer_with(monkeypatch, extractor, '{"merchant_name": 12}', finish_reason="stop")
+
+        with pytest.raises(ExtractionError) as caught:
+            await extractor.extract(_one_jpeg())
+
+        message = str(caught.value)
+        assert "does not match the required structure" in message
+        assert "cut off" not in message
+        assert "'stop'" in message, "the reason it stopped is part of the evidence"
+
+    @staticmethod
+    def _answer_with(monkeypatch, extractor, content: str, *, finish_reason: str) -> None:
+        class Response:
+            status_code = 200
+
+            @staticmethod
+            def json() -> dict:
+                return {
+                    "choices": [
+                        {"message": {"content": content}, "finish_reason": finish_reason}
+                    ],
+                    "usage": {"prompt_tokens": 4000, "completion_tokens": 16000},
+                }
+
+        async def post(*_args, **_kwargs):
+            return Response()
+
+        monkeypatch.setattr(extractor.client, "post", post)
+
+
+def _one_jpeg() -> bytes:
+    import io
+
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (900, 1600), (250, 250, 248)).save(buffer, format="JPEG")
+    return buffer.getvalue()

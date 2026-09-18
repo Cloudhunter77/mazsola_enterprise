@@ -57,6 +57,12 @@ def _tighten(node: Any) -> None:
             _tighten(value)
 
 
+# Enough for a fifty-line weekly shop with change to spare. Worth being generous: output
+# tokens on this model cost fractions of a cent, and the alternative is a receipt that
+# cannot be read at all.
+MAX_OUTPUT_TOKENS = 16000
+
+
 class OpenRouterExtractor:
     name = "openrouter"
 
@@ -103,6 +109,12 @@ class OpenRouterExtractor:
             # can read differently on a re-run, which makes a misreading impossible to
             # reproduce and therefore impossible to fix.
             "temperature": 0,
+            # A weekly shop runs to fifty lines, and one line of this schema costs roughly
+            # 120 tokens. A default cap cut two real receipts off mid-field, and because the
+            # truncated JSON simply failed to validate it was reported as the model not
+            # supporting structured output - which sent the diagnosis after the wrong thing
+            # entirely.
+            "max_tokens": MAX_OUTPUT_TOKENS,
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": content},
@@ -155,9 +167,22 @@ class OpenRouterExtractor:
             raise ExtractionError(f"OpenRouter error: {message}")
 
         try:
-            content = body["choices"][0]["message"]["content"]
+            choice = body["choices"][0]
+            content = choice["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
             raise ExtractionError(f"Unexpected response shape from OpenRouter: {body}") from exc
+
+        # Ask the answer why it stopped before judging what it contains. A reply cut off at
+        # the token limit is valid JSON that simply ends early, and diagnosing that as a
+        # malformed answer costs an afternoon looking at a photograph that was never the
+        # problem.
+        if choice.get("finish_reason") == "length":
+            raise ExtractionError(
+                f"The receipt was longer than the {MAX_OUTPUT_TOKENS} tokens allowed for one "
+                f"answer, so the reading was cut off. Photograph it in more sections "
+                f"(each part is read on its own) or raise the limit. The photo is fine - "
+                f"{self.model} read {len(content)} characters before it ran out of room."
+            )
 
         if not content or not content.strip():
             raise ExtractionError(
@@ -168,8 +193,9 @@ class OpenRouterExtractor:
             receipt = ExtractedReceipt.model_validate_json(content)
         except ValidationError as exc:
             raise ExtractionError(
-                f"The model did not return the required structure - {self.model} may not "
-                f"support strict structured outputs. First 200 characters: {content[:200]!r}"
+                f"{self.model} returned JSON that does not match the required structure. "
+                f"Finish reason {choice.get('finish_reason')!r}. "
+                f"First 200 characters: {content[:200]!r}"
             ) from exc
         except (json.JSONDecodeError, ValueError) as exc:
             raise ExtractionError(
