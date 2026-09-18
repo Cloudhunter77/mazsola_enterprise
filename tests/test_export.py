@@ -169,11 +169,12 @@ class TestItReadsNothingItShouldNot:
         receipt = await _photographed_receipt(
             session, sessionmaker_fixture, tmp_path, receipt_photo
         )
+        receipt_id = receipt.id
         before = (receipt.status, receipt.total_gross)
 
         await collect(session)
         session.expire_all()
 
-        after = await session.get(Receipt, receipt.id)
+        after = await session.get(Receipt, receipt_id)
         assert (after.status, after.total_gross) == before
         assert after.total_gross == Decimal("3595.00")
