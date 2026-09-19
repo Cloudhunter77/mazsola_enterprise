@@ -181,6 +181,11 @@ class ReceiptItem(Base, TimestampMixin):
     category_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("categories.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # Which rule decided the category: manual, product, learned, keyword or merchant. A
+    # mis-categorised line is the quiet kind of wrong - the total is off and no screen looks
+    # broken - so recording the rule is what makes a guess findable afterwards. It also lets
+    # a better rule overwrite a weaker one later without ever touching what you set yourself.
+    category_source: Mapped[str | None] = mapped_column(String(12), nullable=True, index=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     receipt: Mapped[Receipt] = relationship(back_populates="items")

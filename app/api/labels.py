@@ -29,6 +29,7 @@ from app.schemas.labels import (
     LabelUploadResponse,
     ObservationOut,
     ObservationPatch,
+    ScannedPrice,
 )
 from app.services.ingest import IngestError
 from app.services.labels import ingest_label_photo
@@ -101,6 +102,57 @@ async def list_label_photos(
             error=photo.error,
         )
         for photo, merchant_name, count in (await session.execute(stmt)).all()
+    ]
+
+
+@router.get("/prices", response_model=list[ScannedPrice])
+async def scanned_prices(
+    _: AuthDep,
+    session: SessionDep,
+    shop: str | None = Query(None, description="Only this shop."),
+    limit: int = Query(200, le=1000),
+) -> list[ScannedPrice]:
+    """Every price read off a shelf label, newest first.
+
+    A photograph is how the price got here; the price is the thing you want to look at. The
+    photo list answers "did that scan work", this answers "what did it cost".
+    """
+    stmt = (
+        select(
+            PriceObservation,
+            PriceLabelPhoto.observed_at,
+            PriceLabelPhoto.id,
+            Merchant.name,
+            Product.canonical_name,
+        )
+        .join(PriceLabelPhoto, PriceObservation.photo_id == PriceLabelPhoto.id)
+        .outerjoin(Merchant, PriceLabelPhoto.merchant_id == Merchant.id)
+        .outerjoin(Product, PriceObservation.product_id == Product.id)
+        .order_by(PriceLabelPhoto.observed_at.desc(), PriceObservation.line_no)
+        .limit(limit)
+    )
+    if shop:
+        stmt = stmt.where(Merchant.name == shop)
+
+    return [
+        ScannedPrice(
+            id=observation.id,
+            photo_id=photo_id,
+            observed_at=observed_at,
+            merchant_name=merchant_name,
+            raw_name=observation.raw_name,
+            product_id=observation.product_id,
+            product_name=product_name,
+            price=observation.price,
+            unit_price=observation.unit_price,
+            unit=observation.unit,
+            is_promotion=observation.is_promotion,
+            regular_price=observation.regular_price,
+            confidence=observation.confidence,
+        )
+        for observation, observed_at, photo_id, merchant_name, product_name in (
+            await session.execute(stmt)
+        ).all()
     ]
 
 

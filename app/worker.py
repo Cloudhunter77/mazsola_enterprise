@@ -21,7 +21,8 @@ from app.db import SessionLocal
 from app.extraction.base import ExtractionError, ReceiptExtractor
 from app.extraction.factory import build_extractor
 from app.models import LabelStatus, PriceLabelPhoto, Receipt, ReceiptImage, ReceiptStatus
-from app.services.autolink import autolink_stored
+from app.services.autolink import autocreate_exact_groups, autolink_stored
+from app.services.categorise import categorise_stored
 from app.services.labels import persist_labels
 from app.services.persist import persist_extraction, record_attempt
 from app.services.recurring import materialise_due
@@ -136,14 +137,22 @@ class ExtractionWorker:
         return len(created)
 
     async def autolink(self) -> int:
-        """Link stored receipt lines to products they letter-for-letter match.
+        """Bring the catalogue up to date with what is already stored.
 
-        Without this, recognising a product across tills would only ever apply to receipts
-        scanned after the mapping existed, and everything already in the database would
-        stay unmapped for good.
+        Three passes, in order, because each feeds the next: link lines to products they
+        letter-for-letter match, turn the unambiguous leftovers into products of their own,
+        then give anything still uncategorised a category. Run the other way round they
+        would each have less to work with and the whole thing would take several ticks to
+        settle.
+
+        Returns how many lines were linked, which is the number worth logging; the rest is
+        reported in the log line each pass writes for itself.
         """
         async with SessionLocal() as session:
             linked = await autolink_stored(session)
+            await autocreate_exact_groups(session)
+            await autolink_stored(session)
+            await categorise_stored(session)
             await session.commit()
         return linked
 

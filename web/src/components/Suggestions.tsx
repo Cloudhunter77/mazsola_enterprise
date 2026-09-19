@@ -40,17 +40,19 @@ export default function Suggestions() {
   const suggestions = useAsync(() => api.suggestions(), [reload]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [linked, setLinked] = useState<number | null>(null);
+  const [done, setDone] = useState<
+    { linked: number; created: number; categorised: number } | null
+  >(null);
 
   // What is already in the database, brought up to date with what you have mapped since.
   // Only letter-for-letter matches, so there is nothing to check afterwards.
   async function autolink() {
     setBusy("__autolink");
     setError(null);
-    setLinked(null);
+    setDone(null);
     try {
       const result = await api.autolink();
-      setLinked(result.linked);
+      setDone(result);
       setReload((n) => n + 1);
     } catch (err) {
       setError((err as Error).message);
@@ -99,16 +101,30 @@ export default function Suggestions() {
           <p className="muted" style={{ marginTop: 0 }}>
             Ugyanaz a termék máshogy van kiírva minden boltban. Ha összekapcsolod őket, egy
             ártörténetté válnak – és összehasonlíthatóvá, melyik boltban olcsóbb.
+            Az <strong>egyértelmű</strong> eseteket magától elintézi; ide csak az kerül,
+            amihez tényleg te kellesz.
           </p>
 
-          {linked !== null && (
+          {done !== null && (
             <p
               className="muted"
-              style={{ fontSize: "0.86rem", color: linked ? "var(--good-text)" : undefined }}
+              style={{
+                fontSize: "0.86rem",
+                color:
+                  done.linked || done.created || done.categorised
+                    ? "var(--good-text)"
+                    : undefined,
+              }}
             >
-              {linked
-                ? `${linked} korábbi sor kapott terméket.`
-                : "A régi sorok közül egyik sem egyezett betűre – ezek lent várnak rád."}
+              {done.linked || done.created || done.categorised ? (
+                <>
+                  {done.created > 0 && `${done.created} új termék. `}
+                  {done.linked > 0 && `${done.linked} sor kapott terméket. `}
+                  {done.categorised > 0 && `${done.categorised} sor kapott kategóriát.`}
+                </>
+              ) : (
+                "Nem maradt egyértelmű eset – ami lent van, ahhoz te kellesz."
+              )}
             </p>
           )}
           {error && <p className="error">{error}</p>}

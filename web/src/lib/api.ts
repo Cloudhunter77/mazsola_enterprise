@@ -146,6 +146,22 @@ export type Observation = {
   confidence: number | null;
 };
 
+export type ScannedPrice = {
+  id: string;
+  photo_id: string;
+  observed_at: string;
+  merchant_name: string | null;
+  raw_name: string;
+  product_id: string | null;
+  product_name: string | null;
+  price: Money | null;
+  unit_price: Money | null;
+  unit: string | null;
+  is_promotion: boolean;
+  regular_price: Money | null;
+  confidence: number | null;
+};
+
 export type LabelPhoto = {
   id: string;
   status: string;
@@ -222,6 +238,8 @@ export const api = {
     });
   },
 
+  scannedPrices: (limit = 200) =>
+    request<ScannedPrice[]>(`/api/labels/prices?limit=${limit}`),
   labelPhotos: (limit = 50) => request<LabelPhoto[]>(`/api/labels?limit=${limit}`),
   labelPhoto: (id: string) => request<LabelPhotoDetail>(`/api/labels/${id}`),
   labelImageUrl: (id: string) => `/api/labels/${id}/image`,
@@ -281,7 +299,12 @@ export const api = {
   applySuggestion: (body: Record<string, unknown>) =>
     request<Product>("/api/suggestions/apply", json("POST", body)),
   autolink: () =>
-    request<{ linked: number }>("/api/suggestions/autolink", { method: "POST" }),
+    request<{
+      linked: number;
+      created: number;
+      categorised: number;
+      by_rule: Record<string, number>;
+    }>("/api/suggestions/autolink", { method: "POST" }),
 
   recurring: () => request<Recurring[]>("/api/recurring"),
   createRecurring: (body: Record<string, unknown>) =>

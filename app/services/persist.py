@@ -172,6 +172,7 @@ async def persist_extraction(
                 confidence=raw_item.confidence,
                 product_id=product.id if product else None,
                 category_id=product.category_id if product else None,
+                category_source="product" if product and product.category_id else None,
             )
         )
 

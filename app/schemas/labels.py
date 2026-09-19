@@ -69,3 +69,21 @@ class LabelPhotoDetail(BaseModel):
     notes: str | None = None
     confidence: float | None = None
     observations: list[ObservationOut] = Field(default_factory=list)
+
+
+class ScannedPrice(BaseModel):
+    """One price read off a shelf, with everything needed to make sense of it on a list."""
+
+    id: uuid.UUID
+    photo_id: uuid.UUID
+    observed_at: datetime
+    merchant_name: str | None = None
+    raw_name: str
+    product_id: uuid.UUID | None = None
+    product_name: str | None = None
+    price: Decimal | None = None
+    unit_price: Decimal | None = None
+    unit: str | None = None
+    is_promotion: bool = False
+    regular_price: Decimal | None = None
+    confidence: float | None = None

@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, type LabelPhoto } from "../lib/api";
+import { ft } from "../lib/format";
 import { AsyncBlock, Card, useAsync } from "../components/ui";
 
 const SHOP_KEY = "receipt-tracker-shop";
@@ -36,6 +37,7 @@ export default function Labels() {
   const [pending, setPending] = useState<Pending[]>([]);
   const [reload, setReload] = useState(0);
   const photos = useAsync(() => api.labelPhotos(30), [reload]);
+  const prices = useAsync(() => api.scannedPrices(200), [reload]);
   const cameraInput = useRef<HTMLInputElement>(null);
   const galleryInput = useRef<HTMLInputElement>(null);
 
@@ -185,10 +187,72 @@ export default function Labels() {
         )}
       </Card>
 
+      <AsyncBlock state={prices} empty="Még nincs beolvasott ár.">
+        {(rows) => (
+          <Card title="Beolvasott árak" note={`${rows.length} ár`}>
+            <p className="muted" style={{ marginTop: 0, fontSize: "0.86rem" }}>
+              Amit a polcon láttál. Ha a termék már ismert, az ár bekerül az{" "}
+              <Link to="/arak">ártörténetbe</Link> is – de itt akkor is megvan, ha még nincs
+              hozzá termék.
+            </p>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Megnevezés</th>
+                    <th className="num">Ár</th>
+                    <th className="num">Egységár</th>
+                    <th>Bolt</th>
+                    <th>Mikor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <tr key={row.id}>
+                      <td>
+                        {row.raw_name}
+                        {row.product_name && (
+                          <div className="muted" style={{ fontSize: "0.78rem" }}>
+                            → {row.product_name}
+                          </div>
+                        )}
+                      </td>
+                      <td className="num">
+                        {row.price == null ? "–" : ft(row.price)}
+                        {row.is_promotion && (
+                          <div>
+                            <span className="badge warn">akció</span>
+                            {row.regular_price && (
+                              <span
+                                className="muted"
+                                style={{ fontSize: "0.76rem", textDecoration: "line-through" }}
+                              >
+                                {" "}{ft(row.regular_price)}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td className="num">
+                        {row.unit_price == null
+                          ? "–"
+                          : `${ft(row.unit_price)}/${row.unit ?? "?"}`}
+                      </td>
+                      <td>{row.merchant_name ?? <span className="muted">?</span>}</td>
+                      <td>{new Date(row.observed_at).toLocaleDateString("hu-HU")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
+      </AsyncBlock>
+
       <AsyncBlock state={photos} empty="Még nincs lefotózott címke.">
         {(rows) => (
           <Card
-            title="Legutóbbi címkék"
+            title="Beolvasott fotók"
             action={
               <button className="btn" onClick={() => setReload((n) => n + 1)}>Frissítés</button>
             }

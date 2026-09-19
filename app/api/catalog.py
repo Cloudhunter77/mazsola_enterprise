@@ -30,8 +30,13 @@ from app.schemas.api import (
     SuggestionOut,
     SuggestionsOut,
 )
-from app.services.autolink import READY_FOR_STATS, autolink_stored
+from app.services.autolink import (
+    READY_FOR_STATS,
+    autocreate_exact_groups,
+    autolink_stored,
+)
 from app.services.catalog import link_product
+from app.services.categorise import categorise_stored
 from app.services.matching import cluster, fingerprint, parse_name
 
 router = APIRouter(prefix="/api", tags=["catalog"])
@@ -265,5 +270,14 @@ async def autolink(_: AuthDep, session: SessionDep) -> dict:
     there is nothing here to review afterwards.
     """
     linked = await autolink_stored(session)
+    created = await autocreate_exact_groups(session)
+    # Again, because the products just created give the first pass something to match.
+    linked += await autolink_stored(session)
+    categorised = await categorise_stored(session)
     await session.commit()
-    return {"linked": linked}
+    return {
+        "linked": linked,
+        "created": created,
+        "categorised": sum(categorised.values()),
+        "by_rule": categorised,
+    }
