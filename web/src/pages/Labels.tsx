@@ -36,7 +36,8 @@ export default function Labels() {
   const [pending, setPending] = useState<Pending[]>([]);
   const [reload, setReload] = useState(0);
   const photos = useAsync(() => api.labelPhotos(30), [reload]);
-  const input = useRef<HTMLInputElement>(null);
+  const cameraInput = useRef<HTMLInputElement>(null);
+  const galleryInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     try {
@@ -114,8 +115,12 @@ export default function Labels() {
       </Card>
 
       <Card>
+        {/* Two inputs differing only in `capture`: with it the rear camera opens directly,
+            without it the photo library does. Labels taken earlier are as good a price
+            record as ones taken now - the date that matters is when the photo was taken,
+            and that is what the file carries. */}
         <input
-          ref={input}
+          ref={cameraInput}
           type="file"
           accept="image/*"
           capture="environment"
@@ -126,14 +131,36 @@ export default function Labels() {
             event.target.value = ""; // so the same photo can be retaken
           }}
         />
-        <button
-          className="btn primary big"
-          style={{ width: "100%" }}
-          disabled={!shop.trim()}
-          onClick={() => input.current?.click()}
-        >
-          📷 Címke fotózása
-        </button>
+        <input
+          ref={galleryInput}
+          type="file"
+          accept="image/*"
+          multiple
+          hidden
+          onChange={(event) => {
+            send(event.target.files);
+            event.target.value = "";
+          }}
+        />
+
+        <div className="row" style={{ gap: 8 }}>
+          <button
+            className="btn primary big"
+            style={{ flex: 1 }}
+            disabled={!shop.trim()}
+            onClick={() => cameraInput.current?.click()}
+          >
+            📷 Fotózás
+          </button>
+          <button
+            className="btn big"
+            style={{ flex: 1 }}
+            disabled={!shop.trim()}
+            onClick={() => galleryInput.current?.click()}
+          >
+            🖼️ Tallózás
+          </button>
+        </div>
         {!shop.trim() && (
           <p className="muted" style={{ fontSize: "0.84rem", marginBottom: 0 }}>
             Előbb add meg a boltot – ár bolt nélkül nem összehasonlítható semmivel.

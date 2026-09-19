@@ -15,18 +15,20 @@ so the comparison needs no arithmetic at all.
 
 from __future__ import annotations
 
+import io
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
+from PIL import Image
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.extraction.base import LabelResult
-from app.extraction.hu_rules import strip_category_code, to_decimal
+from app.extraction.hu_rules import BUDAPEST, strip_category_code, to_decimal
 from app.models import LabelStatus, PriceLabelPhoto, PriceObservation
 from app.services.catalog import resolve_merchant, resolve_product
 from app.services.ingest import (
@@ -54,6 +56,46 @@ UNCONFIRMED = (
     LabelStatus.PARSED.value,
     LabelStatus.NEEDS_REVIEW.value,
 )
+
+
+# EXIF tag 36867, DateTimeOriginal: when the shutter actually fired.
+EXIF_TAKEN_AT = 36867
+
+
+def taken_at(data: bytes) -> datetime | None:
+    """When the photograph was taken, according to the camera that took it.
+
+    This matters as soon as you can upload from the gallery. An observation dated by when
+    it was *uploaded* would put a shelf you photographed last week at today's date, and a
+    batch of old photos would land as one flat snapshot of today - which is precisely the
+    kind of wrong that looks completely ordinary on a chart.
+
+    EXIF timestamps carry no timezone, so it is read as local time and converted. Returns
+    None when the photo has no EXIF at all (a screenshot, a download, a stripped export),
+    and the caller falls back to now.
+    """
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            raw = (img.getexif() or {}).get(EXIF_TAKEN_AT)
+    except Exception:  # noqa: BLE001 - a photo without readable EXIF is ordinary, not an error
+        return None
+
+    if not raw or not isinstance(raw, str):
+        return None
+    try:
+        # `2026:09:19 14:32:05` is the EXIF spelling.
+        naive = datetime.strptime(raw.strip(), "%Y:%m:%d %H:%M:%S")
+    except ValueError:
+        return None
+
+    stamped = naive.replace(tzinfo=BUDAPEST).astimezone(UTC)
+    # A camera with a flat battery can report 1970, and a clock set wrong can report next
+    # year. Neither is a date to file a price under.
+    now = datetime.now(UTC)
+    if stamped > now + timedelta(days=1) or stamped.year < 2000:
+        log.info("ignoring implausible EXIF date %r", raw)
+        return None
+    return stamped
 
 
 def _storage_path(settings: Settings, photo_id: uuid.UUID, extension: str) -> Path:
@@ -110,7 +152,10 @@ async def ingest_label_photo(
         image_mime=f"image/{extension.lstrip('.')}",
         merchant_id=merchant.id if merchant else None,
         merchant_raw_name=(merchant_name or "").strip()[:300] or None,
-        observed_at=observed_at or datetime.now(UTC),
+        # What the caller said, else what the camera recorded, else now. A gallery upload
+        # is dated by the photograph; a fresh capture has no EXIF worth preferring over
+        # the clock, and they agree anyway.
+        observed_at=observed_at or taken_at(data) or datetime.now(UTC),
         status=LabelStatus.PENDING.value,
     )
     session.add(photo)

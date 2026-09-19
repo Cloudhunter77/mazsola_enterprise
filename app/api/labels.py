@@ -8,7 +8,6 @@ answer different questions, and a price you saw is not money you spent.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, Query, Response, UploadFile, status
@@ -55,8 +54,10 @@ async def upload_label_photo(
     """Queue one shelf photograph. Returns immediately; the worker reads it in the background."""
     data = await file.read()
     try:
+        # No `observed_at`: passing the clock here would override the photograph's own
+        # timestamp, which is the whole point of being able to upload one taken earlier.
         photo, created = await ingest_label_photo(
-            session, data, settings, merchant_name=shop, observed_at=datetime.now(UTC)
+            session, data, settings, merchant_name=shop
         )
     except IngestError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

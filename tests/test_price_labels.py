@@ -9,6 +9,7 @@ would balance, look ordinary, and be discovered long afterwards, if ever.
 from __future__ import annotations
 
 import io
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -455,3 +456,103 @@ class TestTheApi:
             "/api/labels", files={"file": ("shelf.jpg", shelf_photo, "image/jpeg")}
         )
         assert response.status_code == 401
+
+
+def _jpeg_taken_at(stamp: str | None) -> bytes:
+    """A JPEG carrying (or not carrying) an EXIF DateTimeOriginal."""
+    buffer = io.BytesIO()
+    image = Image.new("RGB", (900, 600), (250, 250, 248))
+    if stamp is None:
+        image.save(buffer, format="JPEG")
+    else:
+        exif = image.getexif()
+        exif[36867] = stamp
+        image.save(buffer, format="JPEG", exif=exif)
+    return buffer.getvalue()
+
+
+class TestWhenTheLabelWasSeen:
+    """Uploading a photo from the gallery is only useful if it keeps its own date.
+
+    Dated by upload instead, a shelf photographed last week files its price under today,
+    and a batch of old photos lands as one flat snapshot of this afternoon - wrong in a way
+    that looks entirely ordinary on a chart.
+    """
+
+    async def test_a_gallery_photo_keeps_the_day_it_was_taken(
+        self, session, label_settings
+    ):
+        photo, _ = await ingest_label_photo(
+            session, _jpeg_taken_at("2026:09:12 16:45:10"), label_settings, merchant_name="Aldi"
+        )
+        await session.commit()
+
+        assert photo.observed_at.date().isoformat() == "2026-09-12"
+
+    async def test_the_exif_time_is_read_as_local_and_stored_as_utc(
+        self, session, label_settings
+    ):
+        """EXIF carries no zone; the camera was in Budapest, the database is in UTC."""
+        photo, _ = await ingest_label_photo(
+            session, _jpeg_taken_at("2026:09:12 16:45:10"), label_settings, merchant_name="Aldi"
+        )
+        await session.commit()
+
+        assert photo.observed_at.hour == 14, "16:45 CEST is 14:45 UTC"
+
+    async def test_a_photo_with_no_exif_falls_back_to_now(self, session, label_settings):
+        """A screenshot or a stripped export still deserves to be recorded."""
+        before = datetime.now(UTC)
+        photo, _ = await ingest_label_photo(
+            session, _jpeg_taken_at(None), label_settings, merchant_name="Aldi"
+        )
+        await session.commit()
+
+        assert photo.observed_at >= before
+
+    @pytest.mark.parametrize(
+        "stamp", ["1970:01:01 00:00:00", "2099:01:01 00:00:00", "not a date", ""]
+    )
+    async def test_a_nonsense_camera_clock_is_ignored(self, session, label_settings, stamp):
+        """A flat battery reports 1970; a mis-set clock reports next year. Neither is a date."""
+        before = datetime.now(UTC)
+        photo, _ = await ingest_label_photo(
+            session, _jpeg_taken_at(stamp), label_settings, merchant_name="Aldi"
+        )
+        await session.commit()
+
+        assert photo.observed_at >= before, "fell back to now rather than filing it in 1970"
+
+    async def test_an_explicit_date_still_wins(self, session, label_settings):
+        """The caller stating a date outranks the camera, which outranks the clock."""
+        stated = datetime(2026, 8, 1, 9, 0, tzinfo=UTC)
+        photo, _ = await ingest_label_photo(
+            session,
+            _jpeg_taken_at("2026:09:12 16:45:10"),
+            label_settings,
+            merchant_name="Aldi",
+            observed_at=stated,
+        )
+        await session.commit()
+
+        assert photo.observed_at == stated
+
+    async def test_the_price_point_is_dated_by_the_photograph(
+        self, session, label_settings
+    ):
+        """What all of the above is for: the time series has to be in the right order."""
+        product = Product(canonical_name="Pepsi 1,5 l")
+        session.add(product)
+        await session.flush()
+        await link_product(session, product.id, "Pepsi Cola 1,5 l", None)
+        await session.commit()
+
+        photo, _ = await ingest_label_photo(
+            session, _jpeg_taken_at("2026:09:12 16:45:10"), label_settings, merchant_name="Aldi"
+        )
+        await session.commit()
+        await persist_labels(session, photo, labels_result(label()))
+        await session.commit()
+
+        history = await stats.price_history(session, product.id)
+        assert history.points[0].purchased_at.date().isoformat() == "2026-09-12"
