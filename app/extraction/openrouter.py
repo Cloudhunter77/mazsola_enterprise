@@ -17,20 +17,25 @@ import base64
 import json
 import logging
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from decimal import Decimal
-from typing import Any
+from typing import Any, TypeVar
 
 import httpx
 from pydantic import BaseModel, ValidationError
 
 from app.config import Settings
-from app.extraction.base import ExtractionError, ExtractionResult, as_parts
+from app.extraction.base import ExtractionError, ExtractionResult, LabelResult, as_parts
+from app.extraction.label_prompt import LABEL_SYSTEM_PROMPT, label_instruction_for
 from app.extraction.preprocess import prepare
 from app.extraction.prompt import SYSTEM_PROMPT, instruction_for
 from app.schemas.extraction import ExtractedReceipt
+from app.schemas.price_label import ExtractedPriceLabels
 
 log = logging.getLogger(__name__)
+
+# Whatever contract a document type declares; `_send` validates against it and hands it back.
+_Parsed = TypeVar("_Parsed", bound=BaseModel)
 
 
 def strict_schema(model: type[BaseModel]) -> dict[str, Any]:
@@ -94,14 +99,24 @@ class OpenRouterExtractor:
     async def aclose(self) -> None:
         await self.client.aclose()
 
-    def _payload(self, encoded: Sequence[str]) -> dict[str, Any]:
+    def _payload(
+        self,
+        encoded: Sequence[str],
+        *,
+        system: str = SYSTEM_PROMPT,
+        # A callable, not a string: the instruction depends on how many images are being
+        # sent, and only this method knows that number.
+        instruction_for_parts: Callable[[int], str] = instruction_for,
+        schema_name: str = "hungarian_receipt",
+        schema_model: type[BaseModel] = ExtractedReceipt,
+    ) -> dict[str, Any]:
         # Images first, instruction last: on a multi-part receipt the instruction has to be
         # read knowing how many images precede it.
         content: list[dict[str, Any]] = [
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{part}"}}
             for part in encoded
         ]
-        content.append({"type": "text", "text": instruction_for(len(encoded))})
+        content.append({"type": "text", "text": instruction_for_parts(len(encoded))})
         return {
             "model": self.model,
             # Copying digits off a photograph has one right answer, so sample the most
@@ -116,22 +131,35 @@ class OpenRouterExtractor:
             # entirely.
             "max_tokens": MAX_OUTPUT_TOKENS,
             "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": system},
                 {"role": "user", "content": content},
             ],
             "response_format": {
                 "type": "json_schema",
                 "json_schema": {
-                    "name": "hungarian_receipt",
+                    "name": schema_name,
                     "strict": True,
-                    "schema": strict_schema(ExtractedReceipt),
+                    "schema": strict_schema(schema_model),
                 },
             },
         }
 
-    async def extract(
-        self, images: Sequence[bytes] | bytes, mime_type: str = "image/jpeg"
-    ) -> ExtractionResult:
+    async def _send(
+        self,
+        images: Sequence[bytes] | bytes,
+        *,
+        schema_model: type[_Parsed],
+        what: str,
+        **payload_options: Any,
+    ) -> tuple[_Parsed, dict[str, Any], int, int, str]:
+        """One call to the gateway, validated. Shared by every document type.
+
+        Returns the parsed object, the usage block, the latency, how many images were sent
+        and their dimensions. Everything that can go wrong with a call - a gateway error, an
+        error inside a 200, an answer cut off at the token limit, an answer that does not
+        match the schema - is handled here once, so a new document type cannot accidentally
+        be missing a check the receipt path already learned to make.
+        """
         parts = as_parts(images)
         prepared = [
             prepare(
@@ -147,13 +175,16 @@ class OpenRouterExtractor:
 
         started = time.monotonic()
         try:
-            response = await self.client.post("/chat/completions", json=self._payload(encoded))
+            response = await self.client.post(
+                "/chat/completions",
+                json=self._payload(encoded, schema_model=schema_model, **payload_options),
+            )
         except httpx.HTTPError as exc:
             raise ExtractionError(f"Could not reach OpenRouter: {exc}") from exc
         latency_ms = int((time.monotonic() - started) * 1000)
 
-        if response.status_code != httpx.codes.OK:
-            # OpenRouter's own message is the useful part - a wrong model id, no credit,
+        if response.status_code >= 400:
+            # Worth surfacing verbatim: a missing key, exhausted credit, a wrong model slug
             # or a model that cannot do vision all say so explicitly.
             raise ExtractionError(
                 f"OpenRouter returned {response.status_code}: {_error_detail(response)}"
@@ -172,25 +203,25 @@ class OpenRouterExtractor:
         except (KeyError, IndexError, TypeError) as exc:
             raise ExtractionError(f"Unexpected response shape from OpenRouter: {body}") from exc
 
+        if not content or not content.strip():
+            raise ExtractionError(
+                "OpenRouter returned an empty message. The model may not support images."
+            )
+
         # Ask the answer why it stopped before judging what it contains. A reply cut off at
         # the token limit is valid JSON that simply ends early, and diagnosing that as a
         # malformed answer costs an afternoon looking at a photograph that was never the
         # problem.
         if choice.get("finish_reason") == "length":
             raise ExtractionError(
-                f"The receipt was longer than the {MAX_OUTPUT_TOKENS} tokens allowed for one "
+                f"The {what} was longer than the {MAX_OUTPUT_TOKENS} tokens allowed for one "
                 f"answer, so the reading was cut off. Photograph it in more sections "
                 f"(each part is read on its own) or raise the limit. The photo is fine - "
                 f"{self.model} read {len(content)} characters before it ran out of room."
             )
 
-        if not content or not content.strip():
-            raise ExtractionError(
-                "OpenRouter returned an empty message. The model may not support images."
-            )
-
         try:
-            receipt = ExtractedReceipt.model_validate_json(content)
+            parsed = schema_model.model_validate_json(content)
         except ValidationError as exc:
             raise ExtractionError(
                 f"{self.model} returned JSON that does not match the required structure. "
@@ -202,28 +233,66 @@ class OpenRouterExtractor:
                 f"The model returned text rather than JSON: {content[:200]!r}"
             ) from exc
 
-        usage = body.get("usage") or {}
+        return parsed, body.get("usage") or {}, latency_ms, len(parts), dimensions
+
+    async def extract(
+        self, images: Sequence[bytes] | bytes, mime_type: str = "image/jpeg"
+    ) -> ExtractionResult:
+        receipt, usage, latency_ms, count, dimensions = await self._send(
+            images, schema_model=ExtractedReceipt, what="receipt"
+        )
         cost = usage.get("cost")
-        input_tokens = usage.get("prompt_tokens")
-        output_tokens = usage.get("completion_tokens")
 
         log.info(
             "extracted receipt via openrouter model=%s parts=%d images=%s in=%s out=%s "
             "cost=%s latency=%dms",
-            self.model, len(parts), dimensions, input_tokens, output_tokens, cost, latency_ms,
+            self.model, count, dimensions, usage.get("prompt_tokens"),
+            usage.get("completion_tokens"), cost, latency_ms,
         )
 
         return ExtractionResult(
             receipt=receipt,
             extractor=self.name,
             model=self.model,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
+            input_tokens=usage.get("prompt_tokens"),
+            output_tokens=usage.get("completion_tokens"),
             # OpenRouter reports the real charge for the request, which beats any price
             # table we could keep here.
             cost_usd=Decimal(str(cost)) if cost is not None else None,
             latency_ms=latency_ms,
             raw=receipt.model_dump(mode="json"),
+        )
+
+    async def extract_labels(
+        self, images: Sequence[bytes] | bytes, mime_type: str = "image/jpeg"
+    ) -> LabelResult:
+        """Read the shelf labels in one or more photographs taken during a single visit."""
+        labels, usage, latency_ms, count, dimensions = await self._send(
+            images,
+            schema_model=ExtractedPriceLabels,
+            what="shelf",
+            system=LABEL_SYSTEM_PROMPT,
+            instruction_for_parts=label_instruction_for,
+            schema_name="hungarian_price_labels",
+        )
+        cost = usage.get("cost")
+
+        log.info(
+            "read %d price label(s) via openrouter model=%s photos=%d images=%s in=%s out=%s "
+            "cost=%s latency=%dms",
+            len(labels.labels), self.model, count, dimensions, usage.get("prompt_tokens"),
+            usage.get("completion_tokens"), cost, latency_ms,
+        )
+
+        return LabelResult(
+            labels=labels,
+            extractor=self.name,
+            model=self.model,
+            input_tokens=usage.get("prompt_tokens"),
+            output_tokens=usage.get("completion_tokens"),
+            cost_usd=Decimal(str(cost)) if cost is not None else None,
+            latency_ms=latency_ms,
+            raw=labels.model_dump(mode="json"),
         )
 
 

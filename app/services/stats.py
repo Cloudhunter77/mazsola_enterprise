@@ -18,7 +18,18 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.models import Category, LineKind, Merchant, Product, Receipt, ReceiptItem, ReceiptStatus
+from app.models import (
+    Category,
+    LabelStatus,
+    LineKind,
+    Merchant,
+    PriceLabelPhoto,
+    PriceObservation,
+    Product,
+    Receipt,
+    ReceiptItem,
+    ReceiptStatus,
+)
 from app.schemas.api import (
     BasketComparison,
     CategorySpend,
@@ -207,6 +218,60 @@ def _effective_unit_price(item_price, gross, quantity) -> Decimal | None:
     return None
 
 
+async def _observed_prices(
+    session: AsyncSession, product_id: uuid.UUID
+) -> list[PricePoint]:
+    """Prices seen on a shelf for this product, without having bought it.
+
+    A shelf label is the better measurement of the two. Hungarian law makes the shop print
+    the egységár, so the price per kilogram or litre is read rather than derived - where a
+    receipt only says what a whole pack cost and leaves the division to us, and to whatever
+    package size the model happened to read.
+
+    Where a label does not print a usable egységár it is skipped rather than guessed at:
+    the whole value of this data is that it did not need an assumption.
+    """
+    rows = (
+        await session.execute(
+            select(
+                PriceLabelPhoto.observed_at,
+                PriceLabelPhoto.merchant_id,
+                func.coalesce(Merchant.name, "Ismeretlen"),
+                PriceObservation.unit_price,
+                PriceObservation.unit,
+                PriceObservation.is_promotion,
+                PriceObservation.id,
+            )
+            .join(PriceLabelPhoto, PriceObservation.photo_id == PriceLabelPhoto.id)
+            .outerjoin(Merchant, PriceLabelPhoto.merchant_id == Merchant.id)
+            .where(PriceObservation.product_id == product_id)
+            .where(PriceObservation.unit_price.is_not(None))
+            .where(PriceLabelPhoto.status != LabelStatus.FAILED.value)
+            .order_by(PriceLabelPhoto.observed_at)
+        )
+    ).all()
+
+    points: list[PricePoint] = []
+    for observed_at, merchant_id, merchant_name, unit_price, unit, promo, observation_id in rows:
+        if unit_price is None or unit_price <= 0:
+            continue
+        points.append(
+            PricePoint(
+                purchased_at=observed_at,
+                merchant_id=merchant_id,
+                merchant_name=merchant_name,
+                unit_price=unit_price,
+                quantity=None,
+                unit=unit,
+                receipt_id=None,
+                source="label",
+                is_promotion=bool(promo),
+                observation_id=observation_id,
+            )
+        )
+    return points
+
+
 async def price_history(
     session: AsyncSession, product_id: uuid.UUID
 ) -> ProductPriceHistory | None:
@@ -252,10 +317,18 @@ async def price_history(
                 quantity=Decimal(qty) if qty is not None else None,
                 unit=unit,
                 receipt_id=receipt_id,
+                source="purchase",
             )
         )
 
-    cheapest = min(points, key=lambda p: p.unit_price).merchant_name if points else None
+    points.extend(await _observed_prices(session, product_id))
+    points.sort(key=lambda point: point.purchased_at)
+
+    # The cheapest shop is decided on prices you could actually pay today, so a promotional
+    # label is left out: a shop that happened to be running a sale the day you walked past
+    # would otherwise look permanently cheaper than one that never discounts.
+    comparable = [point for point in points if not point.is_promotion]
+    cheapest = min(comparable, key=lambda p: p.unit_price).merchant_name if comparable else None
     change_pct = None
     if len(points) >= 2 and points[0].unit_price > 0:
         change_pct = float(

@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -196,7 +197,16 @@ class PricePoint(BaseModel):
     unit_price: Decimal
     quantity: Decimal | None
     unit: str | None
-    receipt_id: uuid.UUID
+    # Null for a shelf label, which has no receipt behind it.
+    receipt_id: uuid.UUID | None = None
+    # `purchase` - you bought it at this price. `label` - you photographed a shelf and did
+    # not buy it. Kept on every point because the two are not interchangeable: a label
+    # proves what a shop asked, a purchase proves what you paid, and a chart that blurred
+    # them would let you believe you had once paid a price you only walked past.
+    source: Literal["purchase", "label"] = "purchase"
+    # An akciós ár is real but temporary, so it is marked rather than hidden.
+    is_promotion: bool = False
+    observation_id: uuid.UUID | None = None
 
 
 class ProductPriceHistory(BaseModel):

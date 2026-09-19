@@ -127,6 +127,41 @@ export interface Recurring {
 }
 
 // --- endpoints -------------------------------------------------------------
+export type LabelUploadResponse = { id: string; status: string; duplicate: boolean };
+
+export type Observation = {
+  id: string;
+  line_no: number;
+  raw_name: string;
+  product_id: string | null;
+  product_name: string | null;
+  price: Money | null;
+  unit_price: Money | null;
+  unit: string | null;
+  package_size: number | null;
+  package_unit: string | null;
+  is_promotion: boolean;
+  regular_price: Money | null;
+  promotion_until: string | null;
+  confidence: number | null;
+};
+
+export type LabelPhoto = {
+  id: string;
+  status: string;
+  observed_at: string;
+  merchant_name: string | null;
+  observation_count: number;
+  review_reasons: string[];
+  error: string | null;
+};
+
+export type LabelPhotoDetail = Omit<LabelPhoto, "observation_count"> & {
+  notes: string | null;
+  confidence: number | null;
+  observations: Observation[];
+};
+
 export const api = {
   me: () => request<SessionInfo>("/api/auth/me"),
   login: (password: string) => request<SessionInfo>("/api/auth/login", json("POST", { password })),
@@ -158,6 +193,45 @@ export const api = {
       xhr.send(form);
     });
   },
+
+  uploadLabel(
+    file: File,
+    shop: string | null,
+    onProgress?: (fraction: number) => void,
+  ): Promise<LabelUploadResponse> {
+    return new Promise((resolve, reject) => {
+      const form = new FormData();
+      form.append("file", file);
+      const query = shop ? `?shop=${encodeURIComponent(shop)}` : "";
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `/api/labels${query}`);
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable && onProgress) onProgress(event.loaded / event.total);
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(JSON.parse(xhr.responseText) as LabelUploadResponse);
+        } else {
+          let detail = `Feltöltés sikertelen (${xhr.status})`;
+          try { detail = JSON.parse(xhr.responseText).detail ?? detail; } catch { /* ignore */ }
+          reject(new ApiError(detail, xhr.status));
+        }
+      };
+      xhr.onerror = () => reject(new ApiError("Nem sikerült elérni a szervert.", 0));
+      xhr.send(form);
+    });
+  },
+
+  labelPhotos: (limit = 50) => request<LabelPhoto[]>(`/api/labels?limit=${limit}`),
+  labelPhoto: (id: string) => request<LabelPhotoDetail>(`/api/labels/${id}`),
+  labelImageUrl: (id: string) => `/api/labels/${id}/image`,
+  patchObservation: (id: string, patch: Record<string, unknown>) =>
+    request<Observation>(`/api/labels/observations/${id}`, json("PATCH", patch)),
+  deleteObservation: (id: string) =>
+    request<void>(`/api/labels/observations/${id}`, { method: "DELETE" }),
+  confirmLabelPhoto: (id: string) =>
+    request<LabelPhotoDetail>(`/api/labels/${id}/confirm`, { method: "POST" }),
+  deleteLabelPhoto: (id: string) => request<void>(`/api/labels/${id}`, { method: "DELETE" }),
 
   receipts: (params: Record<string, string | number | undefined> = {}) => {
     const query = new URLSearchParams(

@@ -20,8 +20,9 @@ from app.config import Settings, get_settings
 from app.db import SessionLocal
 from app.extraction.base import ExtractionError, ReceiptExtractor
 from app.extraction.factory import build_extractor
-from app.models import Receipt, ReceiptImage, ReceiptStatus
+from app.models import LabelStatus, PriceLabelPhoto, Receipt, ReceiptImage, ReceiptStatus
 from app.services.autolink import autolink_stored
+from app.services.labels import persist_labels
 from app.services.persist import persist_extraction, record_attempt
 from app.services.recurring import materialise_due
 
@@ -80,6 +81,15 @@ class ExtractionWorker:
             except Exception:  # never let one bad receipt kill the loop
                 log.exception("worker iteration failed")
                 did_work = False
+
+            # Receipts first, always: a shelf photo is a nice-to-have and a receipt is the
+            # thing you are waiting on with your phone in your hand.
+            if not did_work:
+                try:
+                    did_work = await self.process_next_label()
+                except Exception:
+                    log.exception("label worker iteration failed")
+                    did_work = False
 
             if not did_work:
                 try:
@@ -237,6 +247,113 @@ class ExtractionWorker:
                 f" ({', '.join(verdict.reasons)})" if verdict.reasons else "",
             )
             return True
+
+    # --- shelf labels --------------------------------------------------------
+    async def process_next_label(self) -> bool:
+        """Read one photograph of shelf labels. Returns False when that queue is empty.
+
+        Deliberately a separate path from `process_next` rather than a `kind` column on one
+        queue: the two produce different things - a purchase and an observation - and the
+        only way a shelf price can never reach your spending is for the code that writes
+        spending to be unreachable from here.
+        """
+        async with SessionLocal() as session:
+            photo = await self._claim_label(session)
+            if photo is None:
+                return False
+
+            images = await asyncio.to_thread(self._read_images, [photo.image_path])
+            if images is None:
+                await self._fail_label(
+                    session, photo, f"The photo is missing: {photo.image_path}", terminal=True
+                )
+                return True
+
+            try:
+                result = await self.extractor.extract_labels(images, photo.image_mime)
+            except AttributeError:
+                await self._fail_label(
+                    session,
+                    photo,
+                    f"The {self.settings.extractor} engine cannot read shelf labels.",
+                    terminal=True,
+                )
+                return True
+            except ExtractionError as exc:
+                await self._fail_label(session, photo, str(exc))
+                return True
+            except Exception as exc:  # noqa: BLE001 - surface anything unexpected on the photo
+                log.exception("unexpected label failure for %s", photo.id)
+                await self._fail_label(session, photo, f"{type(exc).__name__}: {exc}")
+                return True
+
+            reasons = await persist_labels(session, photo, result)
+            await session.commit()
+            log.info(
+                "shelf photo %s -> %s%s",
+                photo.id, photo.status, f" ({', '.join(reasons)})" if reasons else "",
+            )
+            return True
+
+    async def _claim_label(self, session: AsyncSession) -> PriceLabelPhoto | None:
+        """Take the oldest waiting shelf photo, including any stranded mid-read."""
+        stale_before = datetime.now(UTC) - timedelta(seconds=self.settings.worker_stale_seconds)
+        stmt = (
+            select(PriceLabelPhoto)
+            .where(
+                or_(
+                    and_(
+                        PriceLabelPhoto.status == LabelStatus.PENDING.value,
+                        PriceLabelPhoto.attempts < self.settings.worker_max_attempts,
+                    ),
+                    and_(
+                        PriceLabelPhoto.status == LabelStatus.PROCESSING.value,
+                        PriceLabelPhoto.updated_at < stale_before,
+                    ),
+                )
+            )
+            .order_by(PriceLabelPhoto.created_at)
+            .limit(1)
+        )
+        if session.bind.dialect.name == "postgresql":
+            stmt = stmt.with_for_update(skip_locked=True)
+
+        photo = await session.scalar(stmt)
+        if photo is None:
+            return None
+
+        if (
+            photo.status == LabelStatus.PROCESSING.value
+            and photo.attempts >= self.settings.worker_max_attempts
+        ):
+            photo.status = LabelStatus.FAILED.value
+            photo.error = "Reading was interrupted and no attempts remain."
+            await session.commit()
+            return None
+
+        photo.status = LabelStatus.PROCESSING.value
+        photo.attempts += 1
+        await session.commit()
+        return photo
+
+    async def _fail_label(
+        self,
+        session: AsyncSession,
+        photo: PriceLabelPhoto,
+        message: str,
+        *,
+        terminal: bool = False,
+    ) -> None:
+        exhausted = terminal or photo.attempts >= self.settings.worker_max_attempts
+        photo.status = (
+            LabelStatus.FAILED.value if exhausted else LabelStatus.PENDING.value
+        )
+        photo.error = message
+        await session.commit()
+        log.warning(
+            "shelf photo %s failed (attempt %d/%d): %s",
+            photo.id, photo.attempts, self.settings.worker_max_attempts, message,
+        )
 
     @staticmethod
     async def _image_paths(session: AsyncSession, receipt: Receipt) -> list[str]:
