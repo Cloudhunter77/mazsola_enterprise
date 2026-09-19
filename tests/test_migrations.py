@@ -127,16 +127,14 @@ SEED = (
 )
 
 
-@pytest.fixture
-async def upgraded():
-    """A database seeded one revision back, then upgraded to head - and an engine on it."""
+async def _seeded_then_upgraded(start: str):
+    """Build a database at `start`, fill it with rows, then upgrade it to head."""
     engine = create_async_engine(TEST_DATABASE_URL, poolclass=None)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
 
-    revisions = _revisions()
-    await _alembic(command.upgrade, revisions[-2])
+    await _alembic(command.upgrade, start)
 
     async with engine.begin() as conn:
         for statement in SEED:
@@ -154,6 +152,32 @@ async def upgraded():
             await conn.run_sync(Base.metadata.drop_all)
             await conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
         await engine.dispose()
+
+
+@pytest.fixture
+async def upgraded():
+    """Seeded at whatever revision precedes head, then upgraded.
+
+    Deliberately relative: this fixture asks "does the newest migration lose anything",
+    so it has to follow head as migrations are added.
+    """
+    async for engine in _seeded_then_upgraded(_revisions()[-2]):
+        yield engine
+
+
+# The revision before the fingerprint column existed. Pinned by name on purpose: a test
+# about one migration's behaviour has to start from the schema that migration ran against.
+# Written as "head minus one" it silently stopped testing anything the moment an unrelated
+# migration landed on top - it seeded a database that already had the column, so there was
+# nothing left to backfill and the test failed for a reason that had nothing to do with
+# what it was checking.
+BEFORE_FINGERPRINTS = "c2f83a41b6d7"
+
+
+@pytest.fixture
+async def upgraded_from_before_fingerprints():
+    async for engine in _seeded_then_upgraded(BEFORE_FINGERPRINTS):
+        yield engine
 
 
 @requires_db
@@ -195,23 +219,26 @@ class TestYourReceiptsSurviveAnUpgrade:
 class TestTheNewColumnCoversWhatIsAlreadyStored:
     """A new matching rule is worth little if it only applies to receipts scanned later."""
 
-    async def test_an_existing_alias_is_backfilled(self, upgraded):
+    async def test_an_existing_alias_is_backfilled(self, upgraded_from_before_fingerprints):
+        """An alias stored before the column existed must come out of the upgrade filled in."""
         from app.services.matching import fingerprint
 
-        async with upgraded.connect() as conn:
+        async with upgraded_from_before_fingerprints.connect() as conn:
             stored = await conn.scalar(
                 text("SELECT fingerprint FROM product_aliases WHERE raw_name = 'PEPSI 1,5L'")
             )
         assert stored == fingerprint("PEPSI 1,5L")
         assert stored, "an empty fingerprint would match nothing, which is the failure"
 
-    async def test_a_line_stored_last_year_now_resolves(self, upgraded):
+    async def test_a_line_stored_last_year_now_resolves(
+        self, upgraded_from_before_fingerprints
+    ):
         """The whole point: a differently-spelled old line finds the product it belongs to."""
         from sqlalchemy.ext.asyncio import async_sessionmaker
 
         from app.services.catalog import resolve_product
 
-        maker = async_sessionmaker(upgraded, expire_on_commit=False)
+        maker = async_sessionmaker(upgraded_from_before_fingerprints, expire_on_commit=False)
         async with maker() as session:
             # Another till, printing millilitres for the same 1.5 l bottle.
             found = await resolve_product(session, "PEPSI 1500ML", IDS["merchant"])

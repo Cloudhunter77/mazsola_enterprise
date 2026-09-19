@@ -111,7 +111,7 @@ class TestItIsNeverSpending:
     async def test_the_monthly_total_does_not_move(
         self, session, sessionmaker_fixture, label_settings, shelf_photo
     ):
-        before = (await stats.summary(session)).total_gross
+        before = (await stats.summary(session)).total
 
         photo = await _photo(session, label_settings, shelf_photo)
         await persist_labels(
@@ -119,7 +119,7 @@ class TestItIsNeverSpending:
         )
         await session.commit()
 
-        after = (await stats.summary(session)).total_gross
+        after = (await stats.summary(session)).total
         assert after == before, "a price you looked at is not money you spent"
 
     async def test_no_line_item_is_written(self, session, label_settings, shelf_photo):

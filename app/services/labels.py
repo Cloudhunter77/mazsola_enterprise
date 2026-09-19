@@ -21,7 +21,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -166,9 +166,13 @@ async def persist_labels(
             photo.merchant_id = merchant.id
             photo.merchant_raw_name = extracted.merchant_name[:300]
 
-    for observation in list(photo.observations):
-        await session.delete(observation)
-    await session.flush()
+    # Deleted by query rather than by walking `photo.observations`: the relationship is
+    # lazy, so touching it here is a database round trip from sync code and fails with
+    # MissingGreenlet. `persist_extraction` has always done it this way for receipt lines;
+    # this deviated from the pattern that already worked.
+    await session.execute(
+        delete(PriceObservation).where(PriceObservation.photo_id == photo.id)
+    )
 
     if not extracted.labels:
         reasons.append("no_labels_found")
