@@ -339,7 +339,10 @@ class TestLinkingWhatIsAlreadyStored:
 
         response = await auth_client.post("/api/suggestions/autolink")
         assert response.status_code == 200, response.text
-        assert response.json() == {"linked": 1}
+        # Asserted by field rather than by whole body: the pass reports several counters
+        # now and will likely report more, and an exact-equality assertion breaks on every
+        # one of those without telling you anything about linking.
+        assert response.json()["linked"] == 1
 
         # And the line has stopped asking to be classified.
         assert (await auth_client.get("/api/suggestions")).json()["unmapped_lines"] == 0
