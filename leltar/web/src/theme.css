@@ -1,0 +1,377 @@
+/* Design tokens.
+   Chart colours come from a palette validated for colour-vision deficiency and for
+   contrast against both surfaces (see the dataviz palette reference). The dark values
+   are their own steps chosen for the dark surface, not an automatic flip - which is why
+   every token is declared three times: once for light, once for the OS dark setting,
+   and once for the in-app toggle, so the toggle wins in both directions. */
+
+:root {
+  color-scheme: light;
+
+  --plane: #f9f9f7;
+  --surface: #fcfcfb;
+  --surface-raised: #ffffff;
+
+  --ink: #0b0b0b;
+  --ink-secondary: #52514e;
+  --ink-muted: #898781;
+
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.1);
+
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+
+  /* Single-hue ramp for magnitude (category and merchant bars). */
+  --seq-500: #256abf;
+  --seq-450: #2a78d6;
+  --seq-350: #5598e7;
+  --seq-250: #86b6ef;
+  --seq-150: #b7d3f6;
+
+  --good: #0ca30c;
+  --good-text: #006300;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+
+  --radius: 10px;
+  --shadow: 0 1px 2px rgba(11, 11, 11, 0.06);
+  --font: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --plane: #0d0d0d;
+    --surface: #1a1a19;
+    --surface-raised: #232322;
+
+    --ink: #ffffff;
+    --ink-secondary: #c3c2b7;
+    --ink-muted: #898781;
+
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.1);
+
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+
+    --seq-500: #86b6ef;
+    --seq-450: #6da7ec;
+    --seq-350: #3987e5;
+    --seq-250: #2a78d6;
+    --seq-150: #256abf;
+
+    --good-text: #0ca30c;
+    --shadow: none;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --plane: #0d0d0d;
+  --surface: #1a1a19;
+  --surface-raised: #232322;
+
+  --ink: #ffffff;
+  --ink-secondary: #c3c2b7;
+  --ink-muted: #898781;
+
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.1);
+
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+
+  --seq-500: #86b6ef;
+  --seq-450: #6da7ec;
+  --seq-350: #3987e5;
+  --seq-250: #2a78d6;
+  --seq-150: #256abf;
+
+  --good-text: #0ca30c;
+  --shadow: none;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.5;
+  background: var(--plane);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 { margin: 0; font-weight: 650; letter-spacing: -0.01em; }
+h1 { font-size: 1.35rem; }
+h2 { font-size: 1.05rem; }
+h3 { font-size: 0.9rem; }
+
+a { color: var(--series-1); }
+
+button, input, select, textarea { font: inherit; color: inherit; }
+
+/* --- layout ------------------------------------------------------------- */
+.app { min-height: 100%; display: flex; flex-direction: column; }
+
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-top)) 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.topbar .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.topbar .spacer { flex: 1; }
+
+.content { flex: 1; padding: 16px; max-width: 1100px; width: 100%; margin: 0 auto; }
+
+.tabbar {
+  position: sticky; bottom: 0; z-index: 20;
+  display: flex; background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.tabbar a {
+  flex: 1; text-align: center; padding: 10px 4px; font-size: 0.78rem;
+  color: var(--ink-muted); text-decoration: none;
+  display: grid; gap: 3px; align-content: center;
+  /* A thumb needs about 44px. The bar was 10px of padding around a 0.72rem label, which
+     is comfortably under that and the reason the tabs were hard to hit. */
+  min-height: 56px;
+  -webkit-tap-highlight-color: transparent;
+}
+.tabbar a .glyph { font-size: 1.4rem; line-height: 1.1; }
+.tabbar a:active { background: var(--surface-raised); }
+.tabbar a.active { color: var(--series-1); font-weight: 600; }
+
+/* --- surfaces ----------------------------------------------------------- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+.card + .card { margin-top: 14px; }
+.card-header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.card-header h2 { flex: 1; min-width: 12ch; }
+
+/* On a phone a title and a control fight for the same line; give each its own. */
+@media (max-width: 560px) {
+  .card-header { flex-direction: column; align-items: stretch; gap: 8px; }
+  .card-header h2 { flex: none; }
+}
+.card-note { color: var(--ink-muted); font-size: 0.8rem; }
+
+.grid { display: grid; gap: 14px; }
+.grid.cols-2 { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.grid.tiles { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+
+/* --- stat tiles --------------------------------------------------------- */
+.tile { background: var(--surface); border: 1px solid var(--border);
+        border-radius: var(--radius); padding: 14px; }
+.tile .label { font-size: 0.78rem; color: var(--ink-secondary); }
+.tile .value { font-size: 1.6rem; font-weight: 680; letter-spacing: -0.02em; margin-top: 4px; }
+.tile .sub { font-size: 0.76rem; color: var(--ink-muted); margin-top: 2px; }
+
+/* --- controls ----------------------------------------------------------- */
+.btn {
+  border: 1px solid var(--border); background: var(--surface-raised);
+  border-radius: 8px; padding: 10px 14px; cursor: pointer; font-weight: 550;
+  /* Every button is a thumb target, not just the big ones. */
+  min-height: 44px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  text-decoration: none; color: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn:active { transform: translateY(1px); }
+.btn:hover { border-color: var(--axis); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn.primary { background: var(--series-1); border-color: var(--series-1); color: #fff; }
+.btn.danger { color: var(--critical); }
+.btn.big { padding: 16px 20px; font-size: 1.05rem; border-radius: 12px; min-height: 56px; }
+/* A row of buttons on a phone should stack to full width rather than shrink to fit. */
+.btn.block { width: 100%; }
+
+.field { display: grid; gap: 5px; margin-bottom: 12px; }
+.field label { font-size: 0.78rem; color: var(--ink-secondary); }
+.field input, .field select, .field textarea,
+label > input, label > select, label > textarea {
+  padding: 11px 12px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface-raised); width: 100%;
+  min-height: 44px;
+  /* 16px exactly: iOS Safari zooms the whole page in on focus for anything smaller, and
+     the zoom does not come back out. This is the single most common mobile web annoyance. */
+  font-size: 16px;
+}
+label { display: grid; gap: 5px; font-size: 0.82rem; color: var(--ink-secondary); }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+/* --- tables ------------------------------------------------------------- */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+th { text-align: left; font-weight: 600; color: var(--ink-secondary);
+     border-bottom: 1px solid var(--border); padding: 8px 8px; white-space: nowrap; }
+td { padding: 8px; border-bottom: 1px solid var(--grid); vertical-align: middle; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* --- status ------------------------------------------------------------- */
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 0.74rem; font-weight: 600; padding: 2px 8px; border-radius: 99px;
+  border: 1px solid var(--border); color: var(--ink-secondary);
+  background: var(--surface-raised); white-space: nowrap;
+}
+.badge.good { color: var(--good-text); }
+.badge.warn { color: var(--serious); }
+.badge.bad { color: var(--critical); }
+
+.empty { text-align: center; padding: 34px 16px; color: var(--ink-muted); }
+.error { color: var(--critical); font-size: 0.86rem; }
+.muted { color: var(--ink-muted); }
+.mono { font-variant-numeric: tabular-nums; }
+
+.spinner {
+  width: 18px; height: 18px; border-radius: 50%; display: inline-block;
+  border: 2px solid var(--grid); border-top-color: var(--series-1);
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 2s; }
+}
+
+
+/* --- phones ---------------------------------------------------------------
+   Everything above is the desktop shape. This is where the app is actually used:
+   one thumb, a 390px-wide screen, often outdoors. */
+@media (max-width: 560px) {
+  body { font-size: 16px; }
+
+  .content { padding: 12px 12px 16px; }
+  .card { padding: 13px; border-radius: 12px; }
+  .card + .card { margin-top: 10px; }
+
+  h1 { font-size: 1.25rem; }
+
+  /* A row of controls at this width is a stack. Shrinking them to fit is what made
+     them too small to hit. */
+  .row > .btn { flex: 1 1 auto; }
+  .page-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .page-actions > * { width: 100%; }
+  .page-actions > h1 { grid-column: 1 / -1; }
+
+  /* Tables stay scrollable rather than crushing every column to two characters.
+     A receipt table is wide and that is fine; it just has to be swipeable. */
+  .table-wrap { margin: 0 -13px; padding: 0 13px; -webkit-overflow-scrolling: touch; }
+  table { font-size: 0.92rem; }
+  th, td { padding: 10px 8px; }
+
+  /* Tiles two-up instead of one long column of numbers. */
+  .grid.tiles { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .tile .value { font-size: 1.35rem; }
+
+  /* Side-by-side panes (the review screen's photo and fields) become one column. */
+  .grid.cols-2 { grid-template-columns: 1fr; }
+}
+
+/* Respect a reduced-motion preference for the press effect. */
+@media (prefers-reduced-motion: reduce) {
+  .btn:active { transform: none; }
+}
+
+
+/* --- this app's own pieces ------------------------------------------------
+   The review screen is where the whole app happens: a photograph on one side, a stack of
+   guesses on the other, each one a name you accept, retype, or tap an alternative for. */
+
+.draft {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  background: var(--surface-raised);
+}
+.draft + .draft { margin-top: 10px; }
+.draft.confirmed { border-color: var(--good); }
+.draft.rejected { opacity: 0.55; }
+.draft .draft-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.draft .draft-head input { flex: 1 1 14ch; }
+
+/* On a phone the name and its two buttons cannot share a line without the buttons
+   wrapping one under the other, which turns five suggestions into a page of scrolling.
+   Give the name its own row and let the buttons split the next one. */
+@media (max-width: 560px) {
+  .draft .draft-head { display: grid; grid-template-columns: 1fr 1fr; }
+  .draft .draft-head input { grid-column: 1 / -1; }
+  .draft .draft-head .badge { grid-column: 1 / -1; justify-self: start; }
+}
+.draft .draft-meta {
+  display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;
+  font-size: 0.78rem; color: var(--ink-muted);
+}
+
+/* One-tap corrections. The model's other guesses are buttons, because typing a name on a
+   phone is the cost this app exists to remove. */
+.alts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.alts button {
+  border: 1px dashed var(--axis); background: transparent; color: var(--ink-secondary);
+  border-radius: 99px; padding: 6px 12px; font-size: 0.8rem; cursor: pointer;
+  min-height: 36px;
+}
+.alts button:hover { border-style: solid; color: var(--ink); }
+
+.photo-frame {
+  width: 100%; border-radius: var(--radius); border: 1px solid var(--border);
+  background: var(--surface-raised); overflow: hidden;
+}
+.photo-frame img { width: 100%; display: block; object-fit: contain; max-height: 60vh; }
+
+/* The capture button is the first thing on the first screen and is pressed with a thumb
+   while holding a phone in the other hand. */
+.capture {
+  display: grid; gap: 10px; place-items: center; text-align: center;
+  padding: 28px 16px; border: 2px dashed var(--axis); border-radius: 14px;
+  background: var(--surface-raised);
+}
+.capture .glyph { font-size: 2.6rem; }
+
+.reason {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 0.74rem; padding: 2px 8px; border-radius: 99px;
+  background: var(--surface); border: 1px solid var(--border); color: var(--serious);
+}
+
+.list-row {
+  display: flex; gap: 10px; align-items: baseline; padding: 10px 0;
+  border-bottom: 1px solid var(--grid);
+}
+.list-row:last-child { border-bottom: none; }
+.list-row .grow { flex: 1; min-width: 0; }
+.list-row .name { font-weight: 560; }
+.list-row .where { font-size: 0.78rem; color: var(--ink-muted); }
+
+.bar { height: 8px; border-radius: 99px; background: var(--grid); overflow: hidden; }
+.bar > span { display: block; height: 100%; background: var(--seq-450); }
+
+.filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.filters select, .filters input { min-height: 44px; font-size: 16px; }
+.filters input[type="search"] { flex: 1 1 16ch; }

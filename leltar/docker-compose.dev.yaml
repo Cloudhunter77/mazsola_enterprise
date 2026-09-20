@@ -1,0 +1,42 @@
+# Local development: builds from source and reloads on change.
+# For the NAS use deploy/docker-compose.yaml, which pulls a prebuilt image instead.
+#
+# The published port is 8001, not 8000: the receipt scanner in the parent directory has
+# 8000, and both are run on the same laptop.
+name: leltar-dev
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: leltar
+      POSTGRES_PASSWORD: leltar
+      POSTGRES_DB: leltar
+    ports: ["5433:5432"]
+    volumes: ["dev-pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U leltar"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      db: {condition: service_healthy}
+    environment:
+      DATABASE_URL: postgresql+asyncpg://leltar:leltar@db:5432/leltar
+      DATA_DIR: /data
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      IDENTIFIER: ${IDENTIFIER:-claude}
+      IDENTIFIER_MODEL: ${IDENTIFIER_MODEL:-claude-sonnet-5}
+      SECRET_KEY: dev-secret-not-for-real-use
+      AUTH_DISABLED: "true"
+    ports: ["8001:8000"]
+    volumes: ["dev-data:/data"]
+
+volumes:
+  dev-pgdata:
+  dev-data:

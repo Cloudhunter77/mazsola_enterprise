@@ -1,0 +1,52 @@
+[project]
+name = "home-inventory"
+version = "0.1.0"
+description = "Photograph what you own; a vision model names it and you approve the name"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    "pydantic>=2.10",
+    "pydantic-settings>=2.7",
+    "python-multipart>=0.0.20",
+    "anthropic>=0.69",
+    "httpx>=0.28",
+    "pillow>=11.0",
+    "itsdangerous>=2.2",
+    "argon2-cffi>=23.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.25",
+    "httpx>=0.28",
+    "ruff>=0.8",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+# Alembic writes these; reformatting generated migrations only creates diff noise.
+extend-exclude = ["leltar/migrations/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# FastAPI's dependency idiom puts calls in argument defaults on purpose.
+"leltar/api/*.py" = ["B008"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+# Tests import shared fixtures via `from tests.conftest import ...`; a bare `pytest`,
+# which is what CI runs, needs the project root on sys.path to find them.
+pythonpath = ["."]
+testpaths = ["tests"]
+markers = ["live: hits the real Anthropic API; requires ANTHROPIC_API_KEY and a real photo"]
+
+[tool.setuptools.packages.find]
+include = ["leltar*"]

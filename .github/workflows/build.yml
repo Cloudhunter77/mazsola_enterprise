@@ -3,7 +3,11 @@ name: build
 on:
   push:
     branches: ["**"]
+    # The inventory app in leltar/ is a separate app with its own workflow. Without this,
+    # a change there would rebuild and republish this app's `latest` image for no reason.
+    paths-ignore: ["leltar/**"]
   pull_request:
+    paths-ignore: ["leltar/**"]
 
 jobs:
   test:

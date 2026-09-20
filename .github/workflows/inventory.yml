@@ -1,0 +1,162 @@
+# Leltár (leltar/). Entirely separate from build.yml, which builds the receipt scanner:
+# separate image, separate tests, separate deploy. A change to one app must never be able
+# to break the other's build, which is the point of them being separate apps at all.
+name: inventory
+
+on:
+  push:
+    branches: ["**"]
+    paths: ["leltar/**", ".github/workflows/inventory.yml"]
+  pull_request:
+    paths: ["leltar/**", ".github/workflows/inventory.yml"]
+
+defaults:
+  run:
+    working-directory: leltar
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: leltar
+          POSTGRES_PASSWORD: leltar
+          POSTGRES_DB: leltar
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U leltar"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # The frontend is built BEFORE the Python tests on purpose. Without web/dist the app
+      # serves no SPA route at all, and the path-traversal test would pass vacuously -
+      # every request 404s because the route it probes does not exist.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: leltar/web/package-lock.json
+      - run: npm ci
+        working-directory: leltar/web
+      - run: npm run build
+        working-directory: leltar/web
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: ruff check leltar tests scripts
+      - name: Run tests
+        env:
+          TEST_DATABASE_URL: postgresql+asyncpg://leltar:leltar@127.0.0.1:5432/leltar
+        run: pytest -q -m "not live"
+
+  image:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    services:
+      # Here so the built image can actually be started before it is published.
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: leltar
+          POSTGRES_PASSWORD: leltar
+          POSTGRES_DB: leltar
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U leltar"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/leltar
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=sha,format=short
+
+      - name: Build stamp
+        id: stamp
+        run: echo "time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      # Build into the local daemon and prove the image works before publishing it. A
+      # green test job says the source is fine; it says nothing about whether the image
+      # was assembled correctly, and an image that cannot import its own modules is
+      # exactly the failure a source-only check misses.
+      - uses: docker/build-push-action@v6
+        with:
+          context: leltar
+          load: true
+          tags: leltar:smoke
+          build-args: |
+            BUILD_COMMIT=${{ github.sha }}
+            BUILD_TIME=${{ steps.stamp.outputs.time }}
+            BUILD_IMAGE=ghcr.io/${{ github.repository_owner }}/leltar:latest
+          cache-from: type=gha,scope=leltar
+          cache-to: type=gha,mode=max,scope=leltar
+
+      - name: Every engine must import inside the image
+        run: |
+          docker run --rm leltar:smoke python -c \
+            "import leltar.main, leltar.extraction.factory, leltar.extraction.claude, \
+             leltar.extraction.local; print('modules import')"
+          docker run --rm leltar:smoke python scripts/try_identify.py --help > /dev/null
+          echo "the identification CLI runs"
+
+      # `--help` passing says nothing about whether the fixture the deploy guide points at
+      # is actually in the image. So check the real paths, read out of the docs themselves
+      # rather than from a hand-copied list that can drift away from them.
+      - name: Every script and fixture the docs reference must exist in the image
+        run: |
+          docs=$(git ls-files '*.md' ':!:web/**')
+          echo "docs scanned: $docs"
+          paths=$(grep -hoE '(scripts|tests)/[A-Za-z0-9_./-]+\.(py|sh|jpg|png)' \
+            $docs | sort -u)
+          echo "checking: $paths"
+          test -n "$paths"
+          for f in $paths; do
+            docker run --rm leltar:smoke test -f "$f" \
+              || { echo "MISSING IN IMAGE: $f"; exit 1; }
+          done
+          echo "every documented path is present"
+
+      - name: The image must start and serve health
+        run: |
+          docker run -d --name leltar-smoke --network host \
+            -e DATABASE_URL=postgresql+asyncpg://leltar:leltar@127.0.0.1:5432/leltar \
+            -e AUTH_DISABLED=true -e WORKER_ENABLED=false \
+            leltar:smoke
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/health; then found=yes; break; fi
+            sleep 2
+          done
+          echo
+          docker logs leltar-smoke
+          docker rm -f leltar-smoke > /dev/null
+          test "${found:-no}" = yes
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: leltar
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BUILD_COMMIT=${{ github.sha }}
+            BUILD_TIME=${{ steps.stamp.outputs.time }}
+            BUILD_IMAGE=ghcr.io/${{ github.repository_owner }}/leltar:latest
+          cache-from: type=gha,scope=leltar

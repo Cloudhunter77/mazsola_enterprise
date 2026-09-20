@@ -1,3 +1,21 @@
+# mazsola_enterprise
+
+Two self-hosted apps for one household NAS. They share a house style — FastAPI, a React
+SPA, PostgreSQL, a vision model behind a swappable engine contract, and a TrueNAS SCALE
+deploy — and nothing else. Separate images, databases, ports, datasets and CI workflows:
+installing, updating or removing one does nothing to the other.
+
+| App | What it does | Where |
+|---|---|---|
+| **Receipt Tracker** | Photograph a receipt, get a queryable expense database | this directory |
+| **Leltár** | Photograph what you own; a vision model names it and you approve the name | [`leltar/`](leltar/) |
+
+Where the two look alike in code — the auth module, the image preprocessing, the version
+panel — it is deliberately copied rather than shared. A library shared between two
+separately deployed apps is how one app's update breaks the other.
+
+---
+
 # Receipt Tracker
 
 Photograph a receipt, get a queryable expense database. Self-hosted, built for

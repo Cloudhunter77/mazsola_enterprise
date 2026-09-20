@@ -1,0 +1,185 @@
+"""The rules are what separates a useful draft from a confident fiction. Test them hard."""
+
+from __future__ import annotations
+
+from decimal import Decimal
+
+from leltar.extraction.rules import (
+    MAX_QUANTITY,
+    clean_object,
+    clean_photo,
+    is_generic,
+    midpoint,
+    names_match,
+    needs_review,
+)
+from tests.conftest import build_photo, obj
+
+
+def test_a_clean_photo_needs_no_review(photo):
+    cleaned, photo_reasons, object_reasons = clean_photo(photo, max_items=12)
+    assert photo_reasons == []
+    assert object_reasons == [[], [], []]
+    assert needs_review(photo_reasons, object_reasons) is False
+    assert len(cleaned.objects) == 3
+
+
+# --- the evidence rules ------------------------------------------------------
+def test_a_brand_that_was_not_legible_is_dropped():
+    """The whole point: an inferred brand is indistinguishable from a read one once saved."""
+    clean, reasons = clean_object(
+        obj("laptop", brand="Dell", product_model="XPS 13", markings_legible=False)
+    )
+    assert clean.brand is None
+    assert clean.product_model is None
+    assert "unverifiable_brand" in reasons
+
+
+def test_a_legible_brand_survives():
+    clean, reasons = clean_object(obj("kézi mixer", brand="Bosch", markings_legible=True))
+    assert clean.brand == "Bosch"
+    assert "unverifiable_brand" not in reasons
+
+
+def test_a_serial_number_not_read_from_the_image_is_dropped():
+    clean, reasons = clean_object(
+        obj("router", serial_number="SN-12345678", serial_visible=False)
+    )
+    assert clean.serial_number is None
+    assert "unverifiable_serial" in reasons
+
+
+def test_a_visible_serial_survives():
+    clean, reasons = clean_object(obj("router", serial_number="SN-123", serial_visible=True))
+    assert clean.serial_number == "SN-123"
+    assert reasons == []
+
+
+# --- names -------------------------------------------------------------------
+def test_generic_names_are_flagged():
+    for name in ("tárgy", "dolog", "eszköz", "Ismeretlen", "egy tárgy", "valami"):
+        assert is_generic(name), name
+
+
+def test_real_names_are_not_generic():
+    for name in ("fehér porcelán bögre", "Bosch kézi mixer", "kék IKEA tárolódoboz"):
+        assert not is_generic(name), name
+
+
+def test_a_generic_name_routes_to_review():
+    _, reasons = clean_object(obj("tárgy"))
+    assert "generic_name" in reasons
+
+
+def test_names_match_ignores_case_accents_and_spacing():
+    assert names_match("Fehér  bögre", "feher bogre")
+    assert not names_match("fehér bögre", "fehér tányér")
+    assert not names_match(None, "bögre")
+
+
+# --- categories --------------------------------------------------------------
+def test_an_unknown_category_falls_back_rather_than_being_trusted():
+    clean, reasons = clean_object(obj("bögre", category="konyhai-eszkozok"))
+    assert clean.category == "egyeb"
+    assert "unknown_category" in reasons
+
+
+# --- value -------------------------------------------------------------------
+def test_a_reversed_value_range_is_straightened_out_silently():
+    clean, reasons = clean_object(obj(value_low_huf=5000, value_high_huf=1000))
+    assert (clean.value_low_huf, clean.value_high_huf) == (1000, 5000)
+    assert reasons == []
+
+
+def test_a_missing_estimate_is_reported_but_not_invented():
+    clean, reasons = clean_object(obj(value_low_huf=None, value_high_huf=None))
+    assert clean.value_low_huf is None
+    assert "no_value_estimate" in reasons
+
+
+def test_an_absurdly_wide_range_is_flagged():
+    _, reasons = clean_object(obj(value_low_huf=1000, value_high_huf=500_000))
+    assert "wide_value_range" in reasons
+
+
+def test_a_household_object_worth_more_than_five_million_is_flagged():
+    _, reasons = clean_object(obj(value_low_huf=6_000_000, value_high_huf=9_000_000))
+    assert "implausible_value" in reasons
+
+
+def test_a_zero_low_end_does_not_make_every_range_wide():
+    """Dividing by the low end would make 0 Ft - 500 Ft an infinitely wide range."""
+    _, reasons = clean_object(obj(value_low_huf=0, value_high_huf=30))
+    assert "wide_value_range" not in reasons
+
+
+def test_midpoint_rounds_to_a_hundred_forints():
+    assert midpoint(800, 2000) == Decimal(1400)
+    assert midpoint(849, None) == Decimal(800)
+    assert midpoint(None, None) is None
+
+
+# --- quantity and alternatives ----------------------------------------------
+def test_quantity_is_clamped_into_the_possible():
+    clean, _ = clean_object(obj(quantity=0))
+    assert clean.quantity == 1
+
+    clean, reasons = clean_object(obj(quantity=5000))
+    assert clean.quantity == MAX_QUANTITY
+    assert "implausible_quantity" in reasons
+
+
+def test_alternatives_drop_the_name_itself_and_stop_at_three():
+    clean, _ = clean_object(
+        obj("bögre", alternatives=["Bögre", "csésze", "kávéscsésze", "pohár", "korsó"])
+    )
+    assert "Bögre" not in clean.alternatives
+    assert clean.alternatives == ["csésze", "kávéscsésze", "pohár"]
+
+
+# --- whole photographs -------------------------------------------------------
+def test_an_empty_photo_is_flagged():
+    _, photo_reasons, _ = clean_photo(build_photo(objects=[]), max_items=12)
+    assert "no_objects" in photo_reasons
+
+
+def test_too_many_objects_keeps_the_confident_ones():
+    crowd = [obj(f"tárgy {index}", confidence=index / 20) for index in range(20)]
+    cleaned, photo_reasons, _ = clean_photo(build_photo(objects=crowd), max_items=5)
+    assert "too_many_objects" in photo_reasons
+    assert len(cleaned.objects) == 5
+    assert all(candidate.confidence >= 0.75 for candidate in cleaned.objects)
+
+
+def test_the_same_thing_named_twice_in_one_photo_is_merged():
+    """One bookshelf seen from two angles in one frame is one bookshelf."""
+    cleaned, _, object_reasons = clean_photo(
+        build_photo(objects=[obj("könyvespolc", quantity=1), obj("Könyvespolc", quantity=3)]),
+        max_items=12,
+    )
+    assert len(cleaned.objects) == 1
+    assert cleaned.objects[0].quantity == 3
+    assert len(object_reasons) == 1
+
+
+def test_a_low_confidence_photo_goes_to_review():
+    _, photo_reasons, _ = clean_photo(build_photo(confidence=0.2), max_items=12)
+    assert "low_confidence" in photo_reasons
+
+
+def test_one_bad_object_does_not_discard_the_good_ones():
+    cleaned, photo_reasons, object_reasons = clean_photo(
+        build_photo(objects=[obj("fa vágódeszka"), obj("tárgy", confidence=0.2)]),
+        max_items=12,
+    )
+    assert len(cleaned.objects) == 2
+    assert object_reasons[0] == []
+    assert set(object_reasons[1]) == {"generic_name", "low_confidence_object"}
+    assert needs_review(photo_reasons, object_reasons) is True
+
+
+def test_cleaning_never_mutates_what_the_model_returned():
+    """The raw reply is kept for the costs record, so it must survive the rules unchanged."""
+    original = build_photo(objects=[obj("laptop", brand="Dell", markings_legible=False)])
+    clean_photo(original, max_items=12)
+    assert original.objects[0].brand == "Dell"

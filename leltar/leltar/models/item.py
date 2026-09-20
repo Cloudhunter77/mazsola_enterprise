@@ -1,0 +1,166 @@
+"""Photographs, and the things found in them.
+
+One photograph yields any number of items: point the camera at a shelf and eight things
+are on it. So a photo is the unit of work for the model, and an item is the unit you
+approve - which is also why an item keeps both the name the model suggested and the name
+you settled on. Those two columns are the whole record of whether this app is any good.
+"""
+
+from __future__ import annotations
+
+import enum
+import uuid
+from datetime import date, datetime
+from decimal import Decimal
+from typing import TYPE_CHECKING
+
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from leltar.models.base import Base, TimestampMixin, money, pk
+
+if TYPE_CHECKING:
+    from leltar.models.catalog import Category
+    from leltar.models.place import Place
+
+
+class PhotoStatus(enum.StrEnum):
+    PENDING = "pending"            # uploaded, waiting for the worker
+    PROCESSING = "processing"      # identification in flight
+    IDENTIFIED = "identified"      # the model named something; nothing looked wrong
+    NEEDS_REVIEW = "needs_review"  # named, but a rule flagged it
+    FAILED = "failed"              # identification errored out past max attempts
+    REVIEWED = "reviewed"          # you have been through its items
+
+
+class ItemStatus(enum.StrEnum):
+    """A draft is a guess. Only you can turn one into an entry in the inventory."""
+
+    DRAFT = "draft"
+    CONFIRMED = "confirmed"
+    REJECTED = "rejected"  # not a thing worth listing; kept so it is not guessed again
+
+
+class Condition(enum.StrEnum):
+    NEW = "new"
+    GOOD = "good"
+    USED = "used"
+    WORN = "worn"
+    BROKEN = "broken"
+    UNKNOWN = "unknown"
+
+
+class Photo(Base, TimestampMixin):
+    __tablename__ = "photos"
+
+    id: Mapped[uuid.UUID] = pk()
+
+    path: Mapped[str] = mapped_column(String(500), nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    mime: Mapped[str] = mapped_column(String(60), default="image/jpeg", nullable=False)
+    source: Mapped[str] = mapped_column(String(20), default="web", nullable=False)
+
+    # Where the camera was pointed, chosen before the upload. It is the one thing a
+    # photograph cannot tell you and you always know, so items inherit it rather than the
+    # model being asked to guess which room this is.
+    place_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("places.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    taken_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # --- pipeline state ------------------------------------------------------
+    status: Mapped[str] = mapped_column(
+        String(20), default=PhotoStatus.PENDING.value, nullable=False, index=True
+    )
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    review_reasons: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The model's one-line description of what it is looking at ("konyhai polc edényekkel").
+    # Useful when a photo's items read oddly: it says whether the picture was understood.
+    scene: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    identified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    items: Mapped[list[Item]] = relationship(
+        back_populates="photo",
+        cascade="all, delete-orphan",
+        order_by="Item.created_at",
+    )
+    place: Mapped[Place | None] = relationship()  # noqa: F821
+
+
+class Item(Base, TimestampMixin):
+    __tablename__ = "items"
+
+    id: Mapped[uuid.UUID] = pk()
+    # Null for something typed in rather than photographed.
+    photo_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("photos.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    place_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("places.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    category_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("categories.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    # --- what it is ----------------------------------------------------------
+    name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    # Never overwritten by an edit. Keeping the original guess next to the name you chose
+    # is what lets the Pontosság page answer "is the model actually saving me typing?" -
+    # and it is the only honest way to answer it, because a corrected name looks exactly
+    # like a right one once it is saved.
+    suggested_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    brand: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    product_model: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    colour: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    material: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    condition: Mapped[str] = mapped_column(
+        String(10), default=Condition.UNKNOWN.value, nullable=False
+    )
+    quantity: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    serial_number: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # --- what it is worth ----------------------------------------------------
+    # A range, because a single figure invented from a photograph is false precision.
+    # `estimated_value` is the midpoint and exists so statistics have one number to add up;
+    # it is an order of magnitude for an insurance list, not a valuation.
+    value_low: Mapped[Decimal | None] = money()
+    value_high: Mapped[Decimal | None] = money()
+    estimated_value: Mapped[Decimal | None] = money()
+    currency: Mapped[str] = mapped_column(String(3), default="HUF", nullable=False)
+    acquired_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    # --- state ---------------------------------------------------------------
+    status: Mapped[str] = mapped_column(
+        String(10), default=ItemStatus.DRAFT.value, nullable=False, index=True
+    )
+    # photo (the model named it) | manual (you typed it)
+    source: Mapped[str] = mapped_column(String(10), default="photo", nullable=False)
+    edited: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    review_reasons: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Other names the model thought plausible. Shown as one-tap alternatives on review,
+    # which is faster than typing a correction and is the app's whole promise.
+    alternatives: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    photo: Mapped[Photo | None] = relationship(back_populates="items")
+    place: Mapped[Place | None] = relationship()  # noqa: F821
+    category: Mapped[Category | None] = relationship()  # noqa: F821
