@@ -36,8 +36,7 @@ export default function Manual() {
         condition: value("condition") ?? "unknown",
         quantity: Number(value("quantity") ?? 1) || 1,
         serial_number: value("serial_number"),
-        value_low: value("value_low"),
-        value_high: value("value_high"),
+        value: value("value"),
         acquired_on: value("acquired_on"),
         notes: value("notes"),
       });
@@ -100,12 +99,8 @@ export default function Manual() {
             <input name="quantity" type="number" min={1} defaultValue={1} />
           </label>
           <label>
-            Érték-tól (Ft)
-            <input name="value_low" type="number" />
-          </label>
-          <label>
-            Érték-ig (Ft)
-            <input name="value_high" type="number" />
+            Érték (Ft, ha fontos)
+            <input name="value" type="number" />
           </label>
           <label>
             Sorozatszám

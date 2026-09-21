@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { api, type Category, type Item, type ItemImage, type Place } from "../lib/api";
 import { Card, Loading } from "../components/ui";
-import { CONDITIONS, ITEM_STATUS, date, range } from "../lib/format";
+import { CONDITIONS, ITEM_STATUS, date, ft } from "../lib/format";
 
 /** One thing: its pictures, its details, and a way to add more of both.
  *
@@ -233,19 +233,11 @@ export default function ItemPage() {
               />
             </label>
             <label>
-              Érték-tól (Ft)
+              Érték (Ft, ha fontos)
               <input
                 type="number"
-                defaultValue={item.value_low ?? ""}
-                onBlur={(event) => save({ value_low: event.target.value || null })}
-              />
-            </label>
-            <label>
-              Érték-ig (Ft)
-              <input
-                type="number"
-                defaultValue={item.value_high ?? ""}
-                onBlur={(event) => save({ value_high: event.target.value || null })}
+                defaultValue={item.value ?? ""}
+                onBlur={(event) => save({ value: event.target.value || null })}
               />
             </label>
             <label>
@@ -273,10 +265,11 @@ export default function ItemPage() {
           </div>
 
           <p className="card-note" style={{ marginTop: 10 }}>
-            {range(item.value_low, item.value_high)}
+            {item.place_path ?? "hely nélkül"}
             {item.suggested_name && item.suggested_name !== item.name && (
               <> · a gép szerint: {item.suggested_name}</>
             )}
+            {item.value && <> · {ft(item.value)}</>}
             {item.acquired_on && <> · beszerezve: {date(item.acquired_on)}</>}
           </p>
 

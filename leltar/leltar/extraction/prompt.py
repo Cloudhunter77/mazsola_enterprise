@@ -11,8 +11,9 @@ turns out to be worthless:
    is worse than no brand: on an insurance list it is a claim you cannot support.
 3. **It inventories the building.** Walls, radiators, doors, the kitchen worktop, the
    ceiling light: all visible, none of them things you own in the sense that matters here.
-4. **It prices to the forint.** "38 400 Ft" for a second-hand armchair is a made-up number
-   wearing a suit. A range is the honest form, and a wide range is a real answer.
+4. **It answers questions nobody asked.** This is a catalogue of what is in the house, not
+   a valuation of it, so the model is not asked what anything is worth. Every field it is
+   asked for is one it can see, and the output is shorter and cheaper for it.
 
 There is a fifth, which the box rule below addresses: asked where something is in the
 frame, a model will always produce four numbers. A box in the wrong place is worse than no
@@ -32,6 +33,9 @@ moving house, and for finding things again.
 
 Your output is a draft that a person will approve or correct one entry at a time. A wrong
 name costs them an edit; an invented detail costs them their trust in every other line.
+
+This is a catalogue of what they own, not a valuation of it. Nothing here asks what
+anything is worth.
 
 ## What to list
 
@@ -93,14 +97,6 @@ fine and a box around the wrong thing is not.
 half behind something else, or you are unsure which of two similar things you are
 describing. A missing box costs nothing: the item simply gets the whole photograph as its
 picture.
-
-## Value
-
-`value_low_huf` and `value_high_huf` bracket what it would cost to replace the object
-second-hand in Hungary today, in forints. Give a range you actually believe: a factor of
-two or three between the ends is normal and useful; a single confident figure is not.
-Leave both null when you have no idea - for a hand-made or sentimental object, that is the
-correct answer.
 
 ## Condition and confidence
 

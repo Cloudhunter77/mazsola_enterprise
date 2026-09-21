@@ -113,9 +113,7 @@ class ItemOut(BaseModel):
     quantity: int
     serial_number: str | None
     description: str | None
-    value_low: Decimal | None
-    value_high: Decimal | None
-    estimated_value: Decimal | None
+    value: Decimal | None
     currency: str
     acquired_on: date | None
     status: str
@@ -150,9 +148,7 @@ class ItemPatch(BaseModel):
     quantity: int | None = Field(default=None, ge=1, le=999)
     serial_number: str | None = None
     description: str | None = None
-    value_low: Decimal | None = None
-    value_high: Decimal | None = None
-    estimated_value: Decimal | None = None
+    value: Decimal | None = None
     acquired_on: date | None = None
     notes: str | None = None
     status: str | None = None
@@ -172,8 +168,7 @@ class ItemIn(BaseModel):
     quantity: int = Field(default=1, ge=1, le=999)
     serial_number: str | None = None
     description: str | None = None
-    value_low: Decimal | None = None
-    value_high: Decimal | None = None
+    value: Decimal | None = None
     acquired_on: date | None = None
     notes: str | None = None
 
@@ -209,8 +204,9 @@ class PhotoDetail(PhotoSummary):
 class StatsSummary(BaseModel):
     items: int
     copies: int
-    total_value: Decimal
-    valued_items: int
+    places_used: int
+    categories_used: int
+    with_picture: int
     drafts: int
     photos: int
     photos_pending: int
@@ -224,7 +220,7 @@ class PlaceStat(BaseModel):
     place_path: str
     items: int
     copies: int
-    total_value: Decimal
+    share: float
 
 
 class CategoryStat(BaseModel):
@@ -232,7 +228,7 @@ class CategoryStat(BaseModel):
     category_name: str
     icon: str | None
     items: int
-    total_value: Decimal
+    copies: int
     share: float
 
 

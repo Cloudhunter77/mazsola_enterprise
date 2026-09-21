@@ -3,11 +3,15 @@
 Photograph what you own; a vision model names it, and you approve the name. Self-hosted,
 built for TrueNAS SCALE, in Hungarian.
 
-The tedious part of a home inventory is not the photographing — it is typing "fekete bőr
-irodai forgószék" four hundred times. So you point the camera at a shelf, and the app comes
-back with a list of names you tap through: accept, tap an alternative, or retype. What
-survives that is the inventory. For insurance, for moving house, and for finding the thing
-you know you own.
+A searchable database of the things in your house, with a picture of each one. The tedious
+part of building one is not the photographing — it is typing "fekete bőr irodai forgószék"
+four hundred times. So you point the camera at a shelf, and the app comes back with a list
+of names you tap through: accept, tap an alternative, or retype. What survives that is the
+catalogue.
+
+It is a catalogue, not a valuation. The model is never asked what anything is worth — the
+counts are of things, and the one value field is optional and typed in by you, for the
+handful of items where it matters.
 
 ## How it works
 
@@ -40,9 +44,9 @@ questions have answers that are worse than useless. So the app does not ask them
   dropped, with `unverifiable_brand` shown against the entry so you know it was dropped
   rather than never guessed. Same rule for serial numbers. On an insurance list, an
   invented brand is a claim you cannot support.
-- **It will not price to the forint.** Values are a range, and a wide range is an honest
-  answer. The midpoint exists so the statistics have something to add up, and the summary
-  says how many items the total actually rests on.
+- **It is not asked what anything is worth.** A price guessed from a photograph is a
+  number that looks like information and is not one, and it costs output tokens on every
+  single call. The app counts things instead.
 - **It will not inventory the building.** Walls, radiators, doors, fitted worktops and the
   ceiling light are all plainly visible and none of them are things you own in the sense
   that matters. Nor is food, nor rubbish.
@@ -75,15 +79,32 @@ pinprick or the entire frame is discarded, and an item whose box did not survive
 gets the whole photograph as its picture - visibly wider, never wrong. The review screen
 shows each crop next to its name, which is where a box on the wrong object is obvious.
 
-## What ends up in the inventory
+## Finding things again
 
-Only what you confirmed. A draft is the model's opinion, and a total that includes
-opinions is the number nobody can use — so drafts are counted separately, as a queue
+A catalogue of a whole household is only as good as its search, so the search is built for
+how people actually type on a phone:
+
+- **Accents are optional.** `bogre` finds the *bögre*, `funyiro` finds the *fűnyíró*.
+  Nobody is going to long-press for an umlaut while standing in the garage.
+- **Words in any order, and each one narrows.** `fekete furo` finds the black drill, not
+  every black thing and every drill.
+- **It looks in the name, the brand, the model, the description, the serial number and
+  your notes** — all folded into one indexed column, kept in step by the model itself so
+  no write path can forget to update it.
+
+**A place means everything inside it.** Places nest — *Garázs › Fém polc › Kék doboz* — and
+asking for the garage shows what is in the boxes in the garage. Anything else would make
+the tree worse than a flat list of rooms.
+
+## What ends up in the catalogue
+
+Only what you confirmed. A draft is the model's opinion, and a count that includes
+opinions moves every time the model has one — so drafts are counted separately, as a queue
 depth. That is also what makes the **Pontosság** panel meaningful: the name the model
 suggested is kept next to the name you settled on, so the app can tell you what share of
 its guesses you accepted unchanged. It is the only honest measure it can take of itself.
 
-## Spending that never took a photograph
+## Things that were never photographed
 
 **Kézi rögzítés** — type in what you did not photograph: what is in the loft, what is lent
 out, what lives in a case. It is stored confirmed rather than queued, because you named
@@ -155,7 +176,9 @@ tokens, and a reply naming a handful of objects about 700 output tokens:
 | `claude-haiku-4-5` | ~$0.005 | ~$2.50 |
 
 Cataloguing a house is a few hundred photographs once, then a handful a year — so this is
-a one-off cost of a few dollars rather than a subscription. The app records the real token
+a one-off cost of a few dollars rather than a subscription. (Dropping the value estimate
+took roughly a fifth off the output tokens, which is most of why these are lower than they
+were.) The app records the real token
 cost of every call and shows it under **Rendszer → Felismerési költség**, per photograph
 *and* per confirmed item. The second figure is the one worth watching: a photo of a whole
 shelf costs the same as a photo of one chair, and yields eight entries instead of one.
@@ -229,8 +252,8 @@ pytest -m live -s        # hits the real API, costs a few cents, needs ANTHROPIC
 ```
 
 The default suite covers the rules, ingest deduplication, the worker's retry and failure
-handling, the API, the statistics, and that the migrations and the models still describe
-the same database. The live suite is the one that measures whether identification is
+handling, the API, search and the place tree, the statistics, and that the migrations and
+the models still describe the same database. The live suite is the one that measures whether identification is
 actually any good — drop photographs of your own things into `tests/fixtures/` and they
 are picked up automatically.
 

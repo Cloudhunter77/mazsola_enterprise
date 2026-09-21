@@ -1,9 +1,13 @@
 """The numbers the app can honestly report.
 
-One rule runs through all of this: **only confirmed items count.** A draft is the model's
-guess, and a total that includes guesses would move every time the model had an opinion,
-which is precisely the number nobody can use. Drafts are reported separately, as a queue
-depth, because that is what they are.
+This is a catalogue of what is in the house, so the numbers are counts of things - how
+many, where, of what kind - rather than a total of what they are worth. The app does not
+ask the model for prices at all, and adding up a column of guesses would produce a figure
+that looks like a valuation and is not one.
+
+One rule runs through all of it: **only confirmed items count.** A draft is the model's
+guess, and a count that includes guesses would move every time the model had an opinion.
+Drafts are reported separately, as a queue depth, because that is what they are.
 """
 
 from __future__ import annotations
@@ -13,29 +17,43 @@ from decimal import Decimal
 from sqlalchemy import Numeric, case, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from leltar.models import Category, IdentificationAttempt, Item, ItemStatus, Photo, PhotoStatus
+from leltar.models import (
+    Category,
+    IdentificationAttempt,
+    Item,
+    ItemImage,
+    ItemStatus,
+    Photo,
+    PhotoStatus,
+)
 from leltar.services.places import paths_for_all
 
-# `estimated_value` is per copy, so an entry of four matching chairs is worth four times
-# its midpoint. Written once here rather than repeated in every query below.
-VALUE = func.coalesce(Item.estimated_value, 0) * Item.quantity
+# Two different questions, and both get asked: "how many entries" (four matching chairs
+# are one line in the catalogue) and "how many things" (they are four chairs).
+COPIES = func.coalesce(func.sum(Item.quantity), 0)
 
 CONFIRMED = Item.status == ItemStatus.CONFIRMED.value
 
 
 async def summary(session: AsyncSession) -> dict:
-    total_items, total_copies, total_value = (
+    total_items, total_copies, places_used, categories_used = (
         await session.execute(
             select(
                 func.count(Item.id),
-                func.coalesce(func.sum(Item.quantity), 0),
-                func.coalesce(func.sum(VALUE), 0),
+                COPIES,
+                func.count(func.distinct(Item.place_id)),
+                func.count(func.distinct(Item.category_id)),
             ).where(CONFIRMED)
         )
     ).one()
 
-    valued = await session.scalar(
-        select(func.count(Item.id)).where(CONFIRMED, Item.estimated_value.is_not(None))
+    # How much of the catalogue you could actually recognise from a list. The whole point
+    # of the pictures, so it is worth watching rather than assuming.
+    with_picture = await session.scalar(
+        select(func.count(func.distinct(Item.id)))
+        .select_from(Item)
+        .join(ItemImage, ItemImage.item_id == Item.id)
+        .where(CONFIRMED)
     )
     drafts = await session.scalar(
         select(func.count(Item.id)).where(Item.status == ItemStatus.DRAFT.value)
@@ -53,10 +71,9 @@ async def summary(session: AsyncSession) -> dict:
     return {
         "items": int(total_items),
         "copies": int(total_copies),
-        "total_value": Decimal(total_value),
-        # How much of the total rests on an actual estimate. A value built from a third of
-        # the inventory is not wrong, but it is not a household's worth either.
-        "valued_items": int(valued or 0),
+        "places_used": int(places_used or 0),
+        "categories_used": int(categories_used or 0),
+        "with_picture": int(with_picture or 0),
         "drafts": int(drafts or 0),
         "photos": sum(photo_counts.values()),
         "photos_pending": photo_counts.get(PhotoStatus.PENDING.value, 0)
@@ -71,42 +88,32 @@ async def summary(session: AsyncSession) -> dict:
 async def by_place(session: AsyncSession) -> list[dict]:
     rows = (
         await session.execute(
-            select(
-                Item.place_id,
-                func.count(Item.id),
-                func.coalesce(func.sum(Item.quantity), 0),
-                func.coalesce(func.sum(VALUE), 0),
-            )
+            select(Item.place_id, func.count(Item.id), COPIES)
             .where(CONFIRMED)
             .group_by(Item.place_id)
         )
     ).all()
 
     paths = await paths_for_all(session)
+    total = sum(int(items) for _, items, _ in rows) or 1
     result = [
         {
             "place_id": place_id,
             "place_path": paths.get(place_id, "Hely nélkül") if place_id else "Hely nélkül",
             "items": int(items),
             "copies": int(copies),
-            "total_value": Decimal(value),
+            "share": int(items) / total,
         }
-        for place_id, items, copies, value in rows
+        for place_id, items, copies in rows
     ]
-    result.sort(key=lambda row: (-row["total_value"], row["place_path"]))
+    result.sort(key=lambda row: (-row["items"], row["place_path"]))
     return result
 
 
 async def by_category(session: AsyncSession) -> list[dict]:
     rows = (
         await session.execute(
-            select(
-                Category.id,
-                Category.name,
-                Category.icon,
-                func.count(Item.id),
-                func.coalesce(func.sum(VALUE), 0),
-            )
+            select(Category.id, Category.name, Category.icon, func.count(Item.id), COPIES)
             .select_from(Item)
             .outerjoin(Category, Item.category_id == Category.id)
             .where(CONFIRMED)
@@ -114,19 +121,19 @@ async def by_category(session: AsyncSession) -> list[dict]:
         )
     ).all()
 
-    total = sum(Decimal(value) for _, _, _, _, value in rows) or Decimal(1)
+    total = sum(int(items) for _, _, _, items, _ in rows) or 1
     result = [
         {
             "category_id": category_id,
             "category_name": name or "Besorolatlan",
             "icon": icon,
             "items": int(items),
-            "total_value": Decimal(value),
-            "share": float(Decimal(value) / total),
+            "copies": int(copies),
+            "share": int(items) / total,
         }
-        for category_id, name, icon, items, value in rows
+        for category_id, name, icon, items, copies in rows
     ]
-    result.sort(key=lambda row: -row["total_value"])
+    result.sort(key=lambda row: -row["items"])
     return result
 
 

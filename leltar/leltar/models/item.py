@@ -25,11 +25,13 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    event,
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from leltar.models.base import Base, TimestampMixin, money, pk
+from leltar.text import searchable
 
 if TYPE_CHECKING:
     from leltar.models.catalog import Category
@@ -154,15 +156,21 @@ class Item(Base, TimestampMixin):
     serial_number: Mapped[str | None] = mapped_column(String(120), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # --- what it is worth ----------------------------------------------------
-    # A range, because a single figure invented from a photograph is false precision.
-    # `estimated_value` is the midpoint and exists so statistics have one number to add up;
-    # it is an order of magnitude for an insurance list, not a valuation.
-    value_low: Mapped[Decimal | None] = money()
-    value_high: Mapped[Decimal | None] = money()
-    estimated_value: Mapped[Decimal | None] = money()
+    # --- what you know about it that no photograph shows ----------------------
+    # One optional figure, typed in, for the handful of things where it matters - the
+    # bicycle, the laptop. The model is never asked what anything is worth: this is a
+    # catalogue of what is in the house, and a column of guessed prices would be a column
+    # of numbers nobody can act on, bought with output tokens on every photograph.
+    value: Mapped[Decimal | None] = money()
     currency: Mapped[str] = mapped_column(String(3), default="HUF", nullable=False)
     acquired_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    # Every field worth finding the item by, lowercased and stripped of accents. Kept as a
+    # column rather than computed per query: nobody types "bögre" with the umlaut on a
+    # phone, ILIKE over the original text cannot match what they do type, and a folded
+    # expression over four columns cannot use an index. Maintained by the listener at the
+    # bottom of this module, so no write path can forget it.
+    search_text: Mapped[str] = mapped_column(Text, default="", nullable=False, index=True)
 
     # --- state ---------------------------------------------------------------
     status: Mapped[str] = mapped_column(
@@ -245,4 +253,25 @@ class ItemImage(Base, TimestampMixin):
             unique=True,
             postgresql_where=text("is_primary"),
         ),
+    )
+
+
+@event.listens_for(Item, "before_insert")
+@event.listens_for(Item, "before_update")
+def _refresh_search_text(_mapper, _connection, item: Item) -> None:
+    """Keep the search column in step with the fields it is built from.
+
+    A listener rather than a call in each write path: there are five of those already
+    (identification, manual entry, the patch endpoint, confirming, the demo seeder) and an
+    item that is invisible to search because one of them forgot is a bug nobody reports -
+    they just conclude the search is unreliable and stop using it.
+    """
+    item.search_text = searchable(
+        item.name,
+        item.suggested_name,
+        item.brand,
+        item.product_model,
+        item.description,
+        item.serial_number,
+        item.notes,
     )

@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 
 import { api } from "../lib/api";
 import { AsyncBlock, Card, Tile, useAsync } from "../components/ui";
-import { dateTime, ft, pct } from "../lib/format";
+import { dateTime, pct } from "../lib/format";
 
 /** What is in the house, and how well the machine is doing at naming it. */
 export default function Dashboard() {
@@ -17,16 +17,21 @@ export default function Dashboard() {
         {(data) => (
           <div className="grid tiles">
             <Tile
-              label="Megerősített tétel"
+              label="Tétel a leltárban"
               value={data.items}
               sub={`${data.copies} darab összesen`}
             />
             <Tile
-              label="Becsült érték"
-              value={ft(data.total_value)}
-              // The share matters: a total built from a third of the inventory is not a
-              // household's worth, and the tile should not pretend otherwise.
-              sub={`${data.valued_items} tételre van becslés`}
+              label="Képpel"
+              value={data.items === 0 ? "–" : pct(data.with_picture / data.items)}
+              // The point of the pictures is recognising a row without reading it, so how
+              // much of the catalogue you could actually recognise is worth watching.
+              sub={`${data.with_picture} tételt ismersz fel ránézésre`}
+            />
+            <Tile
+              label="Helyek"
+              value={data.places_used}
+              sub={`${data.categories_used} kategória`}
             />
             <Tile label="Nyitott javaslat" value={data.drafts} sub="ellenőrzésre vár" />
             <Tile
@@ -42,21 +47,29 @@ export default function Dashboard() {
         )}
       </AsyncBlock>
 
-      <Card title="Helyek szerint">
+      <Card title="Hol vannak" note="a tételek száma helyenként">
         <AsyncBlock state={places} empty="Még nincs megerősített tétel.">
           {(rows) => {
-            const max = Math.max(...rows.map((row) => Number(row.total_value)), 1);
+            const max = Math.max(...rows.map((row) => row.items), 1);
             return rows.map((row) => (
               <div className="list-row" key={row.place_path}>
                 <div className="grow">
-                  <div className="name">{row.place_path}</div>
+                  <div className="name">
+                    {row.place_id ? (
+                      <Link to={`/leltar?hely=${row.place_id}`} style={{ color: "inherit" }}>
+                        {row.place_path}
+                      </Link>
+                    ) : (
+                      row.place_path
+                    )}
+                  </div>
                   <div className="bar" style={{ marginTop: 6 }}>
-                    <span style={{ width: `${(Number(row.total_value) / max) * 100}%` }} />
+                    <span style={{ width: `${(row.items / max) * 100}%` }} />
                   </div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div className="mono">{ft(row.total_value)}</div>
-                  <div className="where">{row.items} tétel</div>
+                  <div className="mono">{row.items}</div>
+                  <div className="where">{row.copies} db</div>
                 </div>
               </div>
             ));
@@ -64,16 +77,16 @@ export default function Dashboard() {
         </AsyncBlock>
       </Card>
 
-      <Card title="Kategóriák szerint">
+      <Card title="Mi van" note="a tételek száma kategóriánként">
         <AsyncBlock state={categories} empty="Még nincs megerősített tétel.">
           {(rows) =>
             rows.map((row) => (
               <div className="list-row" key={row.category_name}>
                 <div className="grow">
                   <div className="name">{row.icon ?? "📦"} {row.category_name}</div>
-                  <div className="where">{row.items} tétel · {pct(row.share)}</div>
+                  <div className="where">{pct(row.share)} · {row.copies} db</div>
                 </div>
-                <div className="mono">{ft(row.total_value)}</div>
+                <div className="mono">{row.items}</div>
               </div>
             ))
           }

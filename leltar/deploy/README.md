@@ -177,6 +177,11 @@ done.
 Later, open any item from the **Leltár** list to add more pictures of it — the serial
 plate, the damage, the thing out of its case — and to set which one the list shows.
 
+**Finding things again** is what the catalogue is for, so the search box ignores accents
+(`bogre` finds the *bögre*), takes words in any order, and looks in the name, brand,
+model, description, serial number and your notes. Choosing a place shows everything inside
+it, boxes included.
+
 ### iOS Shortcut (optional)
 
 For a one-tap capture from the lock screen or Action Button:
@@ -245,6 +250,10 @@ sets `PGDATA` one level down inside the mount for exactly this reason — keep t
 **Photographs stay "Sorban áll" forever.** The worker is not running or has no key. Check
 `/health` shows `"worker": true`, and look for `ANTHROPIC_API_KEY is not set` in the logs.
 Nothing is lost — fix the key and press **Újraolvasás**.
+
+**A search finds nothing you know is there.** Search only covers confirmed items by
+default — check the state dropdown next to the search box, since a draft nobody approved
+is not in the catalogue yet.
 
 **Every name comes back as "szék", "doboz", "eszköz".** The photograph is probably too far
 back or too dark; the model names what it can actually resolve. Entries like that are

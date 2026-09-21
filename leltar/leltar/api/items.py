@@ -10,17 +10,18 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse, PlainTextResponse
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from leltar.api.deps import AuthDep, OptionalUUID, SessionDep, SettingsDep
 from leltar.extraction import crop
 from leltar.extraction.preprocess import sha256_of
-from leltar.extraction.rules import midpoint, names_match
+from leltar.extraction.rules import names_match
 from leltar.models import Category, Item, ItemImage, ItemStatus, Photo, PhotoStatus
 from leltar.schemas.api import ItemImageOut, ItemIn, ItemOut, ItemPatch
 from leltar.services.ingest import IngestError, verify_image
-from leltar.services.places import paths_for_all
+from leltar.services.places import descendants, paths_for_all
+from leltar.text import fold
 
 router = APIRouter(prefix="/api/items", tags=["items"])
 
@@ -56,19 +57,6 @@ async def decorate_items(session: AsyncSession, items: list[Item]) -> list[ItemO
     return out
 
 
-def _recompute_value(item: Item) -> None:
-    """Keep the midpoint consistent with an edited range.
-
-    Only when the range moved: an explicit `estimated_value` in the same request is a
-    deliberate override and must survive, which is the difference between "I corrected the
-    range" and "I know what this is worth".
-    """
-    item.estimated_value = midpoint(
-        int(item.value_low) if item.value_low is not None else None,
-        int(item.value_high) if item.value_high is not None else None,
-    )
-
-
 @router.get("", response_model=list[ItemOut])
 async def list_items(
     _: AuthDep,
@@ -76,27 +64,37 @@ async def list_items(
     status_filter: str | None = Query(None, alias="status"),
     place_id: OptionalUUID = None,
     category_id: OptionalUUID = None,
-    q: str | None = Query(None, description="Substring of the name, brand or description."),
+    q: str | None = Query(None, description="Words to find, in any order, accents optional."),
+    nested: bool = Query(
+        True, description="Include places inside the chosen one (a box inside the garage)."
+    ),
     limit: int = Query(100, le=500),
     offset: int = 0,
 ) -> list[ItemOut]:
+    """Search and browse the catalogue.
+
+    Two things make this usable on a database of a whole household rather than a demo:
+
+    * **`q` matches the way people type.** The words may come in any order and the accents
+      are optional, because nobody hunting for a bögre on a phone is going to long-press
+      for the umlaut. Each word must appear somewhere in the item, so a second word
+      narrows rather than widens - "fekete fúró" finds the black drill, not every black
+      thing and every drill.
+    * **A place means everything inside it.** Asking for the garage and not being shown
+      what is in the boxes in the garage is the one behaviour that would make the place
+      tree worse than a flat list of rooms.
+    """
     stmt = select(Item).order_by(Item.created_at.desc()).limit(limit).offset(offset)
     if status_filter:
         stmt = stmt.where(Item.status == status_filter)
     if place_id:
-        stmt = stmt.where(Item.place_id == place_id)
+        places = await descendants(session, place_id) if nested else [place_id]
+        stmt = stmt.where(Item.place_id.in_(places))
     if category_id:
         stmt = stmt.where(Item.category_id == category_id)
-    if q:
-        pattern = f"%{q.strip()}%"
-        stmt = stmt.where(
-            or_(
-                Item.name.ilike(pattern),
-                Item.brand.ilike(pattern),
-                Item.description.ilike(pattern),
-                Item.serial_number.ilike(pattern),
-            )
-        )
+    for word in fold(q).split():
+        stmt = stmt.where(Item.search_text.like(f"%{word}%"))
+
     items = list((await session.scalars(stmt)).all())
     return await decorate_items(session, items)
 
@@ -109,14 +107,11 @@ async def create_item(_: AuthDep, session: SessionDep, body: ItemIn) -> ItemOut:
     the review queue to second-guess.
     """
     item = Item(
-        **body.model_dump(exclude={"value_low", "value_high"}),
-        value_low=body.value_low,
-        value_high=body.value_high,
+        **body.model_dump(),
         status=ItemStatus.CONFIRMED.value,
         source="manual",
         confirmed_at=datetime.now(UTC),
     )
-    _recompute_value(item)
     session.add(item)
     await session.commit()
     return (await decorate_items(session, [item]))[0]
@@ -144,16 +139,17 @@ async def export_csv(_: AuthDep, session: SessionDep) -> PlainTextResponse:
     writer = csv.writer(buffer)
     writer.writerow([
         "nev", "darab", "hely", "kategoria", "marka", "tipus", "allapot",
-        "ertek_min", "ertek_max", "becsult_ertek", "penznem", "sorozatszam",
-        "beszerzes", "megjegyzes",
+        "szin", "anyag", "sorozatszam", "ertek", "penznem", "beszerzes",
+        "leiras", "megjegyzes",
     ])
     for row in rows:
         writer.writerow([
             row.name, row.quantity, row.place_path or "", row.category_name or "",
             row.brand or "", row.product_model or "", row.condition,
-            row.value_low or "", row.value_high or "", row.estimated_value or "",
-            row.currency, row.serial_number or "",
+            row.colour or "", row.material or "", row.serial_number or "",
+            row.value or "", row.currency,
             row.acquired_on.isoformat() if row.acquired_on else "",
+            (row.description or "").replace("\n", " "),
             (row.notes or "").replace("\n", " "),
         ])
 
@@ -357,8 +353,6 @@ async def patch_item(
         item.edited = item.suggested_name is not None and not names_match(
             item.name, item.suggested_name
         )
-    if ("value_low" in changes or "value_high" in changes) and "estimated_value" not in changes:
-        _recompute_value(item)
     if changes.get("status") == ItemStatus.CONFIRMED.value and item.confirmed_at is None:
         item.confirmed_at = datetime.now(UTC)
 

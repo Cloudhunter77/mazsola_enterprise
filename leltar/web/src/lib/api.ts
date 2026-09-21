@@ -62,8 +62,7 @@ export interface Item {
   brand: string | null; product_model: string | null;
   colour: string | null; material: string | null; condition: string; quantity: number;
   serial_number: string | null; description: string | null;
-  value_low: Money | null; value_high: Money | null; estimated_value: Money | null;
-  currency: string; acquired_on: string | null;
+  value: Money | null; currency: string; acquired_on: string | null;
   status: string; source: string; edited: boolean; confidence: number | null;
   review_reasons: string[] | null; alternatives: string[] | null;
   notes: string | null; confirmed_at: string | null; created_at: string;
@@ -86,17 +85,17 @@ export interface Photo {
 export interface PhotoDetail extends Photo { notes: string | null; items: Item[] }
 
 export interface StatsSummary {
-  items: number; copies: number; total_value: Money; valued_items: number; drafts: number;
+  items: number; copies: number; places_used: number; categories_used: number;
+  with_picture: number; drafts: number;
   photos: number; photos_pending: number; photos_needing_review: number;
   photos_failed: number; last_added: string | null;
 }
 export interface PlaceStat {
-  place_id: string | null; place_path: string; items: number; copies: number;
-  total_value: Money;
+  place_id: string | null; place_path: string; items: number; copies: number; share: number;
 }
 export interface CategoryStat {
   category_id: string | null; category_name: string; icon: string | null;
-  items: number; total_value: Money; share: number;
+  items: number; copies: number; share: number;
 }
 export interface AccuracyStat {
   confirmed_from_photos: number; kept_as_suggested: number; edited: number;

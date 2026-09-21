@@ -15,7 +15,6 @@ import asyncio
 import random
 import sys
 from datetime import UTC, datetime
-from decimal import Decimal
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -28,32 +27,32 @@ from leltar.services.seed import seed_if_empty  # noqa: E402
 
 MARKER = "demo-adat"
 
-# name, category slug, value low, value high, quantity
-THINGS: dict[str, list[tuple[str, str, int, int, int]]] = {
+# name, category slug, quantity
+THINGS: dict[str, list[tuple[str, str, int]]] = {
     "Nappali": [
-        ("szürke szövet kanapé", "butor", 90_000, 180_000, 1),
-        ("tömörfa dohányzóasztal", "butor", 20_000, 45_000, 1),
-        ("55 colos LED televízió", "elektronika", 80_000, 160_000, 1),
-        ("álló olvasólámpa", "dekoracio", 8_000, 18_000, 2),
-        ("gyapjú szőnyeg 200x300", "textil", 35_000, 90_000, 1),
+        ("szürke szövet kanapé", "butor", 1),
+        ("tömörfa dohányzóasztal", "butor", 1),
+        ("55 colos LED televízió", "elektronika", 1),
+        ("álló olvasólámpa", "dekoracio", 2),
+        ("gyapjú szőnyeg 200x300", "textil", 1),
     ],
     "Konyha": [
-        ("rozsdamentes vízforraló", "konyha", 6_000, 15_000, 1),
-        ("kerámia tányérkészlet", "konyha", 12_000, 30_000, 1),
-        ("konyhai robotgép", "haztartasi-gep", 40_000, 90_000, 1),
-        ("fa vágódeszka", "konyha", 2_000, 6_000, 3),
+        ("rozsdamentes vízforraló", "konyha", 1),
+        ("kerámia tányérkészlet", "konyha", 1),
+        ("konyhai robotgép", "haztartasi-gep", 1),
+        ("fa vágódeszka", "konyha", 3),
     ],
     "Hálószoba": [
-        ("kétszemélyes ágy matraccal", "butor", 70_000, 150_000, 1),
-        ("négyajtós ruhásszekrény", "butor", 50_000, 120_000, 1),
-        ("ébresztőóra", "elektronika", 3_000, 8_000, 1),
+        ("kétszemélyes ágy matraccal", "butor", 1),
+        ("négyajtós ruhásszekrény", "butor", 1),
+        ("ébresztőóra", "elektronika", 1),
     ],
     "Garázs": [
-        ("akkus fúró-csavarozó", "szerszam", 25_000, 60_000, 1),
-        ("körfűrész", "szerszam", 30_000, 70_000, 1),
-        ("városi kerékpár", "sport", 60_000, 140_000, 2),
-        ("kerti fűnyíró", "kerti", 45_000, 110_000, 1),
-        ("műanyag tárolódoboz", "egyeb", 1_500, 4_000, 6),
+        ("akkus fúró-csavarozó", "szerszam", 1),
+        ("körfűrész", "szerszam", 1),
+        ("városi kerékpár", "sport", 2),
+        ("kerti fűnyíró", "kerti", 1),
+        ("műanyag tárolódoboz", "egyeb", 6),
     ],
 }
 
@@ -77,7 +76,7 @@ async def add() -> None:
                 await session.flush()
                 place_id = place.id
 
-            for name, slug, low, high, quantity in things:
+            for name, slug, quantity in things:
                 session.add(
                     Item(
                         name=name,
@@ -89,9 +88,6 @@ async def add() -> None:
                         place_id=place_id,
                         category_id=categories.get(slug),
                         quantity=quantity,
-                        value_low=Decimal(low),
-                        value_high=Decimal(high),
-                        estimated_value=Decimal(round((low + high) / 2 / 100) * 100),
                         condition=random.choice(["good", "used", "new"]),
                         notes=MARKER,
                     )

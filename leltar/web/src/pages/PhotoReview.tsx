@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { api, type Category, type Item, type Place } from "../lib/api";
 import { Card, Loading } from "../components/ui";
-import { CONDITIONS, PHOTO_STATUS, REVIEW_REASONS, range } from "../lib/format";
+import { CONDITIONS, PHOTO_STATUS, REVIEW_REASONS } from "../lib/format";
 
 /** One photograph and its guesses: the screen the whole app exists for.
  *
@@ -219,8 +219,7 @@ function Draft({
 
       <div className="draft-meta">
         <span>{item.category_name ?? "Besorolatlan"}</span>
-        <span>·</span>
-        <span>{range(item.value_low, item.value_high)}</span>
+        {item.place_path && <><span>·</span><span>{item.place_path}</span></>}
         {item.quantity > 1 && <><span>·</span><span>{item.quantity} db</span></>}
         {item.brand && <><span>·</span><span>{item.brand} {item.product_model ?? ""}</span></>}
         {item.confidence != null && (
@@ -292,19 +291,11 @@ function Draft({
             />
           </label>
           <label>
-            Érték-tól (Ft)
+            Érték (Ft, ha fontos)
             <input
               type="number"
-              defaultValue={item.value_low ?? ""}
-              onBlur={(event) => save({ value_low: event.target.value || null })}
-            />
-          </label>
-          <label>
-            Érték-ig (Ft)
-            <input
-              type="number"
-              defaultValue={item.value_high ?? ""}
-              onBlur={(event) => save({ value_high: event.target.value || null })}
+              defaultValue={item.value ?? ""}
+              onBlur={(event) => save({ value: event.target.value || null })}
             />
           </label>
           <label style={{ gridColumn: "1 / -1" }}>

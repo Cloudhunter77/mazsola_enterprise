@@ -88,13 +88,6 @@ class IdentifiedObject(BaseModel):
         ),
     )
 
-    value_low_huf: int | None = Field(
-        default=None, description="Low end of the second-hand replacement value, in HUF."
-    )
-    value_high_huf: int | None = Field(
-        default=None, description="High end of the second-hand replacement value, in HUF."
-    )
-
     serial_number: str | None = Field(
         default=None, description="Only if a serial or IMEI is legible in the photograph."
     )

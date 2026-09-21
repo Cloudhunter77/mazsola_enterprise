@@ -14,7 +14,7 @@ from leltar.config import Settings
 from leltar.extraction import crop
 from leltar.extraction.base import IdentificationResult
 from leltar.extraction.preprocess import sha256_of
-from leltar.extraction.rules import clean_photo, midpoint, needs_review
+from leltar.extraction.rules import clean_photo, needs_review
 from leltar.models import (
     Category,
     IdentificationAttempt,
@@ -86,9 +86,6 @@ async def persist_identification(
             quantity=obj.quantity,
             serial_number=obj.serial_number,
             description=obj.description,
-            value_low=obj.value_low_huf,
-            value_high=obj.value_high_huf,
-            estimated_value=midpoint(obj.value_low_huf, obj.value_high_huf),
             currency=settings.currency,
             status=ItemStatus.DRAFT.value,
             source="photo",

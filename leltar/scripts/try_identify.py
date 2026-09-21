@@ -31,9 +31,7 @@ REASON_TEXT = {
     "unverifiable_brand": "brand/model dropped: not legible in the photograph",
     "unverifiable_serial": "serial dropped: not legible in the photograph",
     "unknown_category": "category was not one of ours; filed under egyeb",
-    "no_value_estimate": "no value given",
-    "wide_value_range": "the value range is very wide",
-    "implausible_value": "the value is implausible for a household object",
+    "unusable_box": "the box was unusable; the whole photo becomes the picture",
     "implausible_quantity": "the count is implausible",
     "low_confidence_object": "the model is unsure about this one",
     "low_confidence": "the model is unsure about the photograph as a whole",
@@ -78,14 +76,16 @@ async def run(image_path: Path, place: str | None, show_json: bool) -> int:
     print(f"\n{len(cleaned.objects)} object(s):\n")
     for obj, reasons in zip(cleaned.objects, object_reasons, strict=True):
         count = f" ×{obj.quantity}" if obj.quantity > 1 else ""
-        value = (
-            f"{obj.value_low_huf or '?'}–{obj.value_high_huf or '?'} Ft"
-            if (obj.value_low_huf or obj.value_high_huf)
-            else "no estimate"
+        # The box is what becomes the item's picture, so it is worth seeing here: this is
+        # the cheapest place to find out that a model cannot place one.
+        box = (
+            f"box {obj.box.x0},{obj.box.y0}–{obj.box.x1},{obj.box.y1}"
+            if obj.box
+            else "no box (the whole photo becomes its picture)"
         )
         brand = f"  [{' '.join(filter(None, (obj.brand, obj.product_model)))}]" if obj.brand else ""
         print(f"  {obj.name}{count}{brand}")
-        print(f"      {obj.category}  ·  {value}  ·  confidence {obj.confidence:.2f}")
+        print(f"      {obj.category}  ·  {box}  ·  confidence {obj.confidence:.2f}")
         if obj.alternatives:
             print(f"      or: {', '.join(obj.alternatives)}")
         for reason in reasons:

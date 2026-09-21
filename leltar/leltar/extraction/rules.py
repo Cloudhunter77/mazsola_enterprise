@@ -13,11 +13,10 @@ the part of this app most worth testing.
 from __future__ import annotations
 
 import re
-import unicodedata
-from decimal import Decimal
 
 from leltar.extraction.categories import FALLBACK_SLUG, SLUGS
 from leltar.schemas.identification import Box, IdentifiedObject, IdentifiedPhoto
+from leltar.text import fold_tight
 
 # A name that could be written on the box without looking inside it. These are the words a
 # model reaches for when it does not know, and they are worse than useless in a search:
@@ -58,22 +57,15 @@ MIN_BOX_AREA = 0.004   # 0.4% of the frame
 MAX_BOX_AREA = 0.96
 
 
-def _fold(text: str) -> str:
-    """Lowercase, strip accents and punctuation - for comparing names, never for storing."""
-    stripped = unicodedata.normalize("NFKD", text.lower())
-    without_accents = "".join(char for char in stripped if not unicodedata.combining(char))
-    return re.sub(r"[^a-z0-9]+", "", without_accents)
-
-
 def is_generic(name: str) -> bool:
     """Whether a name says nothing that would help you find the object again."""
-    folded = _fold(name)
+    folded = fold_tight(name)
     if not folded:
         return True
     if folded in GENERIC_NAMES:
         return True
     # "egy tárgy", "ismeretlen eszköz": a generic head word with nothing but filler on it.
-    words = [_fold(word) for word in re.split(r"\s+", name) if _fold(word)]
+    words = [fold_tight(word) for word in re.split(r"\s+", name) if fold_tight(word)]
     meaningful = [
         word
         for word in words
@@ -91,16 +83,7 @@ def names_match(left: str | None, right: str | None) -> bool:
     """
     if left is None or right is None:
         return False
-    return _fold(left) == _fold(right)
-
-
-def midpoint(low: int | None, high: int | None) -> Decimal | None:
-    """One number for the statistics, rounded to 100 Ft so it cannot look like a valuation."""
-    values = [value for value in (low, high) if value is not None]
-    if not values:
-        return None
-    middle = sum(values) / len(values)
-    return Decimal(round(middle / 100) * 100)
+    return fold_tight(left) == fold_tight(right)
 
 
 def clean_box(box: Box | None) -> tuple[Box | None, bool]:
@@ -148,23 +131,6 @@ def clean_object(raw: IdentifiedObject) -> tuple[IdentifiedObject, list[str]]:
         obj.category = FALLBACK_SLUG
         reasons.append("unknown_category")
 
-    low, high = obj.value_low_huf, obj.value_high_huf
-    if low is not None and high is not None and low > high:
-        low, high = high, low
-    if low is not None and low < 0:
-        low = None
-    if high is not None and high < 0:
-        high = None
-    if low is None and high is None:
-        reasons.append("no_value_estimate")
-    else:
-        if high is not None and high > MAX_PLAUSIBLE_VALUE_HUF:
-            reasons.append("implausible_value")
-        # A zero low end makes every spread infinite, so compare against at least 1 Ft.
-        if low is not None and high is not None and high > max(low, 1) * MAX_VALUE_SPREAD:
-            reasons.append("wide_value_range")
-    obj.value_low_huf, obj.value_high_huf = low, high
-
     if obj.quantity < 1:
         obj.quantity = 1
     elif obj.quantity > MAX_QUANTITY:
@@ -173,10 +139,10 @@ def clean_object(raw: IdentifiedObject) -> tuple[IdentifiedObject, list[str]]:
 
     # An alternative identical to the name is not an alternative, and the list is a UI of
     # one-tap buttons - four of them is a menu, not a shortcut.
-    seen = {_fold(obj.name)}
+    seen = {fold_tight(obj.name)}
     unique: list[str] = []
     for candidate in obj.alternatives:
-        folded = _fold(candidate)
+        folded = fold_tight(candidate)
         if folded and folded not in seen:
             seen.add(folded)
             unique.append(" ".join(candidate.split()))
@@ -229,7 +195,7 @@ def clean_photo(
     merged_reasons: list[list[str]] = []
     by_name: dict[str, int] = {}
     for obj, reasons in zip(cleaned, per_object, strict=True):
-        key = _fold(obj.name)
+        key = fold_tight(obj.name)
         if key in by_name:
             index = by_name[key]
             merged[index].quantity = max(merged[index].quantity, obj.quantity)

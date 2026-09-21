@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
-
 from leltar.extraction.rules import (
     MAX_QUANTITY,
     clean_box,
     clean_object,
     clean_photo,
     is_generic,
-    midpoint,
     names_match,
     needs_review,
 )
@@ -84,41 +81,6 @@ def test_an_unknown_category_falls_back_rather_than_being_trusted():
     clean, reasons = clean_object(obj("bögre", category="konyhai-eszkozok"))
     assert clean.category == "egyeb"
     assert "unknown_category" in reasons
-
-
-# --- value -------------------------------------------------------------------
-def test_a_reversed_value_range_is_straightened_out_silently():
-    clean, reasons = clean_object(obj(value_low_huf=5000, value_high_huf=1000))
-    assert (clean.value_low_huf, clean.value_high_huf) == (1000, 5000)
-    assert reasons == []
-
-
-def test_a_missing_estimate_is_reported_but_not_invented():
-    clean, reasons = clean_object(obj(value_low_huf=None, value_high_huf=None))
-    assert clean.value_low_huf is None
-    assert "no_value_estimate" in reasons
-
-
-def test_an_absurdly_wide_range_is_flagged():
-    _, reasons = clean_object(obj(value_low_huf=1000, value_high_huf=500_000))
-    assert "wide_value_range" in reasons
-
-
-def test_a_household_object_worth_more_than_five_million_is_flagged():
-    _, reasons = clean_object(obj(value_low_huf=6_000_000, value_high_huf=9_000_000))
-    assert "implausible_value" in reasons
-
-
-def test_a_zero_low_end_does_not_make_every_range_wide():
-    """Dividing by the low end would make 0 Ft - 500 Ft an infinitely wide range."""
-    _, reasons = clean_object(obj(value_low_huf=0, value_high_huf=30))
-    assert "wide_value_range" not in reasons
-
-
-def test_midpoint_rounds_to_a_hundred_forints():
-    assert midpoint(800, 2000) == Decimal(1400)
-    assert midpoint(849, None) == Decimal(800)
-    assert midpoint(None, None) is None
 
 
 # --- quantity and alternatives ----------------------------------------------

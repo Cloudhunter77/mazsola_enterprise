@@ -97,8 +97,7 @@ async def test_typing_in_an_item_stores_it_confirmed(seeded_client):
             "name": "Makita akkus fúró",
             "place_id": places[0]["id"],
             "category_id": next(c["id"] for c in categories if c["slug"] == "szerszam"),
-            "value_low": 30000,
-            "value_high": 50000,
+            "value": 40000,
             "quantity": 1,
         },
     )
@@ -106,9 +105,9 @@ async def test_typing_in_an_item_stores_it_confirmed(seeded_client):
     body = response.json()
     assert body["status"] == "confirmed"
     assert body["source"] == "manual"
-    # The midpoint is computed, not asked for.
-    assert float(body["estimated_value"]) == 40000.0
     assert body["place_path"] == places[0]["path"]
+    # The one figure the app keeps is the one you typed; nothing guesses it.
+    assert float(body["value"]) == 40000.0
 
 
 async def test_editing_the_name_marks_the_suggestion_as_corrected(seeded_client, session):
@@ -126,34 +125,6 @@ async def test_editing_the_name_marks_the_suggestion_as_corrected(seeded_client,
     )
     assert corrected.json()["edited"] is True
     assert corrected.json()["suggested_name"] == "bögre"
-
-
-async def test_editing_the_value_range_moves_the_midpoint(seeded_client, session):
-    from leltar.models import Item
-
-    item = Item(name="szék", value_low=1000, value_high=3000, estimated_value=2000)
-    session.add(item)
-    await session.commit()
-
-    response = await seeded_client.patch(
-        f"/api/items/{item.id}", json={"value_low": 5000, "value_high": 9000}
-    )
-    assert float(response.json()["estimated_value"]) == 7000.0
-
-
-async def test_an_explicit_value_survives_a_range_edit(seeded_client, session):
-    """"I know what this is worth" must win over the midpoint arithmetic."""
-    from leltar.models import Item
-
-    item = Item(name="óra", value_low=1000, value_high=3000)
-    session.add(item)
-    await session.commit()
-
-    response = await seeded_client.patch(
-        f"/api/items/{item.id}",
-        json={"value_low": 5000, "value_high": 9000, "estimated_value": 8500},
-    )
-    assert float(response.json()["estimated_value"]) == 8500.0
 
 
 async def test_confirming_every_draft_of_a_photo_closes_its_review(
@@ -185,19 +156,77 @@ async def test_confirming_every_draft_of_a_photo_closes_its_review(
     assert detail["draft_count"] == 0
 
 
-async def test_searching_matches_name_brand_and_serial(seeded_client, session):
+async def test_searching_ignores_accents_and_word_order(seeded_client, session):
+    """Nobody hunting for a bögre on a phone is going to long-press for the umlaut."""
     from leltar.models import Item, ItemStatus
 
     session.add_all([
-        Item(name="konyhai mérleg", brand="Soehnle", status=ItemStatus.CONFIRMED.value),
-        Item(name="porszívó", serial_number="XY-99", status=ItemStatus.CONFIRMED.value),
+        Item(name="fehér porcelán bögre", brand="Zsolnay", status=ItemStatus.CONFIRMED.value),
+        Item(name="fekete akkus fúró", brand="Makita", status=ItemStatus.CONFIRMED.value),
+        Item(name="kerti fűnyíró", serial_number="XY-99", status=ItemStatus.CONFIRMED.value),
     ])
     await session.commit()
 
-    assert len((await seeded_client.get("/api/items?q=mérleg")).json()) == 1
-    assert len((await seeded_client.get("/api/items?q=Soehnle")).json()) == 1
-    assert len((await seeded_client.get("/api/items?q=XY-99")).json()) == 1
-    assert len((await seeded_client.get("/api/items?q=nincs-ilyen")).json()) == 0
+    async def names(query: str) -> list[str]:
+        rows = (await seeded_client.get(f"/api/items?q={query}")).json()
+        return sorted(row["name"] for row in rows)
+
+    assert await names("bögre") == ["fehér porcelán bögre"]
+    assert await names("bogre") == ["fehér porcelán bögre"]       # no accents typed
+    assert await names("BÖGRE") == ["fehér porcelán bögre"]       # shouting
+    assert await names("funyiro") == ["kerti fűnyíró"]
+    assert await names("zsolnay") == ["fehér porcelán bögre"]     # brand
+    assert await names("xy-99") == ["kerti fűnyíró"]              # serial
+
+    # Several words narrow rather than widen, in any order.
+    assert await names("fekete furo") == ["fekete akkus fúró"]
+    assert await names("furo fekete") == ["fekete akkus fúró"]
+    assert await names("fekete bogre") == []
+
+
+async def test_search_follows_an_edited_name(seeded_client, session):
+    """The folded column is maintained by the model, so no write path can forget it."""
+    from leltar.models import Item, ItemStatus
+
+    item = Item(name="ismeretlen doboz", status=ItemStatus.CONFIRMED.value)
+    session.add(item)
+    await session.commit()
+
+    await seeded_client.patch(f"/api/items/{item.id}", json={"name": "karácsonyi díszek"})
+
+    assert (await seeded_client.get("/api/items?q=karacsonyi")).json()[0]["name"] == (
+        "karácsonyi díszek"
+    )
+    assert (await seeded_client.get("/api/items?q=doboz")).json() == []
+
+
+async def test_a_place_means_everything_inside_it(seeded_client, session):
+    """Asking for the garage must show what is in the boxes in the garage."""
+    from leltar.models import Item, ItemStatus, Place
+
+    garage = Place(name="Garázs")
+    session.add(garage)
+    await session.flush()
+    shelf = Place(name="Fém polc", parent_id=garage.id)
+    session.add(shelf)
+    await session.flush()
+    box = Place(name="Kék doboz", parent_id=shelf.id)
+    session.add(box)
+    await session.flush()
+
+    session.add_all([
+        Item(name="kerékpár", place_id=garage.id, status=ItemStatus.CONFIRMED.value),
+        Item(name="körfűrész", place_id=shelf.id, status=ItemStatus.CONFIRMED.value),
+        Item(name="csavarhúzó", place_id=box.id, status=ItemStatus.CONFIRMED.value),
+    ])
+    await session.commit()
+
+    nested = (await seeded_client.get(f"/api/items?place_id={garage.id}")).json()
+    assert len(nested) == 3
+
+    # And the narrow reading is still available for "what is loose in the garage".
+    shallow = (await seeded_client.get(f"/api/items?place_id={garage.id}&nested=false")).json()
+    assert [row["name"] for row in shallow] == ["kerékpár"]
 
 
 async def test_the_csv_export_holds_the_confirmed_inventory_only(seeded_client, session):
