@@ -38,9 +38,15 @@ services:
       start_period: 30s
 
   app:
-    image: ghcr.io/cloudhunter77/leltar:latest
+    # The branch tag, not `latest`: CI publishes `latest` only from the repository's
+    # default branch, and this app currently lives on `claude/new-app-asaos5`. The branch
+    # tag is rebuilt on every push to it, so it stays current.
+    #
+    # After merging the branch, switch this to `:latest` - otherwise you stay pinned to
+    # the last build of a branch nobody pushes to any more, and updates stop silently.
+    image: ghcr.io/cloudhunter77/leltar:claude-new-app-asaos5
     # Updating is then: Apps -> leltar -> Stop, then Start. Every start fetches the
-    # current :latest, so no shell and no YAML editing.
+    # current build of that tag, so no shell and no YAML editing.
     #
     # TrueNAS has no "pull image" button for a custom YAML app - the three-dot menu's
     # "Update" is for catalog apps and does nothing here - so without this line the only
@@ -84,6 +90,10 @@ services:
       MAX_IMAGE_EDGE: "1280"
       MAX_ITEMS_PER_PHOTO: "12"
       WORKER_ENABLED: "true"
+      # How many photographs are read at once. Two people working together - one
+      # photographing, one approving names - outrun a single sequential reader. 1 to 8;
+      # raising it multiplies requests in flight, not the cost per photograph.
+      WORKER_CONCURRENCY: "2"
     volumes:
       - /mnt/tank/apps/leltar/photos:/data                    # EDIT: your pool name
     ports:

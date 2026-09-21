@@ -5,9 +5,9 @@ Cowork (or any new Claude session with shell access to the NAS) to have it carry
 installation. It is written to be understood cold, with no memory of how the app was
 built.
 
-Two things in it are true only while the app lives on a feature branch, and both are
-called out where they matter: the image tag is the branch's, not `latest`, and the GHCR
-package may still be private.
+One thing in it is true only while the app lives on a feature branch, and it is called out
+where it matters: the image tag is the branch's, not `latest`. The compose file in the repo
+already carries the right tag, so there is nothing to remember at install time.
 
 ---
 
@@ -28,7 +28,8 @@ It is a catalogue, not a valuation: the model is never asked what anything is wo
 - Repository: `https://github.com/Cloudhunter77/mazsola_enterprise` (private)
 - Branch: `claude/new-app-asaos5`
 - App directory in the repo: `leltar/`
-- Image: **`ghcr.io/cloudhunter77/leltar:claude-new-app-asaos5`** — see the note below
+- Image: **`ghcr.io/cloudhunter77/leltar:claude-new-app-asaos5`** — public, pulls
+  anonymously; see the note below for why it is not `:latest`
 - Deployment guide in the repo: `leltar/deploy/README.md`
 - Compose file to install: `leltar/deploy/docker-compose.yaml`
 - Two containers: the app (FastAPI + web UI + identification worker) and PostgreSQL 17.
@@ -36,17 +37,17 @@ It is a catalogue, not a valuation: the model is never asked what anything is wo
 
 ### About that image tag
 
-The compose file in the repo says `ghcr.io/cloudhunter77/leltar:latest`. **That tag does
-not exist yet.** CI publishes `latest` only from the repository's default branch, and this
-app currently lives on `claude/new-app-asaos5`. What CI has actually published is:
+There is no `:latest` for this app. CI publishes `latest` only from the repository's
+default branch, and this app lives on `claude/new-app-asaos5`. What exists is:
 
 - `ghcr.io/cloudhunter77/leltar:claude-new-app-asaos5` — rebuilt on every push to that
-  branch, so it stays current
-- `ghcr.io/cloudhunter77/leltar:sha-2c4910a` — that one exact build
+  branch, so it stays current. **This is what the compose file already uses**; you do not
+  need to change it.
+- `ghcr.io/cloudhunter77/leltar:sha-<commit>` — one exact build, if we ever need to pin.
 
-Use the branch tag everywhere, including in the compose file (step 5 covers the edit). If
-I later merge the branch into the default branch, `latest` starts being published and I can
-switch the tag back.
+If I later merge the branch, switch the compose file to `:latest`, because the branch tag
+stops being rebuilt the moment nobody pushes to that branch and updates would then quietly
+stop arriving.
 
 ### This NAS may already run the sister app
 
@@ -93,14 +94,15 @@ These exist because each one has already caused a problem here:
 5. **Verify each step before moving to the next**, and tell me what you expect to see so I
    can tell you if it differs.
 
-## Step 0 — Let the NAS pull the image
+## Step 0 — Check the image is pullable (it should be)
 
-The repository is private, so the GHCR package it publishes starts private too. The sister
-app's package was made public at some point; this one is new and probably has not been.
+**I have already made the GHCR package public**, so the NAS pulls it anonymously and there
+is no credential to configure. Nothing to do here — but read the next four paragraphs
+anyway, because if a pull *does* fail they are the difference between a five-minute fix and
+a wasted day.
 
-**Read this before testing anything, because it cost a day on the sister app.** TrueNAS
-keeps registry credentials in *two* separate places and only one is used when an app
-starts:
+TrueNAS keeps registry credentials in *two* separate places and only one is used when an
+app starts:
 
 - `docker login` at the shell writes `/root/.docker/config.json`, which is what a manual
   `docker pull` reads.
@@ -112,22 +114,10 @@ about whether the app will start. If the Apps store has no `ghcr.io` entry, ever
 fails `unauthorized` while every check I run by hand succeeds — which looks exactly like a
 flaky registry and is not one. **Test by starting the app, never by pulling at the shell.**
 
-Pick one of these with me:
-
-- **Make the package public** (what the sister app does, and what the compose file assumes).
-  I do it in a browser at
-  `https://github.com/users/Cloudhunter77/packages/container/leltar/settings` →
-  *Danger Zone* → *Change visibility* → Public. Nothing secret is baked into the image —
-  every credential arrives as a runtime environment variable — but be straight with me
-  about the cost: the image layers *are* the application source, so a public package
-  publishes the code even though the repository stays private.
-- **Or add a credential to the Apps store**: a token from
-  `https://github.com/settings/tokens` (classic) with only the **`read:packages`** scope,
-  entered as a registry credential **in the TrueNAS Apps UI** — not with `docker login`.
-  It expires, and when it does updates stop happening silently, so tell me to write the
-  expiry date somewhere I will see it.
-
-Ask me which I chose before continuing.
+So if a deploy fails `unauthorized` or `manifest unknown` despite the package being public,
+suspect, in this order: a typo in the image name or tag; the package having been flipped
+back to private; a stale credential in the Apps store shadowing the anonymous pull. Do not
+reach for `docker login` — it fixes the wrong one of the two stores.
 
 ## Step 1 — Find the pool name
 
@@ -221,8 +211,11 @@ table lamp. It is a drawing rather than a photograph, so do not judge the model'
 accuracy from it. What it does prove:
 
 - it comes back with **Hungarian names** for several of those objects;
-- it does **not** claim a brand — nothing brand-like is legible in the frame, and the app
-  drops any brand the model says it could not read;
+- any brand it claims corresponds to text actually in the frame. The only legible word in
+  the picture is `SZERSZAM` on the box — which is Hungarian for *tool*, a label rather than
+  a make — so a model reporting that as a brand is being a bit literal, not inventing
+  something. A brand on the mug or the lamp would be an invention, and the output will show
+  whether the app dropped it (`the box was unusable` / `brand/model dropped: not legible`);
 - the command prints the real **cost** of the call and, per object, whether a usable
   **box** was produced. A box is what becomes that item's picture.
 
@@ -238,10 +231,9 @@ Do not proceed to the install until this passes.
 
 ## Step 5 — Fill in the compose file
 
-Fetch `leltar/deploy/docker-compose.yaml` from the repo branch. Walk me through replacing:
+Fetch `leltar/deploy/docker-compose.yaml` from the repo branch. The image tag is already
+correct — leave it alone. Walk me through replacing:
 
-- the image tag `:latest` → **`:claude-new-app-asaos5`** (see the note at the top — the
-  `latest` tag does not exist yet)
 - both `/mnt/tank/...` paths → my pool name
 - `CHANGE_ME_DB_PASSWORD` → the 16-hex password, **in both places**: `POSTGRES_PASSWORD`
   and inside `DATABASE_URL`. They must match exactly or Postgres refuses every connection.
@@ -324,10 +316,10 @@ we split up:
 - The capture screen shows how many photographs are still being read and how many are
   waiting for the reviewer, so the photographer can tell whether to keep going.
 
-If we find the reviewer waiting on the queue rather than on their own judgement, the number
-of photographs read at once is `WORKER_CONCURRENCY` in the compose file (2 by default; up
-to 8). Raising it does not change the cost per photograph, only how many requests are in
-flight.
+If we find the reviewer waiting on the queue rather than on their own judgement, raise
+`WORKER_CONCURRENCY` in the compose file — it is there with a comment, set to 2, and goes
+up to 8. It changes how many photographs are read at once, not what each one costs. Editing
+it means **Apps → leltar → Edit**, change the value, save; the app restarts itself.
 
 One thing to warn me about: there are no separate accounts, so the app cannot tell which of
 us did what, and if we both edit the same entry at once the last save wins. Splitting the
@@ -363,6 +355,21 @@ start fetches the current build of whatever tag is set — and the branch tag is
 every push, so this picks up new work without editing anything. Then open
 **Statisztika → Rendszer és költség** and check the commit shown matches the latest one on
 the branch, and that the schema line says *naprakész*.
+
+## Before you call it done
+
+Walk me through these, and tell me which ones we actually saw rather than assumed:
+
+- [ ] `/health` returns `"status": "ok"` with `"database": true` and `"worker": true`
+- [ ] **Statisztika → Rendszer és költség** shows a commit, and the schema line says
+      *naprakész* — that is migrations having finished, not just the app being up
+- [ ] a real photograph went from *Sorban áll* to named entries without me pressing
+      anything
+- [ ] an entry I approved shows its own picture in the **Leltár** list
+- [ ] searching for something I just added, **typed without accents**, finds it
+- [ ] the second device sees a photograph appear on the review screen within a few seconds
+      of the first one uploading it (skip if only one of us will ever use it)
+- [ ] the receipt scanner, if it was running here, still answers on 8088
 
 ## Finally
 
