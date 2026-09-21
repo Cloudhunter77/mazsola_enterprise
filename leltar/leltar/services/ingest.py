@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from leltar.config import Settings
 from leltar.extraction.preprocess import sha256_of
-from leltar.models import Photo, PhotoStatus
+from leltar.models import Photo, PhotoMode, PhotoStatus
 
 log = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ class IngestError(ValueError):
     """The upload is not something we can work with."""
 
 
-def _verify_image(data: bytes) -> str:
+def verify_image(data: bytes) -> str:
     """Confirm the bytes really are an image of a sane size, and return its format."""
     try:
         with Image.open(io.BytesIO(data)) as img:
@@ -82,6 +82,7 @@ async def ingest_photo(
     settings: Settings,
     *,
     place_id: uuid.UUID | None = None,
+    mode: str = PhotoMode.SCENE.value,
     source: str = "web",
 ) -> tuple[Photo, bool]:
     """Store one photograph and queue it for identification.
@@ -92,7 +93,13 @@ async def ingest_photo(
 
     Unlike the receipt scanner next door, several photographs in one request are several
     independent photos, not sections of one document: each frame is its own set of objects.
+
+    `mode` says what the picture is of - a scene to catalogue, or one object photographed
+    deliberately. It is stored on the photo rather than passed to the worker later,
+    because it is a fact about the act of taking it that nobody can recover afterwards.
     """
+    if mode not in set(PhotoMode):
+        raise IngestError(f"Ismeretlen mód: {mode}.")
     if not data:
         raise IngestError("The upload was empty.")
     if len(data) > MAX_UPLOAD_BYTES:
@@ -101,7 +108,7 @@ async def ingest_photo(
             f"{MAX_UPLOAD_BYTES // 1024 // 1024} MB."
         )
 
-    fmt = _verify_image(data)
+    fmt = verify_image(data)
     digest = sha256_of(data)
 
     existing = await session.scalar(select(Photo).where(Photo.sha256 == digest))
@@ -121,6 +128,7 @@ async def ingest_photo(
         mime=f"image/{extension.lstrip('.')}",
         source=source,
         place_id=place_id,
+        mode=mode,
         taken_at=datetime.now(UTC),
         status=PhotoStatus.PENDING.value,
     )

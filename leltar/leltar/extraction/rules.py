@@ -17,7 +17,7 @@ import unicodedata
 from decimal import Decimal
 
 from leltar.extraction.categories import FALLBACK_SLUG, SLUGS
-from leltar.schemas.identification import IdentifiedObject, IdentifiedPhoto
+from leltar.schemas.identification import Box, IdentifiedObject, IdentifiedPhoto
 
 # A name that could be written on the box without looking inside it. These are the words a
 # model reaches for when it does not know, and they are worse than useless in a search:
@@ -47,6 +47,15 @@ MAX_PLAUSIBLE_VALUE_HUF = 5_000_000
 
 MAX_QUANTITY = 99
 MAX_ALTERNATIVES = 3
+
+# A box smaller than this fraction of the frame is not a located object, it is a point the
+# model produced because it was asked for four numbers. Cropping to it gives a thumbnail of
+# a few dozen pixels, which is a worse picture than the whole photograph.
+MIN_BOX_AREA = 0.004   # 0.4% of the frame
+
+# And one this large is "the photograph", which is what the item gets anyway when no box
+# survives - so it is dropped rather than turned into a crop that only wastes disk.
+MAX_BOX_AREA = 0.96
 
 
 def _fold(text: str) -> str:
@@ -92,6 +101,27 @@ def midpoint(low: int | None, high: int | None) -> Decimal | None:
         return None
     middle = sum(values) / len(values)
     return Decimal(round(middle / 100) * 100)
+
+
+def clean_box(box: Box | None) -> tuple[Box | None, bool]:
+    """Return a usable box, or None. The flag says a box was given and was not usable.
+
+    Ordering (clamp, then check) matters: a model that runs a few thousandths past an edge
+    has still located the object correctly, and throwing that away would lose a good crop
+    over a rounding error. What is not recoverable is a box with no area, one that is
+    inside out, or one so small it can only be noise.
+    """
+    if box is None:
+        return None, False
+
+    x0, x1 = sorted((max(0, min(1000, box.x0)), max(0, min(1000, box.x1))))
+    y0, y1 = sorted((max(0, min(1000, box.y0)), max(0, min(1000, box.y1))))
+
+    area = ((x1 - x0) / 1000) * ((y1 - y0) / 1000)
+    if area < MIN_BOX_AREA or area > MAX_BOX_AREA:
+        return None, True
+
+    return Box(x0=x0, y0=y0, x1=x1, y1=y1), False
 
 
 def clean_object(raw: IdentifiedObject) -> tuple[IdentifiedObject, list[str]]:
@@ -152,6 +182,13 @@ def clean_object(raw: IdentifiedObject) -> tuple[IdentifiedObject, list[str]]:
             unique.append(" ".join(candidate.split()))
     obj.alternatives = unique[:MAX_ALTERNATIVES]
 
+    obj.box, unusable_box = clean_box(obj.box)
+    if unusable_box:
+        # Not a fault in the entry itself - the name and the value may be perfect - but
+        # worth saying, because the item's picture will be the whole photograph instead of
+        # the object, and a screen full of identical pictures needs an explanation.
+        reasons.append("unusable_box")
+
     if obj.confidence < MIN_OBJECT_CONFIDENCE:
         reasons.append("low_confidence_object")
 
@@ -196,6 +233,10 @@ def clean_photo(
         if key in by_name:
             index = by_name[key]
             merged[index].quantity = max(merged[index].quantity, obj.quantity)
+            # Keep a box from the copy that has one: the duplicate is the same object seen
+            # twice, and either view can be the one that located it.
+            if merged[index].box is None and obj.box is not None:
+                merged[index].box = obj.box
             continue
         by_name[key] = len(merged)
         merged.append(obj)

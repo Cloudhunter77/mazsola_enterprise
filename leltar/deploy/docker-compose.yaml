@@ -61,10 +61,19 @@ services:
       DATA_DIR: /data
 
       # --- identification --------------------------------------------------
-      IDENTIFIER: claude                            # claude | ollama (ollama is a stub)
-      ANTHROPIC_API_KEY: CHANGE_ME_API_KEY          # REQUIRED: a Console key, not a subscription
+      # Pick ONE engine and fill in only its key.
+      IDENTIFIER: claude                            # claude | openrouter | ollama (a stub)
+
+      # If IDENTIFIER=claude (billed by Anthropic directly, not covered by a subscription)
+      ANTHROPIC_API_KEY: CHANGE_ME_API_KEY          # REQUIRED: a Console key
       IDENTIFIER_MODEL: claude-sonnet-5             # claude-haiku-4-5 costs about a fifth
       IDENTIFIER_EFFORT: low
+
+      # If IDENTIFIER=openrouter (Mistral, Qwen, Gemini and the rest, from one account).
+      # OPENROUTER_MODEL has no default: run scripts/list_models.py for today's list.
+      # OPENROUTER_API_KEY: CHANGE_ME_OPENROUTER_KEY
+      # OPENROUTER_MODEL: vendor/model
+      # OPENROUTER_SITE_URL: http://nas.local:8089  # optional, for their dashboard
 
       # --- auth -----------------------------------------------------------
       SECRET_KEY: CHANGE_ME_SECRET                  # REQUIRED: openssl rand -hex 32

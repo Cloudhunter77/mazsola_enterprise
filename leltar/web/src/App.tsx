@@ -6,6 +6,7 @@ import { Loading } from "./components/ui";
 import Capture from "./pages/Capture";
 import Dashboard from "./pages/Dashboard";
 import Inventory from "./pages/Inventory";
+import ItemPage from "./pages/ItemPage";
 import Login from "./pages/Login";
 import Manual from "./pages/Manual";
 import PhotoReview from "./pages/PhotoReview";
@@ -91,6 +92,7 @@ export default function App() {
           <Route path="/ellenorzes" element={<Review />} />
           <Route path="/fenykep/:id" element={<PhotoReview />} />
           <Route path="/leltar" element={<Inventory />} />
+          <Route path="/targy/:id" element={<ItemPage />} />
           <Route path="/kezi" element={<Manual />} />
           <Route path="/helyek" element={<Places />} />
           <Route path="/statisztika" element={<Dashboard />} />

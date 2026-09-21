@@ -52,9 +52,24 @@ variable substitution, and a raw hash pasted into the YAML is silently corrupted
 every login fails with no clue why. The escaped form doubles each `$`, which compose turns
 back into the original.
 
-And an Anthropic key from <https://console.anthropic.com>, as `ANTHROPIC_API_KEY`. A
-Claude Pro or Max subscription does **not** cover this — the subscription and the API are
-billed separately.
+And a key for whichever engine you choose:
+
+- **Anthropic directly** (the default): a key from <https://console.anthropic.com>, as
+  `ANTHROPIC_API_KEY`. A Claude Pro or Max subscription does **not** cover this — the
+  subscription and the API are billed separately.
+- **OpenRouter**: a key from <https://openrouter.ai/keys>, as `OPENROUTER_API_KEY`, plus
+  an `OPENROUTER_MODEL`. One account in front of Mistral, Qwen, Gemini and the rest, which
+  is where the cheap options are. There is no default model, because ids and prices change
+  every few weeks — ask for today's list instead:
+
+  ```sh
+  docker run --rm ghcr.io/cloudhunter77/leltar:latest python scripts/list_models.py
+  docker run --rm ghcr.io/cloudhunter77/leltar:latest python scripts/list_models.py --contains mistral
+  ```
+
+  It keeps only models that accept images **and** enforce a strict schema — a model that
+  ignores the schema is the one failure this route has that going direct to Anthropic does
+  not — and ranks them by what one photograph costs.
 
 Before installing, check the key and model actually work. One API call, nothing else
 needed. Load the key into your shell first, so it never reaches a command line or your
@@ -67,10 +82,24 @@ read -rs ANTHROPIC_API_KEY && export ANTHROPIC_API_KEY
 docker run --rm -e ANTHROPIC_API_KEY ghcr.io/cloudhunter77/leltar:latest python scripts/try_identify.py tests/fixtures/shelf.jpg
 ```
 
+For an OpenRouter candidate, the same thing with the other engine:
+
+```sh
+read -rs OPENROUTER_API_KEY && export OPENROUTER_API_KEY
+```
+```sh
+docker run --rm -e IDENTIFIER=openrouter -e OPENROUTER_API_KEY -e OPENROUTER_MODEL=<id> ghcr.io/cloudhunter77/leltar:latest python scripts/try_identify.py tests/fixtures/shelf.jpg
+```
+
 `-e ANTHROPIC_API_KEY` with no `=` passes the variable through from your shell. The image
 ships with a synthetic shelf drawing as a fixture, so this works before you have
 photographed anything. It prints what the model found, what the rules did to it, and the
 real cost of the call.
+
+Three things to look at in that output, in order: are the names specific enough to search
+for later; does it claim brands it cannot actually read (the app drops those, but a model
+that keeps guessing loses you the field); and do the boxes land on the right objects,
+since a box becomes that item's picture.
 
 ## 3. Let the NAS pull the image
 
@@ -133,10 +162,20 @@ The working order is: **pick the room first**, then photograph. The app remember
 between uploads, because cataloguing one is a dozen photographs in a row and re-picking it
 each time is the one thing guaranteed to make you stop.
 
-Point the camera at a whole shelf rather than one object at a time — a photo of eight
-things costs the same to read as a photo of one, and the app names all eight. Then
-**Ellenőrzés**: for each suggestion, accept it, tap one of the alternatives, or retype it,
-and **Mind rendben** when the photograph is done.
+Then choose what kind of photograph you are taking:
+
+- **Egy tárgy** — one thing, deliberately. That photograph becomes the item's picture, and
+  the model is told to name the subject rather than the table under it.
+- **Polc, szoba** — a whole shelf. A photo of eight things costs the same to read as a
+  photo of one, and the app names all eight *and* cuts a picture of each one out of the
+  frame, so every item still ends up with its own photograph.
+
+Then **Ellenőrzés**: for each suggestion you see the crop beside the name, and you accept
+it, tap one of the alternatives, or retype it. **Mind rendben** when the photograph is
+done.
+
+Later, open any item from the **Leltár** list to add more pictures of it — the serial
+plate, the damage, the thing out of its case — and to set which one the list shows.
 
 ### iOS Shortcut (optional)
 
@@ -220,8 +259,22 @@ If you want the brand recorded, photograph the label.
 instruction in `leltar/extraction/prompt.py` is explicit about fixtures. Rejecting the
 entry with **Nem kell** keeps it out of the inventory meanwhile.
 
+**The item pictures all look the same.** The model did not place usable boxes on that
+photograph, so every item fell back to the whole frame. Photograph the things one at a
+time in **Egy tárgy** mode, or add a picture by hand on the item's page. A weaker model
+via OpenRouter places boxes noticeably worse than Claude does; that is the trade.
+
+**A picture shows the wrong object.** The box landed off. Open the item and add a
+photograph of the real thing — it becomes the picture the list shows, and the crop can be
+deleted.
+
 **Identification costs more than expected.** Look at **Rendszer → Felismerési költség**:
 cost is tokens × rate, and the photograph is most of the input. `MAX_IMAGE_EDGE=1024`
-roughly halves it; `IDENTIFIER_MODEL=claude-haiku-4-5` costs about a fifth of Sonnet. The
-per-confirmed-item figure on that page is the one that matters — photographing a whole
+roughly halves it; `IDENTIFIER_MODEL=claude-haiku-4-5` costs about a fifth of Sonnet, and
+`IDENTIFIER=openrouter` with a model from `scripts/list_models.py` can cost less again.
+The per-confirmed-item figure on that page is the one that matters — photographing a whole
 shelf at once is what makes it small.
+
+Before settling on a cheaper model, photograph a week of real things with it and read
+**Pontosság**: the share of names you kept unchanged. A model whose names you rewrite is
+not cheap, because the typing is the cost this app exists to remove.

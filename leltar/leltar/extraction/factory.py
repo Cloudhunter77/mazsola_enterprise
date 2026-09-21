@@ -6,9 +6,11 @@ from leltar.config import Settings, get_settings
 from leltar.extraction.base import ObjectIdentifier
 from leltar.extraction.claude import ClaudeIdentifier
 from leltar.extraction.local import OllamaIdentifier
+from leltar.extraction.openrouter import OpenRouterIdentifier
 
 _BUILDERS = {
     "claude": ClaudeIdentifier,
+    "openrouter": OpenRouterIdentifier,
     "ollama": OllamaIdentifier,
 }
 

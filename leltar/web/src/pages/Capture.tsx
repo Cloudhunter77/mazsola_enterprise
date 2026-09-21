@@ -20,6 +20,15 @@ export default function Capture() {
       return ""; // private windows and blocked site data both throw here
     }
   });
+  // Remembered like the place, for the same reason: cataloguing is a run of photographs
+  // of the same kind, and re-choosing on every one is what makes people stop.
+  const [mode, setMode] = useState<"scene" | "single">(() => {
+    try {
+      return (localStorage.getItem("leltar-mode") as "scene" | "single") ?? "single";
+    } catch {
+      return "single";
+    }
+  });
   const [progress, setProgress] = useState<number | null>(null);
   const [result, setResult] = useState<UploadResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -35,13 +44,22 @@ export default function Capture() {
     }
   }
 
+  function rememberMode(value: "scene" | "single") {
+    setMode(value);
+    try {
+      localStorage.setItem("leltar-mode", value);
+    } catch {
+      /* a convenience, not a requirement */
+    }
+  }
+
   async function upload(files: FileList | null) {
     if (!files || files.length === 0) return;
     setError(null);
     setResult(null);
     setProgress(0);
     try {
-      const response = await api.upload(Array.from(files), placeId || null, setProgress);
+      const response = await api.upload(Array.from(files), placeId || null, mode, setProgress);
       setResult(response);
     } catch (err) {
       setError((err as Error).message);
@@ -70,6 +88,25 @@ export default function Capture() {
         <p className="card-note">
           A gép ezt kontextusként kapja meg, és minden felismert tárgy ide kerül.
         </p>
+
+        <div className="modes" style={{ marginTop: 12 }}>
+          <button
+            className={mode === "single" ? "on" : ""}
+            onClick={() => rememberMode("single")}
+            aria-pressed={mode === "single"}
+          >
+            Egy tárgy
+            <small>a képen egy dolog van</small>
+          </button>
+          <button
+            className={mode === "scene" ? "on" : ""}
+            onClick={() => rememberMode("scene")}
+            aria-pressed={mode === "scene"}
+          >
+            Polc, szoba
+            <small>több tárgyat is felismer</small>
+          </button>
+        </div>
       </Card>
 
       <Card>
@@ -77,7 +114,9 @@ export default function Capture() {
           <span className="glyph" aria-hidden>📷</span>
           <strong>Fénykép készítése vagy kiválasztása</strong>
           <span className="muted">
-            Egy polcról készült kép is jó: több tárgyat is felismer egyszerre.
+            {mode === "single"
+              ? "Egy tárgyról készült kép: a gép a főszereplőt nevezi meg, nem az asztalt alatta."
+              : "Egy polcról készült kép: minden tárgyat felismer, és mindegyikhez kivág egy képet."}
           </span>
           <input
             ref={input}

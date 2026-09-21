@@ -19,7 +19,7 @@ from leltar.config import Settings, get_settings
 from leltar.db import SessionLocal
 from leltar.extraction.base import IdentificationError, ObjectIdentifier
 from leltar.extraction.factory import build_identifier
-from leltar.models import Photo, PhotoStatus
+from leltar.models import Photo, PhotoMode, PhotoStatus
 from leltar.services.persist import persist_identification, record_attempt
 from leltar.services.places import path_of
 
@@ -84,6 +84,7 @@ class IdentificationWorker:
             place_path = await path_of(session, photo.place_id)
             photo_id = photo.id
             image_path = photo.path
+            single = photo.mode == PhotoMode.SINGLE.value
             await session.commit()
 
         try:
@@ -93,7 +94,9 @@ class IdentificationWorker:
             return True
 
         try:
-            result = await self.identifier.identify(data, place_path=place_path)
+            result = await self.identifier.identify(
+                data, place_path=place_path, single=single
+            )
         except IdentificationError as exc:
             await self._fail(photo_id, str(exc))
             return True
@@ -183,7 +186,10 @@ class IdentificationWorker:
                 session,
                 photo.id,
                 engine=self.settings.identifier,
-                model=self.settings.identifier_model,
+                # The configured engine's own model, not the Anthropic one: recording
+                # `identifier_model` while OpenRouter was running is how the sister app
+                # ended up attributing every failure to the wrong model.
+                model=self.settings.active_model,
                 ok=False,
                 error=message,
             )

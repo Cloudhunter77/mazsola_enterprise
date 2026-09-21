@@ -21,9 +21,11 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -32,6 +34,19 @@ from leltar.models.base import Base, TimestampMixin, money, pk
 if TYPE_CHECKING:
     from leltar.models.catalog import Category
     from leltar.models.place import Place
+
+
+class PhotoMode(enum.StrEnum):
+    """What the photographer meant by this picture.
+
+    A shelf and a single object are different jobs: one wants everything nameable in the
+    frame, the other wants the subject and nothing else - not the table it stands on, not
+    the wall behind it. The person knows which they took, so they say, rather than the
+    model having to infer intent from composition.
+    """
+
+    SCENE = "scene"
+    SINGLE = "single"
 
 
 class PhotoStatus(enum.StrEnum):
@@ -78,6 +93,9 @@ class Photo(Base, TimestampMixin):
         ForeignKey("places.id", ondelete="SET NULL"), nullable=True, index=True
     )
     taken_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    mode: Mapped[str] = mapped_column(
+        String(10), default=PhotoMode.SCENE.value, nullable=False
+    )
 
     # --- pipeline state ------------------------------------------------------
     status: Mapped[str] = mapped_column(
@@ -164,3 +182,67 @@ class Item(Base, TimestampMixin):
     photo: Mapped[Photo | None] = relationship(back_populates="items")
     place: Mapped[Place | None] = relationship()  # noqa: F821
     category: Mapped[Category | None] = relationship()  # noqa: F821
+    images: Mapped[list[ItemImage]] = relationship(
+        back_populates="item",
+        cascade="all, delete-orphan",
+        order_by="ItemImage.created_at",
+    )
+
+
+class ItemImage(Base, TimestampMixin):
+    """A picture of one thing.
+
+    Three ways one arrives, and the app treats them alike once stored:
+
+    * a **crop** of the photograph the item was identified in, taken at the box the model
+      drew - which is what gives eight things photographed together eight pictures;
+    * the **whole photograph**, when there was no usable box - still a picture of the item,
+      just a wider one;
+    * an **upload**, attached to an item afterwards: the serial plate, the damage, the
+      thing inside its case. This is the one that makes the inventory worth keeping after
+      the first pass.
+
+    Every row owns a file. A crop could in principle be recomputed from its photograph and
+    its box, but making that the only copy would mean a deleted photograph silently
+    emptying the inventory's pictures - and the photograph is the thing most likely to be
+    tidied away.
+    """
+
+    __tablename__ = "item_images"
+
+    id: Mapped[uuid.UUID] = pk()
+    item_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("items.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # crop | photo (the whole frame) | upload
+    kind: Mapped[str] = mapped_column(String(10), default="upload", nullable=False)
+    # Which photograph it came out of, when it came out of one. SET NULL rather than
+    # CASCADE: deleting a scene photograph must not take the item pictures with it.
+    source_photo_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("photos.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # The box it was cut from, in thousandths, kept so a crop can be explained and redone.
+    box: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    path: Mapped[str] = mapped_column(String(500), nullable=False)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    mime: Mapped[str] = mapped_column(String(60), default="image/jpeg", nullable=False)
+    width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # The one shown in the list. A partial unique index enforces "at most one per item",
+    # because two primaries is a state no screen can render and every screen would have to
+    # guess its way out of.
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    item: Mapped[Item] = relationship(back_populates="images")
+
+    __table_args__ = (
+        Index(
+            "uq_item_images_primary",
+            "item_id",
+            unique=True,
+            postgresql_where=text("is_primary"),
+        ),
+    )

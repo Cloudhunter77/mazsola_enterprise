@@ -71,6 +71,20 @@ class PlaceOut(BaseModel):
     item_count: int = 0
 
 
+class ItemImageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    item_id: uuid.UUID
+    kind: str
+    source_photo_id: uuid.UUID | None
+    box: dict | None
+    width: int | None
+    height: int | None
+    is_primary: bool
+    created_at: datetime
+
+
 class CategoryOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -118,6 +132,10 @@ class ItemOut(BaseModel):
     # the place tree and the category list to render a single row.
     place_path: str | None = None
     category_name: str | None = None
+    # How many pictures this item has. A list renders `/api/items/{id}/image` only when
+    # this is non-zero, so a missing picture is a layout decision rather than a broken
+    # image icon on every row.
+    image_count: int = 0
 
 
 class ItemPatch(BaseModel):
@@ -167,6 +185,7 @@ class PhotoSummary(BaseModel):
     id: uuid.UUID
     status: str
     source: str
+    mode: str
     place_id: uuid.UUID | None
     taken_at: datetime | None
     scene: str | None

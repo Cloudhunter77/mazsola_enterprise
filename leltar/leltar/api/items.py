@@ -6,32 +6,52 @@ import csv
 import io
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query, status
-from fastapi.responses import PlainTextResponse
-from sqlalchemy import or_, select
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse, PlainTextResponse
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from leltar.api.deps import AuthDep, OptionalUUID, SessionDep
+from leltar.api.deps import AuthDep, OptionalUUID, SessionDep, SettingsDep
+from leltar.extraction import crop
+from leltar.extraction.preprocess import sha256_of
 from leltar.extraction.rules import midpoint, names_match
-from leltar.models import Category, Item, ItemStatus, Photo, PhotoStatus
-from leltar.schemas.api import ItemIn, ItemOut, ItemPatch
+from leltar.models import Category, Item, ItemImage, ItemStatus, Photo, PhotoStatus
+from leltar.schemas.api import ItemImageOut, ItemIn, ItemOut, ItemPatch
+from leltar.services.ingest import IngestError, verify_image
 from leltar.services.places import paths_for_all
 
 router = APIRouter(prefix="/api/items", tags=["items"])
 
 
 async def decorate_items(session: AsyncSession, items: list[Item]) -> list[ItemOut]:
-    """Attach the place path and category name every list view needs."""
+    """Attach the place path, category name and picture count every list view needs."""
+    if not items:
+        return []
+
     paths = await paths_for_all(session)
     category_names = dict(
         (await session.execute(select(Category.id, Category.name))).all()
     )
+    # One query for the whole page rather than one per row: a list of 300 items would
+    # otherwise be 300 round trips to find out whether to draw a thumbnail.
+    counts = dict(
+        (
+            await session.execute(
+                select(ItemImage.item_id, func.count(ItemImage.id))
+                .where(ItemImage.item_id.in_([item.id for item in items]))
+                .group_by(ItemImage.item_id)
+            )
+        ).all()
+    )
+
     out: list[ItemOut] = []
     for item in items:
         row = ItemOut.model_validate(item)
         row.place_path = paths.get(item.place_id) if item.place_id else None
         row.category_name = category_names.get(item.category_id) if item.category_id else None
+        row.image_count = int(counts.get(item.id, 0))
         out.append(row)
     return out
 
@@ -144,6 +164,165 @@ async def export_csv(_: AuthDep, session: SessionDep) -> PlainTextResponse:
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="leltar.csv"'},
     )
+
+
+# --- pictures ----------------------------------------------------------------
+# These sit above `/{item_id}` on purpose: FastAPI matches in declaration order, and
+# `/images/{image_id}` under a bare `/{item_id}` route would be read as an item called
+# "images".
+@router.post(
+    "/images/{image_id}/primary", response_model=ItemImageOut, tags=["item-images"]
+)
+async def set_primary_image(
+    _: AuthDep, session: SessionDep, image_id: uuid.UUID
+) -> ItemImageOut:
+    """Choose which picture represents the item in a list."""
+    image = await session.get(ItemImage, image_id)
+    if image is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nincs ilyen kép.")
+
+    await _clear_primary(session, image.item_id)
+    image.is_primary = True
+    await session.commit()
+    return ItemImageOut.model_validate(image)
+
+
+@router.delete(
+    "/images/{image_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["item-images"]
+)
+async def delete_image(_: AuthDep, session: SessionDep, image_id: uuid.UUID) -> None:
+    image = await session.get(ItemImage, image_id)
+    if image is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nincs ilyen kép.")
+
+    item_id, was_primary, path = image.item_id, image.is_primary, Path(image.path)
+    await session.delete(image)
+    await session.flush()
+
+    # Something has to represent the item, or its row loses its picture while pictures
+    # remain. The oldest survivor is the least surprising choice.
+    if was_primary:
+        successor = await session.scalar(
+            select(ItemImage)
+            .where(ItemImage.item_id == item_id)
+            .order_by(ItemImage.created_at)
+            .limit(1)
+        )
+        if successor is not None:
+            successor.is_primary = True
+
+    await session.commit()
+    path.unlink(missing_ok=True)
+
+
+@router.get("/{item_id}/images", response_model=list[ItemImageOut], tags=["item-images"])
+async def list_images(
+    _: AuthDep, session: SessionDep, item_id: uuid.UUID
+) -> list[ItemImageOut]:
+    rows = (
+        await session.scalars(
+            select(ItemImage)
+            .where(ItemImage.item_id == item_id)
+            .order_by(ItemImage.is_primary.desc(), ItemImage.created_at)
+        )
+    ).all()
+    return [ItemImageOut.model_validate(row) for row in rows]
+
+
+@router.get("/{item_id}/image", tags=["item-images"])
+async def get_image(_: AuthDep, session: SessionDep, item_id: uuid.UUID) -> FileResponse:
+    """The item's picture: the chosen one, or the oldest if none was chosen."""
+    image = await session.scalar(
+        select(ItemImage)
+        .where(ItemImage.item_id == item_id)
+        .order_by(ItemImage.is_primary.desc(), ItemImage.created_at)
+        .limit(1)
+    )
+    if image is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Ehhez a tárgyhoz nincs kép."
+        )
+    path = Path(image.path)
+    if not path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="A kép fájlja hiányzik.")
+    return FileResponse(path, media_type=image.mime)
+
+
+@router.post(
+    "/{item_id}/images",
+    response_model=ItemImageOut,
+    status_code=status.HTTP_201_CREATED,
+    tags=["item-images"],
+)
+async def add_image(
+    _: AuthDep,
+    session: SessionDep,
+    settings: SettingsDep,
+    item_id: uuid.UUID,
+    file: UploadFile = File(..., description="A photograph of this item."),
+    primary: bool = Query(True, description="Make it the picture shown in lists."),
+) -> ItemImageOut:
+    """Attach a photograph to an item you already have.
+
+    This is the second pass an inventory actually needs: the serial plate, the damage, the
+    thing out of its case. It goes straight on the item and is never sent to the model -
+    nothing here is being identified, only recorded.
+    """
+    item = await session.get(Item, item_id)
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nincs ilyen tárgy.")
+
+    data = await file.read()
+    try:
+        verify_image(data)
+    except IngestError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    # Stored at the same size as a crop, and as a JPEG whatever arrived: these are
+    # pictures for recognising a thing on a phone screen, not archival originals.
+    try:
+        jpeg, width, height = crop.render(data, None)
+    except OSError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="A képet nem sikerült feldolgozni."
+        ) from exc
+
+    taken = f"{datetime.now(UTC):%Y/%m}"
+    path = crop.storage_path(settings.crop_dir, uuid.uuid4(), taken)
+    path.write_bytes(jpeg)
+
+    if primary:
+        await _clear_primary(session, item_id)
+
+    image = ItemImage(
+        item_id=item_id,
+        kind="upload",
+        path=str(path),
+        sha256=sha256_of(jpeg),
+        bytes=len(jpeg),
+        mime="image/jpeg",
+        width=width,
+        height=height,
+        is_primary=primary,
+    )
+    session.add(image)
+    await session.commit()
+    return ItemImageOut.model_validate(image)
+
+
+async def _clear_primary(session: AsyncSession, item_id: uuid.UUID) -> None:
+    """Demote the current primary, and flush before a new one is set.
+
+    The flush is not optional: a partial unique index forbids two primaries per item, and
+    without it both the UPDATE and the INSERT reach the database in the same statement
+    batch and the constraint fires.
+    """
+    current = await session.scalars(
+        select(ItemImage).where(ItemImage.item_id == item_id, ItemImage.is_primary.is_(True))
+    )
+    for image in current:
+        image.is_primary = False
+    await session.flush()
 
 
 @router.get("/{item_id}", response_model=ItemOut)

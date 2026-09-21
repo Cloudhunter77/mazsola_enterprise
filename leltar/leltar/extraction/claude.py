@@ -90,7 +90,12 @@ class ClaudeIdentifier:
             )
 
     async def identify(
-        self, image: bytes, *, place_path: str | None = None, mime_type: str = "image/jpeg"
+        self,
+        image: bytes,
+        *,
+        place_path: str | None = None,
+        single: bool = False,
+        mime_type: str = "image/jpeg",
     ) -> IdentificationResult:
         jpeg, width, height = prepare(
             image,
@@ -108,7 +113,7 @@ class ClaudeIdentifier:
                     "data": base64.standard_b64encode(jpeg).decode("ascii"),
                 },
             },
-            {"type": "text", "text": instruction_for(place_path)},
+            {"type": "text", "text": instruction_for(place_path, single=single)},
         ]
 
         started = time.monotonic()

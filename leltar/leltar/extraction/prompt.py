@@ -13,6 +13,10 @@ turns out to be worthless:
    ceiling light: all visible, none of them things you own in the sense that matters here.
 4. **It prices to the forint.** "38 400 Ft" for a second-hand armchair is a made-up number
    wearing a suit. A range is the honest form, and a wide range is a real answer.
+
+There is a fifth, which the box rule below addresses: asked where something is in the
+frame, a model will always produce four numbers. A box in the wrong place is worse than no
+box at all here, because the box *becomes the photograph of that item* in the inventory.
 """
 
 from __future__ import annotations
@@ -75,6 +79,21 @@ once it is saved, and the entire value of the field depends on that distinction.
 
 Choose `egyeb` rather than forcing something into a category that nearly fits.
 
+## Where each object is
+
+`box` locates the object in the frame, in thousandths of the image width and height, with
+the origin at the top left: `{{"x0": 120, "y0": 300, "x1": 340, "y1": 520}}` is an object
+in the left half, a little below the middle.
+
+Draw it tight around the object, not around the shelf it stands on. It is cropped out of
+the photograph and shown as that item's picture, so a box that is slightly generous is
+fine and a box around the wrong thing is not.
+
+**Leave `box` out entirely when you cannot place the object confidently** - when it is
+half behind something else, or you are unsure which of two similar things you are
+describing. A missing box costs nothing: the item simply gets the whole photograph as its
+picture.
+
 ## Value
 
 `value_low_huf` and `value_high_huf` bracket what it would cost to replace the object
@@ -94,17 +113,33 @@ queue, which is exactly where an uncertain guess belongs, and costs nothing.
 """
 
 
-def instruction_for(place_path: str | None) -> str:
-    """The per-photo user turn. `place_path` is where the person says the camera was."""
+def instruction_for(place_path: str | None, single: bool = False) -> str:
+    """The per-photo user turn.
+
+    `place_path` is where the person says the camera was. `single` marks a photograph taken
+    of one thing on purpose - which is a different job from cataloguing a shelf, and saying
+    so is what stops the reply listing the table the object is standing on.
+    """
     where = (
         f"This photograph was taken in: {place_path}. Use it for context, but do not "
         "mention the location in the object names.\n\n"
         if place_path
         else ""
     )
+
+    if single:
+        return (
+            f"{where}This photograph was taken of ONE object, deliberately. Name that "
+            "object - the subject of the picture - and nothing else: not the surface it "
+            "rests on, not what is behind it, not the room. Return exactly one entry. "
+            "Read its brand and serial number only where they are legible; otherwise "
+            "leave them out. A box is not needed when the object fills the frame."
+        )
+
     return (
         f"{where}List the movable objects in this photograph, following the rules in your "
         "instructions. Name each one in Hungarian, specifically enough to identify it "
         "among similar things. Read brands and serial numbers only where they are legible; "
-        "otherwise leave them out."
+        "otherwise leave them out. Give each object a box where you can place it "
+        "confidently."
     )

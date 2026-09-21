@@ -41,12 +41,18 @@ class ObjectIdentifier(Protocol):
     name: str
 
     async def identify(
-        self, image: bytes, *, place_path: str | None = None, mime_type: str = "image/jpeg"
+        self,
+        image: bytes,
+        *,
+        place_path: str | None = None,
+        single: bool = False,
+        mime_type: str = "image/jpeg",
     ) -> IdentificationResult:
         """Name the movable objects in one photograph.
 
         `place_path` is where the person says the photo was taken ("Garázs › Fém polc");
-        it is context, not something to repeat in the names. Raises `IdentificationError`
-        on failure.
+        it is context, not something to repeat in the names. `single` says the photograph
+        was taken of one object on purpose, so the answer should name the subject and not
+        the furniture it is standing on. Raises `IdentificationError` on failure.
         """
         ...

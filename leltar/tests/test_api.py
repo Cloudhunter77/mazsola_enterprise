@@ -316,3 +316,111 @@ async def test_an_empty_place_parameter_means_no_place(seeded_client, item_photo
 
 async def test_a_malformed_place_parameter_is_still_rejected(seeded_client):
     assert (await seeded_client.get("/api/items?place_id=nem-uuid")).status_code == 422
+
+
+# --- pictures ----------------------------------------------------------------
+async def test_an_item_serves_its_picture_and_takes_more(seeded_client, session, item_photo):
+    from leltar.models import Item, ItemStatus
+
+    item = Item(name="Makita akkus fúró", status=ItemStatus.CONFIRMED.value)
+    session.add(item)
+    await session.commit()
+
+    # Nothing attached yet: a 404 rather than a broken image on every row.
+    assert (await seeded_client.get(f"/api/items/{item.id}/image")).status_code == 404
+    assert (await seeded_client.get("/api/items")).json()[0]["image_count"] == 0
+
+    added = await seeded_client.post(
+        f"/api/items/{item.id}/images",
+        files={"file": ("furo.jpg", item_photo, "image/jpeg")},
+    )
+    assert added.status_code == 201
+    assert added.json()["kind"] == "upload"
+    assert added.json()["is_primary"] is True
+
+    served = await seeded_client.get(f"/api/items/{item.id}/image")
+    assert served.status_code == 200
+    assert served.headers["content-type"] == "image/jpeg"
+    assert (await seeded_client.get("/api/items")).json()[0]["image_count"] == 1
+
+
+async def test_only_one_picture_is_ever_the_primary(seeded_client, session, item_photo):
+    """Two primaries is a state no screen can render, so the database forbids it."""
+    import io
+
+    from PIL import Image
+
+    from leltar.models import Item
+
+    item = Item(name="kerékpár")
+    session.add(item)
+    await session.commit()
+
+    def jpeg(colour):
+        buffer = io.BytesIO()
+        Image.new("RGB", (600, 400), colour).save(buffer, format="JPEG")
+        return buffer.getvalue()
+
+    first = (await seeded_client.post(
+        f"/api/items/{item.id}/images", files={"file": ("a.jpg", jpeg((10, 20, 30)), "image/jpeg")}
+    )).json()
+    second = (await seeded_client.post(
+        f"/api/items/{item.id}/images", files={"file": ("b.jpg", jpeg((90, 20, 30)), "image/jpeg")}
+    )).json()
+
+    images = (await seeded_client.get(f"/api/items/{item.id}/images")).json()
+    assert [row["is_primary"] for row in images] == [True, False]
+    assert images[0]["id"] == second["id"]  # the newest upload took over
+
+    await seeded_client.post(f"/api/items/images/{first['id']}/primary")
+    images = (await seeded_client.get(f"/api/items/{item.id}/images")).json()
+    assert sum(row["is_primary"] for row in images) == 1
+    assert images[0]["id"] == first["id"]
+
+
+async def test_deleting_the_primary_promotes_another(seeded_client, session, item_photo):
+    import io
+
+    from PIL import Image
+
+    from leltar.models import Item
+
+    item = Item(name="fúró")
+    session.add(item)
+    await session.commit()
+
+    def jpeg(colour):
+        buffer = io.BytesIO()
+        Image.new("RGB", (600, 400), colour).save(buffer, format="JPEG")
+        return buffer.getvalue()
+
+    await seeded_client.post(
+        f"/api/items/{item.id}/images", files={"file": ("a.jpg", jpeg((10, 20, 30)), "image/jpeg")}
+    )
+    newest = (await seeded_client.post(
+        f"/api/items/{item.id}/images", files={"file": ("b.jpg", jpeg((90, 20, 30)), "image/jpeg")}
+    )).json()
+
+    assert (await seeded_client.delete(f"/api/items/images/{newest['id']}")).status_code == 204
+
+    images = (await seeded_client.get(f"/api/items/{item.id}/images")).json()
+    assert len(images) == 1
+    # The item keeps a picture rather than silently losing the one its row shows.
+    assert images[0]["is_primary"] is True
+    assert (await seeded_client.get(f"/api/items/{item.id}/image")).status_code == 200
+
+
+async def test_a_photo_can_be_uploaded_as_one_object(seeded_client, item_photo):
+    response = await seeded_client.post(
+        "/api/photos?mode=single",
+        files={"file": ("furo.jpg", item_photo, "image/jpeg")},
+    )
+    assert response.status_code == 202
+    assert (await seeded_client.get("/api/photos")).json()[0]["mode"] == "single"
+
+
+async def test_an_unknown_capture_mode_is_refused(seeded_client, item_photo):
+    response = await seeded_client.post(
+        "/api/photos?mode=panorama", files={"file": ("x.jpg", item_photo, "image/jpeg")}
+    )
+    assert response.status_code == 400

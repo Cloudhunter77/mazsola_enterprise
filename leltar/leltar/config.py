@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     # --- identification ------------------------------------------------------
     identifier: str = Field(
         default="claude",
-        description="Which identification engine to use: claude | ollama.",
+        description="Which identification engine to use: claude | openrouter | ollama.",
     )
     identifier_model: str = Field(
         default="claude-sonnet-5",
@@ -42,6 +42,26 @@ class Settings(BaseSettings):
             "low | medium | high | xhigh | max. Recognising a kettle does not repay "
             "deliberation - effort here buys longer sentences, not better names."
         ),
+    )
+
+    # --- openrouter ----------------------------------------------------------
+    # A gateway in front of many providers: Mistral, Qwen, Gemini and the rest, billed
+    # from one account. Naming a visible object is a far easier task than transcribing a
+    # receipt, so this is where a cheap model can genuinely do the job - see the README,
+    # and check any candidate on a real photograph before trusting it with a house.
+    openrouter_api_key: str | None = None
+    openrouter_model: str = Field(
+        default="",
+        description=(
+            "OpenRouter model id, in vendor/model form. It must support both vision and "
+            "strict structured outputs. Deliberately empty: model ids and prices change "
+            "faster than this file does, so `python scripts/list_models.py` asks "
+            "OpenRouter which models qualify today rather than trusting a default here."
+        ),
+    )
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_site_url: str | None = Field(
+        default=None, description="Optional, for attribution on the OpenRouter dashboard."
     )
 
     # Images bill at roughly (width * height) / 750 tokens, so this is the main cost lever.
@@ -98,6 +118,26 @@ class Settings(BaseSettings):
     @property
     def image_dir(self) -> Path:
         return self.data_dir / "items"
+
+    @property
+    def crop_dir(self) -> Path:
+        """Where the per-item pictures live, kept apart from the originals.
+
+        A crop is derived data: it can be regenerated from its photograph and its box, and
+        a backup that skips it loses nothing that cannot be rebuilt.
+        """
+        return self.data_dir / "crops"
+
+    @property
+    def active_model(self) -> str:
+        """The model the configured engine will actually call.
+
+        Two settings hold a model name and only one is in use, so anything that reports or
+        records "which model" has to pick. Written twice it drifts - in the sister app the
+        worker's failure path recorded the wrong model against every failed receipt for
+        exactly this reason.
+        """
+        return self.openrouter_model if self.identifier == "openrouter" else self.identifier_model
 
 
 @lru_cache

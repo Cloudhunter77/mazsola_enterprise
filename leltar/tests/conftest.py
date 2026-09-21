@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from leltar.schemas.identification import IdentifiedObject, IdentifiedPhoto
+from leltar.schemas.identification import Box, IdentifiedObject, IdentifiedPhoto
 
 
 def obj(
@@ -25,6 +25,7 @@ def obj(
     description: str | None = None,
     alternatives: list[str] | None = None,
     confidence: float = 0.9,
+    box: tuple[int, int, int, int] | None = None,
 ) -> IdentifiedObject:
     return IdentifiedObject(
         name=name,
@@ -43,6 +44,7 @@ def obj(
         description=description,
         alternatives=alternatives or [],
         confidence=confidence,
+        box=Box(x0=box[0], y0=box[1], x1=box[2], y1=box[3]) if box else None,
     )
 
 
@@ -51,8 +53,9 @@ def build_photo(**overrides) -> IdentifiedPhoto:
     defaults = dict(
         scene="konyhai polc edényekkel",
         objects=[
-            obj(),
-            obj("fa vágódeszka", material="fa", value_low_huf=2000, value_high_huf=5000),
+            obj(box=(100, 200, 300, 450)),
+            obj("fa vágódeszka", material="fa", value_low_huf=2000, value_high_huf=5000,
+                box=(350, 180, 600, 430)),
             obj(
                 "Bosch kézi mixer",
                 category="konyha",
@@ -60,6 +63,7 @@ def build_photo(**overrides) -> IdentifiedPhoto:
                 markings_legible=True,
                 value_low_huf=8000,
                 value_high_huf=20000,
+                box=(650, 150, 900, 470),
             ),
         ],
         confidence=0.88,

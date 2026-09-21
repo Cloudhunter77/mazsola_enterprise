@@ -67,11 +67,17 @@ export interface Item {
   status: string; source: string; edited: boolean; confidence: number | null;
   review_reasons: string[] | null; alternatives: string[] | null;
   notes: string | null; confirmed_at: string | null; created_at: string;
-  place_path: string | null; category_name: string | null;
+  place_path: string | null; category_name: string | null; image_count: number;
+}
+
+export interface ItemImage {
+  id: string; item_id: string; kind: string; source_photo_id: string | null;
+  box: { x0: number; y0: number; x1: number; y1: number } | null;
+  width: number | null; height: number | null; is_primary: boolean; created_at: string;
 }
 
 export interface Photo {
-  id: string; status: string; source: string; place_id: string | null;
+  id: string; status: string; source: string; mode: string; place_id: string | null;
   taken_at: string | null; scene: string | null; confidence: number | null;
   review_reasons: string[] | null; error: string | null; attempts: number;
   created_at: string; place_path: string | null; item_count: number; draft_count: number;
@@ -130,6 +136,7 @@ export const api = {
   upload(
     files: File[],
     placeId: string | null,
+    mode: "scene" | "single",
     onProgress?: (fraction: number) => void,
   ): Promise<UploadResponse> {
     // XHR rather than fetch: upload progress matters on a phone pushing a handful of
@@ -138,7 +145,7 @@ export const api = {
       const form = new FormData();
       for (const file of files) form.append("file", file);
       const xhr = new XMLHttpRequest();
-      xhr.open("POST", `/api/photos?${query({ place_id: placeId, source: "web" })}`);
+      xhr.open("POST", `/api/photos?${query({ place_id: placeId, mode, source: "web" })}`);
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable && onProgress) onProgress(event.loaded / event.total);
       };
@@ -177,6 +184,35 @@ export const api = {
   confirmPhotoItems: (photoId: string) =>
     request<Item[]>(`/api/items/confirm-photo/${photoId}`, { method: "POST" }),
   deleteItem: (id: string) => request<void>(`/api/items/${id}`, { method: "DELETE" }),
+
+  itemImageUrl: (id: string) => `/api/items/${id}/image`,
+  itemImages: (id: string) => request<ItemImage[]>(`/api/items/${id}/images`),
+  addItemImage(id: string, file: File, onProgress?: (fraction: number) => void):
+    Promise<ItemImage> {
+    return new Promise((resolve, reject) => {
+      const form = new FormData();
+      form.append("file", file);
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `/api/items/${id}/images`);
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable && onProgress) onProgress(event.loaded / event.total);
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText));
+        else {
+          let detail = `Feltöltés sikertelen (${xhr.status})`;
+          try { detail = JSON.parse(xhr.responseText).detail ?? detail; } catch { /* ignore */ }
+          reject(new ApiError(detail, xhr.status));
+        }
+      };
+      xhr.onerror = () => reject(new ApiError("Nem sikerült elérni a szervert.", 0));
+      xhr.send(form);
+    });
+  },
+  setPrimaryImage: (imageId: string) =>
+    request<ItemImage>(`/api/items/images/${imageId}/primary`, { method: "POST" }),
+  deleteItemImage: (imageId: string) =>
+    request<void>(`/api/items/images/${imageId}`, { method: "DELETE" }),
   exportCsvUrl: () => "/api/items/export.csv",
 
   places: () => request<Place[]>("/api/places"),

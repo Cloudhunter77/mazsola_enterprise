@@ -172,6 +172,16 @@ function Draft({
 
   return (
     <div className={`draft ${item.status}`}>
+      <div className="row" style={{ gap: 10, alignItems: "flex-start", marginBottom: 8 }}>
+        {/* The crop the model's box produced. Showing it here is what makes a box in the
+            wrong place obvious now, rather than a mystery picture in the inventory. */}
+        <img className="thumb" src={api.itemImageUrl(item.id)} alt="" loading="lazy" />
+        <span className="muted" style={{ fontSize: "0.78rem" }}>
+          {item.suggested_name && item.suggested_name !== item.name
+            ? `a gép szerint: ${item.suggested_name}`
+            : ""}
+        </span>
+      </div>
       <div className="draft-head">
         <input
           value={name}

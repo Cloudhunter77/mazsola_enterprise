@@ -29,9 +29,11 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://leltar:leltar@db:5432/leltar
       DATA_DIR: /data
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       IDENTIFIER: ${IDENTIFIER:-claude}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       IDENTIFIER_MODEL: ${IDENTIFIER_MODEL:-claude-sonnet-5}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
       SECRET_KEY: dev-secret-not-for-real-use
       AUTH_DISABLED: "true"
     ports: ["8001:8000"]

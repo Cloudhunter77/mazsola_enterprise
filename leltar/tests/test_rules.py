@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from leltar.extraction.rules import (
     MAX_QUANTITY,
+    clean_box,
     clean_object,
     clean_photo,
     is_generic,
@@ -13,6 +14,7 @@ from leltar.extraction.rules import (
     names_match,
     needs_review,
 )
+from leltar.schemas.identification import Box
 from tests.conftest import build_photo, obj
 
 
@@ -183,3 +185,61 @@ def test_cleaning_never_mutates_what_the_model_returned():
     original = build_photo(objects=[obj("laptop", brand="Dell", markings_legible=False)])
     clean_photo(original, max_items=12)
     assert original.objects[0].brand == "Dell"
+
+
+# --- boxes -------------------------------------------------------------------
+# A box becomes the item's photograph, so a wrong one is not a cosmetic problem: it is a
+# picture of the wrong object filed under the right name.
+def test_a_good_box_survives():
+    clean, reasons = clean_object(obj(box=(100, 200, 400, 600)))
+    assert clean.box is not None
+    assert (clean.box.x0, clean.box.y0, clean.box.x1, clean.box.y1) == (100, 200, 400, 600)
+    assert reasons == []
+
+
+def test_an_inside_out_box_is_straightened_rather_than_thrown_away():
+    clean, reasons = clean_object(obj(box=(400, 600, 100, 200)))
+    assert (clean.box.x0, clean.box.x1) == (100, 400)
+    assert (clean.box.y0, clean.box.y1) == (200, 600)
+    assert reasons == []
+
+
+def test_a_box_that_runs_past_the_edge_is_clamped():
+    """A few thousandths over the edge still located the object correctly."""
+    clean, _ = clean_box(Box(x0=0, y0=0, x1=1000, y1=900))
+    assert clean is not None
+    assert (clean.x0, clean.y1) == (0, 900)
+
+
+def test_a_pinprick_box_is_dropped_and_said_so():
+    _, flagged = clean_box(Box(x0=500, y0=500, x1=505, y1=505))
+    assert flagged is True
+
+    clean, reasons = clean_object(obj(box=(500, 500, 505, 505)))
+    assert clean.box is None
+    assert "unusable_box" in reasons
+
+
+def test_a_box_around_the_whole_frame_is_not_a_crop():
+    """"The object is the photograph" is what an item gets anyway when there is no box."""
+    clean, flagged = clean_box(Box(x0=0, y0=0, x1=1000, y1=1000))
+    assert clean is None
+    assert flagged is True
+
+
+def test_no_box_is_not_an_error():
+    clean, reasons = clean_object(obj(box=None))
+    assert clean.box is None
+    assert "unusable_box" not in reasons
+
+
+def test_merging_duplicates_keeps_whichever_copy_had_a_box():
+    cleaned, _, _ = clean_photo(
+        build_photo(objects=[
+            obj("könyvespolc", box=None),
+            obj("könyvespolc", box=(100, 100, 400, 800)),
+        ]),
+        max_items=12,
+    )
+    assert len(cleaned.objects) == 1
+    assert cleaned.objects[0].box is not None

@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from leltar.api.deps import AuthDep, OptionalUUID, SessionDep, SettingsDep
 from leltar.api.items import decorate_items
-from leltar.models import Item, ItemStatus, Photo, PhotoStatus
+from leltar.models import Item, ItemStatus, Photo, PhotoMode, PhotoStatus
 from leltar.schemas.api import PhotoDetail, PhotoSummary, UploadedPhoto, UploadResponse
 from leltar.services.ingest import MAX_PHOTOS_PER_UPLOAD, IngestError, ingest_photo
 from leltar.services.places import paths_for_all
@@ -28,11 +28,16 @@ async def upload_photos(
     settings: SettingsDep,
     file: list[UploadFile] = File(..., description="One or more photographs of your things."),
     place_id: OptionalUUID = None,
+    mode: str = Query(
+        PhotoMode.SCENE.value,
+        description="scene (catalogue everything in the frame) | single (one object).",
+    ),
     source: str = Query("web", description="web | shortcut"),
 ) -> UploadResponse:
     """Accept photographs and queue them. Returns immediately; the worker names things later.
 
-    `place_id` is where they were taken; an empty value means it was not given.
+    `place_id` is where they were taken; an empty value means it was not given. `mode` says
+    whether each frame is a scene to catalogue or one object photographed on purpose.
     Each file is its own photograph with its own set of objects - repeating the field
     uploads a whole shelf in one go, not one object from several angles.
     """
@@ -50,7 +55,7 @@ async def upload_photos(
         data = await upload.read()
         try:
             photo, created = await ingest_photo(
-                session, data, settings, place_id=place_id, source=source
+                session, data, settings, place_id=place_id, mode=mode, source=source
             )
         except IngestError as exc:
             raise HTTPException(

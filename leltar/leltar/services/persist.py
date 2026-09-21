@@ -5,14 +5,27 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from leltar.config import Settings
+from leltar.extraction import crop
 from leltar.extraction.base import IdentificationResult
+from leltar.extraction.preprocess import sha256_of
 from leltar.extraction.rules import clean_photo, midpoint, needs_review
-from leltar.models import Category, IdentificationAttempt, Item, ItemStatus, Photo, PhotoStatus
+from leltar.models import (
+    Category,
+    IdentificationAttempt,
+    Item,
+    ItemImage,
+    ItemStatus,
+    Photo,
+    PhotoMode,
+    PhotoStatus,
+)
+from leltar.schemas.identification import Box
 
 log = logging.getLogger(__name__)
 
@@ -37,8 +50,21 @@ async def persist_identification(
     cleaned, photo_reasons, object_reasons = clean_photo(
         result.photo, max_items=settings.max_items_per_photo
     )
+
+    # A photograph taken of one thing gets one entry. The instruction already asks for
+    # that, and a good model obeys; a cheaper one often adds the table and the wall behind
+    # it, and quietly dropping those is better than making the person reject two rows for
+    # every object they photograph.
+    if photo.mode == PhotoMode.SINGLE.value and len(cleaned.objects) > 1:
+        best = max(range(len(cleaned.objects)), key=lambda i: cleaned.objects[i].confidence)
+        cleaned.objects = [cleaned.objects[best]]
+        object_reasons = [object_reasons[best]]
+        photo_reasons.append("extra_objects_ignored")
+
     categories = await _category_ids(session)
 
+    # Their pictures go too: `item_images` cascades on the item, and a crop belonging to a
+    # draft that no longer exists is a file nothing will ever ask for again.
     await session.execute(
         delete(Item).where(Item.photo_id == photo.id, Item.status == ItemStatus.DRAFT.value)
     )
@@ -73,6 +99,9 @@ async def persist_identification(
         session.add(item)
         items.append(item)
 
+    await session.flush()
+    await _make_pictures(session, photo, items, cleaned.objects, settings)
+
     photo.scene = cleaned.scene
     photo.confidence = cleaned.confidence
     photo.review_reasons = photo_reasons or None
@@ -92,6 +121,58 @@ async def persist_identification(
         f" ({', '.join(photo_reasons)})" if photo_reasons else "",
     )
     return items
+
+
+async def _make_pictures(
+    session: AsyncSession,
+    photo: Photo,
+    items: list[Item],
+    objects: list,
+    settings: Settings,
+) -> None:
+    """Give every new item its own picture, cut from the photograph where possible.
+
+    Failing to make a picture is not failing to identify: the names are the valuable part
+    and they are already stored by the time this runs. So a photograph that cannot be
+    re-read from disk costs the items their thumbnails and nothing else, and the error is
+    logged rather than raised.
+    """
+    try:
+        data = Path(photo.path).read_bytes()
+    except OSError as exc:
+        log.warning("no pictures for photo %s: %s", photo.id, exc)
+        return
+
+    taken = f"{photo.created_at:%Y/%m}" if photo.created_at else "unsorted"
+
+    for item, obj in zip(items, objects, strict=True):
+        box = obj.box
+        try:
+            jpeg, width, height = crop.render(data, box)
+        except OSError as exc:
+            log.warning("could not crop item %s: %s", item.id, exc)
+            continue
+
+        path = crop.storage_path(settings.crop_dir, item.id, taken)
+        path.write_bytes(jpeg)
+
+        session.add(
+            ItemImage(
+                item_id=item.id,
+                kind="crop" if box is not None else "photo",
+                source_photo_id=photo.id,
+                box=box.model_dump() if isinstance(box, Box) else None,
+                path=str(path),
+                sha256=sha256_of(jpeg),
+                bytes=len(jpeg),
+                mime="image/jpeg",
+                width=width,
+                height=height,
+                is_primary=True,
+            )
+        )
+
+    await session.flush()
 
 
 async def record_attempt(

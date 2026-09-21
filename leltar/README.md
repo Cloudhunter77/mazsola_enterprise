@@ -13,13 +13,16 @@ you know you own.
 
 ```
 phone camera
-      │  POST /api/photos  (+ which room you are standing in)
+      │  POST /api/photos  (+ which room, + one thing or a whole shelf)
       ▼
- app container ──────────────► vision model (Claude by default)
+ app container ──────────────► vision model (Claude, or anything on OpenRouter)
  FastAPI + SPA + worker              │
       │                              ▼
-      ▼                   draft items, one per object found
- PostgreSQL                 nothing counts until you approve it
+      │                    draft items, one per object found,
+      │                    each with a box saying where it is
+      ▼                              │
+ PostgreSQL ◄────────────────────────┘
+ + a picture per item, cut from the photograph at that box
 ```
 
 Two containers, no queue service. Job state lives in the database, so a restart resumes
@@ -50,6 +53,27 @@ category the app does not know is filed under **Egyéb** rather than trusted.
 
 Everything flagged still lands in the review queue with the rest. One bad guess in a
 photograph never discards the eight good ones.
+
+## A picture of every thing
+
+A row of text is not an inventory entry you can use. Which of the two drills is this?
+Which blue box? So every item carries its own picture:
+
+- **Photograph one object** ("Egy tárgy" on the capture screen) and that photograph is the
+  item's picture. The model is told the frame has one subject, so it names the drill and
+  not the workbench under it.
+- **Photograph a whole shelf** ("Polc, szoba") and the model also returns a box around each
+  object it names. Each box is cut out of the **original** photograph - not the downscale
+  that was sent to the API - so eight things photographed at once become eight items with
+  eight distinct pictures, for the price of reading one image.
+- **Add more pictures later**, on the item's own page: the serial plate, the damage, the
+  thing out of its case. Any of them can be made the one the list shows.
+
+A box is optional, and asking for one is where a model will most happily invent: it will
+always produce four numbers. So a box that is inside out gets straightened, one that is a
+pinprick or the entire frame is discarded, and an item whose box did not survive simply
+gets the whole photograph as its picture - visibly wider, never wrong. The review screen
+shows each crop next to its name, which is where a box on the wrong object is obvious.
 
 ## What ends up in the inventory
 
@@ -104,10 +128,12 @@ python scripts/seed_demo.py --clear   # removes exactly what it created
 |---|---|---|
 | `DATABASE_URL` | `postgresql+asyncpg://leltar:leltar@db:5432/leltar` | |
 | `DATA_DIR` | `/data` | Where the photographs are stored |
-| `IDENTIFIER` | `claude` | `claude` or `ollama` (a stub; see `leltar/extraction/local.py`) |
+| `IDENTIFIER` | `claude` | `claude`, `openrouter`, or `ollama` (a stub) |
 | `IDENTIFIER_MODEL` | `claude-sonnet-5` | `claude-haiku-4-5` costs about a fifth as much |
 | `IDENTIFIER_EFFORT` | `low` | Naming a visible object does not repay deliberation |
-| `ANTHROPIC_API_KEY` | – | A Console key, not a Pro/Max subscription |
+| `ANTHROPIC_API_KEY` | – | Required when `IDENTIFIER=claude`; a Console key, not a Pro/Max subscription |
+| `OPENROUTER_API_KEY` | – | Required when `IDENTIFIER=openrouter` |
+| `OPENROUTER_MODEL` | – | No default on purpose; `python scripts/list_models.py` lists today's |
 | `MAX_IMAGE_EDGE` | `1280` | The main cost lever; images bill at `w×h/750` tokens |
 | `MAX_ITEMS_PER_PHOTO` | `12` | Past this, the extra rows are background clutter |
 | `BUILD_COMMIT` | – | Stamped by CI; shown on the Rendszer page so an update can be verified |
@@ -132,7 +158,50 @@ Cataloguing a house is a few hundred photographs once, then a handful a year —
 a one-off cost of a few dollars rather than a subscription. The app records the real token
 cost of every call and shows it under **Rendszer → Felismerési költség**, per photograph
 *and* per confirmed item. The second figure is the one worth watching: a photo of a whole
-shelf costs the same as a photo of one chair.
+shelf costs the same as a photo of one chair, and yields eight entries instead of one.
+
+## Choosing an engine, and going cheaper
+
+`IDENTIFIER` picks one. Both produce the same `IdentifiedPhoto`, so nothing else in the
+app changes.
+
+| Engine | Billed by | Notes |
+|---|---|---|
+| `claude` | Anthropic, directly | What the prompt was written and tuned against. Schema-validated output, prompt caching, adaptive thinking. A Claude Pro/Max subscription does **not** cover it. |
+| `openrouter` | your OpenRouter credit | One gateway in front of many providers — Mistral, Qwen, Gemini and the rest. Reports the real cost of every call, so the costs page shows what you were actually charged rather than an estimate. The model must support vision **and** strict structured outputs. |
+| `ollama` | nothing | A stub. See `leltar/extraction/local.py`. |
+
+Naming a visible object is a much easier task than transcribing a receipt, so this is a
+place where a cheap model can genuinely do the job. Which one is cheap this month is not
+something a README can tell you, so the app asks:
+
+```bash
+python scripts/list_models.py                    # everything usable, cheapest first
+python scripts/list_models.py --contains mistral # just one vendor's
+```
+
+It keeps only models that accept images **and** enforce a strict schema, and ranks them by
+what one photograph would cost at your own token counts. `OPENROUTER_MODEL` has no default
+precisely because that list changes faster than this file does.
+
+**What changes with a weaker model, and what does not.** The rules are not a formality
+here: a smaller model infers brands more readily, places boxes worse, and is more willing
+to name something it cannot really see. None of that reaches the inventory — an unreadable
+brand is dropped, a nonsense box is discarded, a shaky guess is flagged. So the cost of a
+weaker model is more entries to correct, not a quietly wrong inventory. Measure it rather
+than guess: photograph a week of real things, then read **Pontosság**. The share of names
+you kept unchanged is what decides whether a cheaper model is actually cheaper, because
+the typing is the cost this app exists to remove.
+
+```bash
+# one real call, before trusting a model with a house
+OPENROUTER_API_KEY=sk-or-... IDENTIFIER=openrouter OPENROUTER_MODEL=<id> \
+    python scripts/try_identify.py tests/fixtures/shelf.jpg
+```
+
+**If the model returns prose instead of the structure**, it does not honour strict
+structured outputs — try another. That is the one failure mode this route has that going
+direct to Anthropic does not.
 
 Before deploying, check that a key and a model actually work together on a real image:
 
@@ -143,13 +212,14 @@ ANTHROPIC_API_KEY=sk-ant-... python scripts/try_identify.py tests/fixtures/shelf
 One API call, no database, no containers. It prints what the model said *and* what the
 rules did to it, so a dropped brand shows up there rather than weeks later.
 
-## Moving off the API later
+## Moving off the API entirely
 
-`leltar/extraction/base.py` defines the whole contract: image bytes in, an `IdentifiedPhoto`
-out. `claude.py` is one implementation; `local.py` sketches an Ollama engine with the
-intended shape. Nothing else in the app knows which engine ran, so swapping is a new file
-plus `IDENTIFIER=...`. Keep the rules in place with a smaller model, not less — a local 7B
-model invents brands far more readily than Claude does.
+`leltar/extraction/base.py` defines the whole contract: image bytes in, an
+`IdentifiedPhoto` out. `claude.py` and `openrouter.py` are two implementations; `local.py`
+sketches an Ollama engine with the intended shape. Nothing else in the app knows which
+engine ran, so a fully local setup is a new file plus `IDENTIFIER=...`. Keep the rules in
+place with a smaller model, not less — a local 7B model invents brands far more readily
+than Claude does.
 
 ## Tests
 

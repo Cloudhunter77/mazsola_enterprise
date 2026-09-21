@@ -11,12 +11,42 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 Condition = Literal["new", "good", "used", "worn", "broken", "unknown"]
 
 
+# Every field below has a default, so without this an unrelated JSON object - a model
+# ignoring the schema and answering in its own shape - would validate into an empty
+# result and be reported as "nothing nameable in this photograph". Forbidding unknown
+# keys turns that into the engine error it actually is. Strict structured output already
+# sends `additionalProperties: false`, so a compliant provider never notices.
+STRICT = ConfigDict(extra="forbid")
+
+
+class Box(BaseModel):
+    """Where the object is in the frame, in thousandths of the image, origin top-left.
+
+    Thousandths rather than pixels: the model never sees the original resolution - it is
+    handed a downscale - so a pixel box would be in the wrong units the moment the size
+    cap changed. A fraction of the frame is true at any size.
+
+    This is what gives every item its own picture even when eight of them were
+    photographed together: the box is cropped out of the original photograph, at full
+    resolution, and becomes that item's thumbnail.
+    """
+
+    model_config = STRICT
+
+    x0: int = Field(ge=0, le=1000, description="Left edge, 0-1000.")
+    y0: int = Field(ge=0, le=1000, description="Top edge, 0-1000.")
+    x1: int = Field(ge=0, le=1000, description="Right edge, 0-1000.")
+    y1: int = Field(ge=0, le=1000, description="Bottom edge, 0-1000.")
+
+
 class IdentifiedObject(BaseModel):
+    model_config = STRICT
+
     name: str = Field(
         description=(
             "Hungarian name for this object, as you would write it on a moving box. "
@@ -72,6 +102,15 @@ class IdentifiedObject(BaseModel):
         default=False, description="True only if the serial number was read from the image."
     )
 
+    box: Box | None = Field(
+        default=None,
+        description=(
+            "A tight box around this object, in thousandths of the image. Leave it out "
+            "rather than guessing: a box in the wrong place is worse than none, because "
+            "it becomes the picture of this item."
+        ),
+    )
+
     description: str | None = Field(
         default=None, description="One short Hungarian sentence, only if it adds something."
     )
@@ -86,6 +125,8 @@ class IdentifiedObject(BaseModel):
 
 
 class IdentifiedPhoto(BaseModel):
+    model_config = STRICT
+
     scene: str | None = Field(
         default=None,
         description="One short Hungarian phrase for what the photograph shows as a whole.",

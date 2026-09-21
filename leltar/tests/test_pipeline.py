@@ -31,10 +31,12 @@ class StubIdentifier:
         self.error = error
         self.calls = 0
         self.place_paths: list[str | None] = []
+        self.singles: list[bool] = []
 
-    async def identify(self, image, *, place_path=None, mime_type="image/jpeg"):
+    async def identify(self, image, *, place_path=None, single=False, mime_type="image/jpeg"):
         self.calls += 1
         self.place_paths.append(place_path)
+        self.singles.append(single)
         if self.error:
             raise IdentificationError(self.error)
         return IdentificationResult(
@@ -265,3 +267,26 @@ async def test_the_worker_tells_the_model_where_the_photo_was_taken(
     await worker.process_next()
 
     assert stub.place_paths == ["Garázs › Fém polc"]
+
+
+async def test_the_worker_tells_the_model_when_one_object_was_photographed(
+    sessionmaker_fixture, settings, item_photo, monkeypatch
+):
+    """The mode is a fact about taking the picture, so it is stored on it, not re-guessed."""
+    from leltar import worker as worker_module
+    from leltar.models import PhotoMode
+    from leltar.worker import IdentificationWorker
+
+    monkeypatch.setattr(worker_module, "SessionLocal", sessionmaker_fixture)
+
+    async with sessionmaker_fixture() as session:
+        await seed_if_empty(session)
+        await ingest_photo(session, item_photo, settings, mode=PhotoMode.SINGLE.value)
+        await session.commit()
+
+    worker = IdentificationWorker(settings)
+    stub = StubIdentifier()
+    worker._identifier = stub
+    await worker.process_next()
+
+    assert stub.singles == [True]

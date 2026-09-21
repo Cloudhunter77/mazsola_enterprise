@@ -30,7 +30,12 @@ class OllamaIdentifier:
         self.settings = settings
 
     async def identify(
-        self, image: bytes, *, place_path: str | None = None, mime_type: str = "image/jpeg"
+        self,
+        image: bytes,
+        *,
+        place_path: str | None = None,
+        single: bool = False,
+        mime_type: str = "image/jpeg",
     ) -> IdentificationResult:
         raise IdentificationError(
             "The ollama identifier is not implemented yet. "

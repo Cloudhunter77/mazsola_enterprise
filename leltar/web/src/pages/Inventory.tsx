@@ -69,9 +69,19 @@ export default function Inventory() {
             </p>
             {rows.map((item) => (
               <div className="list-row" key={item.id}>
+                {item.image_count > 0 ? (
+                  <img className="thumb" src={api.itemImageUrl(item.id)} alt="" loading="lazy" />
+                ) : (
+                  // A placeholder rather than a missing-image icon: plenty of items are
+                  // typed in and will never have a photograph, and a broken icon on every
+                  // one of those rows reads as a fault.
+                  <span className="thumb empty" aria-hidden>📦</span>
+                )}
                 <div className="grow">
                   <div className="name">
-                    {item.name}
+                    <Link to={`/targy/${item.id}`} style={{ color: "inherit", textDecoration: "none" }}>
+                      {item.name}
+                    </Link>
                     {item.quantity > 1 && <span className="muted"> ×{item.quantity}</span>}
                   </div>
                   <div className="where">
@@ -85,9 +95,6 @@ export default function Inventory() {
                   <div className="mono">{ft(item.estimated_value)}</div>
                   <div className="where">
                     {item.status !== "confirmed" && (ITEM_STATUS[item.status] ?? item.status)}
-                    {item.photo_id && (
-                      <> <Link to={`/fenykep/${item.photo_id}`}>kép</Link></>
-                    )}
                   </div>
                 </div>
               </div>

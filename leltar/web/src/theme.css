@@ -375,3 +375,41 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .filters select, .filters input { min-height: 44px; font-size: 16px; }
 .filters input[type="search"] { flex: 1 1 16ch; }
+
+
+/* --- item pictures ---------------------------------------------------------
+   The point of the whole feature: a row you can recognise without reading it. */
+
+.thumb {
+  width: 56px; height: 56px; flex: none;
+  border-radius: 8px; object-fit: cover;
+  background: var(--surface-raised); border: 1px solid var(--border);
+}
+.thumb.empty { display: grid; place-items: center; color: var(--ink-muted); font-size: 1.2rem; }
+
+.draft .thumb { width: 64px; height: 64px; }
+
+/* The item page's gallery: one large picture and a strip of the rest. */
+.gallery { display: grid; gap: 10px; }
+.gallery .main {
+  width: 100%; border-radius: var(--radius); border: 1px solid var(--border);
+  background: var(--surface-raised); max-height: 52vh; object-fit: contain;
+}
+.gallery .strip { display: flex; gap: 8px; flex-wrap: wrap; }
+.gallery .strip img {
+  width: 64px; height: 64px; border-radius: 8px; object-fit: cover; cursor: pointer;
+  border: 2px solid transparent;
+}
+.gallery .strip img.current { border-color: var(--series-1); }
+
+/* The capture screen's two modes. A segmented control rather than a checkbox: which of
+   the two you are doing is the first decision, not an option on one of them. */
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.modes button {
+  border: 1px solid var(--border); background: var(--surface-raised); color: inherit;
+  border-radius: 10px; padding: 10px 12px; cursor: pointer; min-height: 56px;
+  display: grid; gap: 2px; text-align: center;
+}
+.modes button.on { border-color: var(--series-1); color: var(--series-1); font-weight: 600; }
+.modes button small { font-weight: 400; color: var(--ink-muted); font-size: 0.72rem; }
+.modes button.on small { color: inherit; }
