@@ -99,7 +99,12 @@ async def persist_identification(
     await session.flush()
     await _make_pictures(session, photo, items, cleaned.objects, settings)
 
-    photo.scene = cleaned.scene
+    # The instruction asks for no scene on a single-object photograph, and this is what
+    # happens when a model answers anyway: it repeats the object's name, echoes a category
+    # slug, or writes "as above" - and the review queue was using that line as the title of
+    # the row. With one object the names are the description, so the field is dropped here
+    # rather than trusted.
+    photo.scene = None if photo.mode == PhotoMode.SINGLE.value else cleaned.scene
     photo.confidence = cleaned.confidence
     photo.review_reasons = photo_reasons or None
     photo.notes = cleaned.notes

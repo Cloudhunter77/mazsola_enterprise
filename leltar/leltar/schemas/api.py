@@ -193,6 +193,10 @@ class PhotoSummary(BaseModel):
     place_path: str | None = None
     item_count: int = 0
     draft_count: int = 0
+    # What is actually in the photograph. A queue row needs this more than it needs the
+    # model's description of the scene: for a photo of one chair the description can only
+    # repeat the chair, and a list of them says nothing at all.
+    item_names: list[str] = Field(default_factory=list)
 
 
 class PhotoDetail(PhotoSummary):

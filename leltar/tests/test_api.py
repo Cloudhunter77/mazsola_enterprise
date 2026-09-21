@@ -519,3 +519,33 @@ async def test_renaming_onto_a_sibling_is_refused_not_a_500(seeded_client):
     # The place is still there under its own name rather than half-renamed.
     names = [row["name"] for row in (await seeded_client.get("/api/places")).json()]
     assert "Pince 2" in names
+
+
+async def test_the_queue_says_what_is_in_each_photograph(seeded_client, session):
+    """A row titled by the model's description of a one-object photo is a row titled
+    "as above". The names are what tell one photograph from another in a list."""
+    from leltar.models import Item, ItemStatus, Photo
+
+    photo = Photo(path="/tmp/q.jpg", sha256="d" * 64, scene="as above")
+    session.add(photo)
+    await session.flush()
+    session.add_all([
+        Item(photo_id=photo.id, name="fekete munkaszék", status=ItemStatus.DRAFT.value),
+        Item(photo_id=photo.id, name="asztali lámpa", status=ItemStatus.DRAFT.value),
+    ])
+    await session.commit()
+
+    row = (await seeded_client.get("/api/photos")).json()[0]
+    assert row["item_names"] == ["fekete munkaszék", "asztali lámpa"]
+    assert row["item_count"] == 2
+
+
+async def test_a_photograph_with_nothing_found_still_lists(seeded_client, session):
+    from leltar.models import Photo
+
+    session.add(Photo(path="/tmp/e.jpg", sha256="e" * 64, scene="üres polc"))
+    await session.commit()
+
+    row = (await seeded_client.get("/api/photos")).json()[0]
+    assert row["item_names"] == []
+    assert row["scene"] == "üres polc"

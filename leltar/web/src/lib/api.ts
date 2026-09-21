@@ -80,6 +80,7 @@ export interface Photo {
   taken_at: string | null; scene: string | null; confidence: number | null;
   review_reasons: string[] | null; error: string | null; attempts: number;
   created_at: string; place_path: string | null; item_count: number; draft_count: number;
+  item_names: string[];
 }
 
 export interface PhotoDetail extends Photo { notes: string | null; items: Item[] }

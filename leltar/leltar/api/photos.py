@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy import func, select, update
+from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.orm import selectinload
 
 from leltar.api.deps import AuthDep, OptionalUUID, SessionDep, SettingsDep
@@ -86,12 +87,18 @@ async def list_photos(
             Item.photo_id,
             func.count().label("total"),
             func.count().filter(Item.status == ItemStatus.DRAFT.value).label("drafts"),
+            func.array_agg(aggregate_order_by(Item.name, Item.created_at)).label("names"),
         )
         .group_by(Item.photo_id)
         .subquery()
     )
     stmt = (
-        select(Photo, func.coalesce(drafts.c.total, 0), func.coalesce(drafts.c.drafts, 0))
+        select(
+            Photo,
+            func.coalesce(drafts.c.total, 0),
+            func.coalesce(drafts.c.drafts, 0),
+            drafts.c.names,
+        )
         .outerjoin(drafts, drafts.c.photo_id == Photo.id)
         .order_by(Photo.created_at.desc())
         .limit(limit)
@@ -106,11 +113,13 @@ async def list_photos(
     paths = await paths_for_all(session)
 
     summaries = []
-    for photo, total, draft_count in rows:
+    for photo, total, draft_count, names in rows:
         summary = PhotoSummary.model_validate(photo)
         summary.item_count = int(total)
         summary.draft_count = int(draft_count)
         summary.place_path = paths.get(photo.place_id) if photo.place_id else None
+        # Enough to recognise the photograph in a list; the rest is a count beside them.
+        summary.item_names = [name for name in (names or []) if name][:4]
         summaries.append(summary)
     return summaries
 
@@ -128,6 +137,7 @@ async def get_photo(_: AuthDep, session: SessionDep, photo_id: uuid.UUID) -> Pho
     detail.place_path = paths.get(photo.place_id) if photo.place_id else None
     detail.items = await decorate_items(session, list(photo.items))
     detail.item_count = len(detail.items)
+    detail.item_names = [item.name for item in detail.items][:4]
     detail.draft_count = sum(
         1 for item in detail.items if item.status == ItemStatus.DRAFT.value
     )

@@ -122,7 +122,13 @@ class IdentifiedPhoto(BaseModel):
 
     scene: str | None = Field(
         default=None,
-        description="One short Hungarian phrase for what the photograph shows as a whole.",
+        description=(
+            "One short Hungarian phrase for what the photograph shows as a whole, when "
+            "that adds something the object names do not - 'konyhai polc edényekkel', "
+            "'szerszámos fal a garázsban'. Leave it out for a photograph of a single "
+            "object: repeating the object's name here, or writing 'as above', is worse "
+            "than leaving it empty."
+        ),
     )
     objects: list[IdentifiedObject] = Field(default_factory=list)
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)

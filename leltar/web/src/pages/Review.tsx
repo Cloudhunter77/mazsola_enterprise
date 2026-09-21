@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import { api, type Photo } from "../lib/api";
 import { AsyncBlock, Card, Empty, useAsync } from "../components/ui";
-import { PHOTO_STATUS, REVIEW_REASONS, dateTime } from "../lib/format";
+import { PHOTO_STATUS, REVIEW_REASONS, dateTime, photoTitle } from "../lib/format";
 import { Link } from "react-router-dom";
 
 /** The queue: photographs whose guesses nobody has looked at yet.
@@ -90,9 +90,14 @@ function Row({ photo }: { photo: Photo }) {
   return (
     <div className="list-row">
       <Link to={`/fenykep/${photo.id}`} className="grow" style={{ textDecoration: "none" }}>
-        <div className="name">{photo.scene ?? "Fénykép"}</div>
+        <div className="name">
+          {photoTitle(photo.item_names, photo.item_count, photo.scene)}
+        </div>
         <div className="where">
           {photo.place_path ?? "hely nélkül"} · {dateTime(photo.taken_at ?? photo.created_at)}
+          {/* The scene, when there is one worth having, sits under the names rather than
+              standing in for them. */}
+          {photo.scene && photo.item_names.length > 0 && <> · {photo.scene}</>}
         </div>
         {photo.error && <div className="error">{photo.error}</div>}
         {reasons.length > 0 && (

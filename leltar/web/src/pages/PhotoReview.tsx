@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { api, type Category, type Item, type Place } from "../lib/api";
 import { Card, Loading } from "../components/ui";
-import { CONDITIONS, PHOTO_STATUS, REVIEW_REASONS } from "../lib/format";
+import { CONDITIONS, PHOTO_STATUS, REVIEW_REASONS, photoTitle } from "../lib/format";
 
 /** One photograph and its guesses: the screen the whole app exists for.
  *
@@ -77,7 +77,13 @@ export default function PhotoReview() {
   return (
     <>
       <div className="page-actions row" style={{ marginBottom: 12 }}>
-        <h1>{photo.scene ?? "Fénykép"}</h1>
+        <h1>
+          {photoTitle(
+            photo.items.map((item) => item.name),
+            photo.items.length,
+            photo.scene,
+          )}
+        </h1>
         <span className="badge">{PHOTO_STATUS[photo.status] ?? photo.status}</span>
       </div>
 
@@ -85,6 +91,7 @@ export default function PhotoReview() {
         <div>
           <div className="photo-frame">
             <img src={api.photoImageUrl(id)} alt={photo.scene ?? "Fénykép"} />
+            {/* The scene is context under the picture now, not the heading. */}
           </div>
           <div className="row" style={{ marginTop: 10 }}>
             <button className="btn" onClick={reprocess} disabled={busy}>Újraolvasás</button>

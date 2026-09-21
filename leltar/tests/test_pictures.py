@@ -186,3 +186,36 @@ async def test_reprocessing_replaces_a_drafts_picture_too(session, settings, ite
 
     images = (await session.scalars(select(ItemImage))).all()
     assert len(images) == 1
+
+
+@requires_db
+async def test_a_single_object_photo_keeps_no_scene(session, settings, item_photo):
+    """Asked to describe a photograph of one chair, a model writes the chair - or "egyeb",
+    or "as above". The review queue was using that line as the row's title, so a queue of
+    single-object photographs said nothing about which was which."""
+    await seed_if_empty(session)
+    photo, _ = await ingest_photo(
+        session, item_photo, settings, mode=PhotoMode.SINGLE.value
+    )
+    result = await Stub(
+        build_photo(scene="as above", objects=[obj("fekete munkaszék", category="butor")])
+    ).identify(item_photo)
+
+    await persist_identification(session, photo, result, settings)
+    await session.commit()
+
+    assert photo.scene is None
+
+
+@requires_db
+async def test_a_scene_photo_keeps_its_description(session, settings, item_photo):
+    """Where several things share a frame, the description is the one thing the names
+    cannot say."""
+    await seed_if_empty(session)
+    photo, _ = await ingest_photo(session, item_photo, settings)
+    result = await Stub(build_photo(scene="konyhai polc edényekkel")).identify(item_photo)
+
+    await persist_identification(session, photo, result, settings)
+    await session.commit()
+
+    assert photo.scene == "konyhai polc edényekkel"

@@ -28,6 +28,24 @@ export const pct = (value: number | null | undefined, digits = 0): string =>
 
 /** The rules hand out machine keys; these are what a person reads. Each one says what the
  *  app did as well as what it noticed - a dropped brand is not the same as a warning. */
+/** What to call a photograph in a list.
+ *
+ *  Its contents, not the model's description of it. Asked to describe a photograph of one
+ *  chair, a model writes "munkaszék" - or "egyeb", or "as above" - and a queue of those
+ *  tells the person reviewing nothing about which photograph is which. The names are
+ *  always there and always say what is in the frame.
+ */
+export const photoTitle = (
+  names: string[],
+  itemCount: number,
+  scene: string | null,
+): string => {
+  if (names.length === 0) return scene ?? "Fénykép";
+  const shown = names.join(", ");
+  const rest = itemCount - names.length;
+  return rest > 0 ? `${shown} +${rest}` : shown;
+};
+
 /** Counts, with the Hungarian plural that is not one: 3 tétel, not 3 tételek. */
 export const count = (value: number, singular: string): string => `${value} ${singular}`;
 

@@ -129,7 +129,9 @@ def instruction_for(place_path: str | None, single: bool = False) -> str:
             "object - the subject of the picture - and nothing else: not the surface it "
             "rests on, not what is behind it, not the room. Return exactly one entry. "
             "Read its brand and serial number only where they are legible; otherwise "
-            "leave them out. A box is not needed when the object fills the frame."
+            "leave them out. A box is not needed when the object fills the frame. "
+            "Leave `scene` empty: with one object there is nothing for it to say that the "
+            "name does not already say."
         )
 
     return (
