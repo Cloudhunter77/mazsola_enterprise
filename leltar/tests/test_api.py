@@ -453,3 +453,23 @@ async def test_an_unknown_capture_mode_is_refused(seeded_client, item_photo):
         "/api/photos?mode=panorama", files={"file": ("x.jpg", item_photo, "image/jpeg")}
     )
     assert response.status_code == 400
+
+
+async def test_a_place_can_be_renamed_and_moved(seeded_client):
+    """The seeded rooms are a guess at somebody's house; making them yours is step one."""
+    garage = (await seeded_client.post("/api/places", json={"name": "Garázs"})).json()
+    shelf = (await seeded_client.post("/api/places", json={"name": "Polc"})).json()
+    assert shelf["path"] == "Polc"
+
+    renamed = await seeded_client.patch(f"/api/places/{shelf['id']}", json={"name": "Fém polc"})
+    assert renamed.json()["name"] == "Fém polc"
+
+    moved = await seeded_client.patch(
+        f"/api/places/{shelf['id']}", json={"parent_id": garage["id"]}
+    )
+    assert moved.json()["path"] == "Garázs › Fém polc"
+
+    # And moving it back out to the top level is expressible, rather than being mistaken
+    # for "no change given".
+    out = await seeded_client.patch(f"/api/places/{shelf['id']}", json={"parent_id": None})
+    assert out.json()["path"] == "Fém polc"

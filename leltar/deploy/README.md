@@ -1,8 +1,17 @@
 # Installing Leltár on TrueNAS SCALE
 
+> Handing the install to another Claude session instead? `COWORK_PROMPT.md` next to this
+> file is a self-contained brief covering the same ground, written to be understood cold.
+
 Tested against the Docker-based app system (TrueNAS 24.10 "Electric Eel" and later).
 TrueNAS 25.10 requires the top-level `services:` key in custom YAML, which
 `docker-compose.yaml` here already has.
+
+**While this app lives on a feature branch**, CI publishes
+`ghcr.io/cloudhunter77/leltar:claude-new-app-asaos5` (rebuilt on every push) and
+`:sha-<commit>`, but **not** `:latest` — that tag comes only from the repository's default
+branch. The compose file here says `:latest`, so change that one line to the branch tag
+until the branch is merged.
 
 **If you already run the receipt scanner from this repository:** this is a separate app
 with a separate image, database, datasets and port. Nothing here touches that install, and
