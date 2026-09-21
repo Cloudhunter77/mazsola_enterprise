@@ -13,21 +13,33 @@ import { PLACE_KINDS } from "../lib/format";
 export default function Places() {
   const places = useAsync(() => api.places(), []);
   const [error, setError] = useState<string | null>(null);
+  // Disabled while the request is in flight: the impatient second press is what turned
+  // one mistake into two identical rooms.
+  const [adding, setAdding] = useState(false);
 
   async function add(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    // Held in a variable rather than read back after the await: React nulls
+    // `event.currentTarget` as soon as the handler's synchronous part returns, so
+    // touching it afterwards throws - and the throw landed in the catch below, which
+    // reported a place that had in fact just been created as a failure.
+    const element = event.currentTarget;
+    const form = new FormData(element);
+
     setError(null);
+    setAdding(true);
     try {
       await api.createPlace({
-        name: String(form.get("name")),
+        name: String(form.get("name")).trim(),
         kind: String(form.get("kind")),
         parent_id: form.get("parent_id") || null,
       });
-      event.currentTarget.reset();
+      element.reset();
       places.reload();
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      setAdding(false);
     }
   }
 
@@ -82,7 +94,9 @@ export default function Places() {
             </label>
           </div>
           {error && <p className="error">{error}</p>}
-          <button className="btn primary" style={{ marginTop: 10 }}>Hozzáadás</button>
+          <button className="btn primary" style={{ marginTop: 10 }} disabled={adding}>
+            {adding ? "Hozzáadás…" : "Hozzáadás"}
+          </button>
         </form>
       </Card>
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 import enum
 import uuid
 
-from sqlalchemy import ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from leltar.models.base import Base, TimestampMixin, pk
@@ -36,6 +36,21 @@ class Place(Base, TimestampMixin):
 
     parent: Mapped[Place | None] = relationship(remote_side="Place.id")
 
-    # Two rooms may not share a name under the same parent - that way "Konyha" always
+    # Two places may not share a name under the same parent - that way "Konyha" always
     # means one place, and the seeded tree cannot be duplicated by a second startup.
-    __table_args__ = (UniqueConstraint("parent_id", "name", name="uq_places_parent_name"),)
+    #
+    # The second index is not redundant. PostgreSQL treats NULLs as distinct in a unique
+    # index, so the constraint above never applied to top-level places at all: "Garázs"
+    # and "Garázs" with no parent were two different rows as far as the database was
+    # concerned. A partial index over the rows where `parent_id IS NULL` is what closes
+    # that, and closing it matters because a duplicate room silently splits a catalogue
+    # in two - half your things in one "Garázs" and half in the other.
+    __table_args__ = (
+        UniqueConstraint("parent_id", "name", name="uq_places_parent_name"),
+        Index(
+            "uq_places_root_name",
+            "name",
+            unique=True,
+            postgresql_where=text("parent_id IS NULL"),
+        ),
+    )

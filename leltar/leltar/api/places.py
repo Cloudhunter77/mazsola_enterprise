@@ -6,6 +6,7 @@ import uuid
 
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from leltar.api.deps import AuthDep, SessionDep
 from leltar.models import Item, ItemStatus, Place, PlaceKind
@@ -53,7 +54,11 @@ async def create_place(_: AuthDep, session: SessionDep, body: PlaceIn) -> PlaceO
 
     place = Place(**body.model_dump())
     session.add(place)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise _already_there(body.name) from exc
     return (await _one(session, place.id))
 
 
@@ -79,9 +84,19 @@ async def patch_place(
                 status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
             ) from exc
 
+    # Read before the write: after a failed commit and its rollback the instance is
+    # expired, and reading a column off it then sends SQLAlchemy back to the database for
+    # a value we already have - inside the error path, where the error would be the
+    # second one raised and not the one worth reporting.
+    intended_name = changes.get("name", place.name)
+
     for field, value in changes.items():
         setattr(place, field, value)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise _already_there(intended_name) from exc
     return await _one(session, place_id)
 
 
@@ -111,6 +126,18 @@ async def delete_place(_: AuthDep, session: SessionDep, place_id: uuid.UUID) -> 
 
     await session.delete(place)
     await session.commit()
+
+
+def _already_there(name: str) -> HTTPException:
+    """Two places with one name in one spot is a catalogue split in half without saying so.
+
+    Worth a sentence rather than a 500: the most likely way to arrive here is pressing the
+    button twice, and "already exists" tells you that you have what you wanted.
+    """
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail=f"Már van „{name}” nevű hely ezen a szinten.",
+    )
 
 
 async def _one(session: SessionDep, place_id: uuid.UUID) -> PlaceOut:

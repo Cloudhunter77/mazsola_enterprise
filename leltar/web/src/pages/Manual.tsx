@@ -18,7 +18,10 @@ export default function Manual() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    // Held before the await; see the note in Places.tsx - React nulls `currentTarget`
+    // once the handler returns, and reading it afterwards throws.
+    const element = event.currentTarget;
+    const form = new FormData(element);
     const value = (key: string) => {
       const raw = form.get(key);
       return raw === null || raw === "" ? null : String(raw);
@@ -41,7 +44,7 @@ export default function Manual() {
         notes: value("notes"),
       });
       setSaved(item.name);
-      event.currentTarget.reset();
+      element.reset();
     } catch (err) {
       setError((err as Error).message);
     } finally {

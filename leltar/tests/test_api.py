@@ -204,7 +204,7 @@ async def test_a_place_means_everything_inside_it(seeded_client, session):
     """Asking for the garage must show what is in the boxes in the garage."""
     from leltar.models import Item, ItemStatus, Place
 
-    garage = Place(name="Garázs")
+    garage = Place(name="Hátsó garázs")
     session.add(garage)
     await session.flush()
     shelf = Place(name="Fém polc", parent_id=garage.id)
@@ -267,7 +267,7 @@ async def test_deleting_a_photo_keeps_the_items_you_confirmed(seeded_client, ses
 # --- places ------------------------------------------------------------------
 async def test_places_nest_and_report_their_full_path(seeded_client):
     garage = (
-        await seeded_client.post("/api/places", json={"name": "Garázs", "kind": "building"})
+        await seeded_client.post("/api/places", json={"name": "Hátsó garázs", "kind": "building"})
     ).json()
     shelf = (
         await seeded_client.post(
@@ -275,11 +275,11 @@ async def test_places_nest_and_report_their_full_path(seeded_client):
             json={"name": "Fém polc", "kind": "storage", "parent_id": garage["id"]},
         )
     ).json()
-    assert shelf["path"] == "Garázs › Fém polc"
+    assert shelf["path"] == "Hátsó garázs › Fém polc"
 
 
 async def test_a_place_cannot_become_its_own_ancestor(seeded_client):
-    parent = (await seeded_client.post("/api/places", json={"name": "Pince"})).json()
+    parent = (await seeded_client.post("/api/places", json={"name": "Hátsó pince"})).json()
     child = (
         await seeded_client.post(
             "/api/places", json={"name": "Állvány", "parent_id": parent["id"]}
@@ -457,7 +457,7 @@ async def test_an_unknown_capture_mode_is_refused(seeded_client, item_photo):
 
 async def test_a_place_can_be_renamed_and_moved(seeded_client):
     """The seeded rooms are a guess at somebody's house; making them yours is step one."""
-    garage = (await seeded_client.post("/api/places", json={"name": "Garázs"})).json()
+    garage = (await seeded_client.post("/api/places", json={"name": "Hátsó garázs"})).json()
     shelf = (await seeded_client.post("/api/places", json={"name": "Polc"})).json()
     assert shelf["path"] == "Polc"
 
@@ -467,9 +467,55 @@ async def test_a_place_can_be_renamed_and_moved(seeded_client):
     moved = await seeded_client.patch(
         f"/api/places/{shelf['id']}", json={"parent_id": garage["id"]}
     )
-    assert moved.json()["path"] == "Garázs › Fém polc"
+    assert moved.json()["path"] == "Hátsó garázs › Fém polc"
 
     # And moving it back out to the top level is expressible, rather than being mistaken
     # for "no change given".
     out = await seeded_client.patch(f"/api/places/{shelf['id']}", json={"parent_id": None})
     assert out.json()["path"] == "Fém polc"
+
+
+async def test_two_places_cannot_share_a_name_at_the_top_level(seeded_client):
+    """PostgreSQL counts NULLs as distinct, so the (parent_id, name) constraint alone
+    never covered rooms with no parent - and a duplicate room splits a catalogue in two
+    without saying so, half the things in one "Garázs" and half in the other."""
+    first = await seeded_client.post("/api/places", json={"name": "Műhely"})
+    assert first.status_code == 201
+
+    again = await seeded_client.post("/api/places", json={"name": "Műhely"})
+    assert again.status_code == 409
+    assert "Műhely" in again.json()["detail"]
+
+    # And the refusal did not leave a half-written row behind.
+    names = [row["name"] for row in (await seeded_client.get("/api/places")).json()]
+    assert names.count("Műhely") == 1
+
+
+async def test_the_same_name_is_fine_in_two_different_places(seeded_client):
+    """Every room may have a "Polc"; that is the point of the tree."""
+    garage = (await seeded_client.post("/api/places", json={"name": "Garázs 2"})).json()
+    kitchen = (await seeded_client.post("/api/places", json={"name": "Konyha 2"})).json()
+
+    for parent in (garage, kitchen):
+        created = await seeded_client.post(
+            "/api/places", json={"name": "Polc", "parent_id": parent["id"]}
+        )
+        assert created.status_code == 201
+
+    # But not twice in the same one.
+    clash = await seeded_client.post(
+        "/api/places", json={"name": "Polc", "parent_id": garage["id"]}
+    )
+    assert clash.status_code == 409
+
+
+async def test_renaming_onto_a_sibling_is_refused_not_a_500(seeded_client):
+    await seeded_client.post("/api/places", json={"name": "Padlás 2"})
+    other = (await seeded_client.post("/api/places", json={"name": "Pince 2"})).json()
+
+    response = await seeded_client.patch(f"/api/places/{other['id']}", json={"name": "Padlás 2"})
+    assert response.status_code == 409
+
+    # The place is still there under its own name rather than half-renamed.
+    names = [row["name"] for row in (await seeded_client.get("/api/places")).json()]
+    assert "Pince 2" in names

@@ -86,3 +86,39 @@ async def test_every_migration_can_be_rolled_back(blank_database):
             )
         ).scalars().all()
     assert list(tables) == []
+
+
+async def test_duplicate_rooms_are_renamed_rather_than_failing_the_upgrade(blank_database):
+    """The index that forbids them cannot be created over rooms that already exist twice.
+
+    Any install that met the form bug this shipped with collected a few, so the migration
+    renames rather than falls over on somebody's NAS at start-up - and renames rather than
+    merges, because the app cannot know whether two rooms with one name were a mistake or
+    two real rooms somebody named alike.
+    """
+    await asyncio.to_thread(command.upgrade, _config(), "2d997d9dd7c9")
+
+    async with blank_database.begin() as connection:
+        for index in range(3):
+            await connection.execute(
+                text(
+                    "INSERT INTO places (id, name, kind, sort_order, created_at, updated_at) "
+                    "VALUES (gen_random_uuid(), 'Garázs', 'building', 100, "
+                    f"now() + interval '{index} second', now())"
+                )
+            )
+        await connection.execute(
+            text(
+                "INSERT INTO places (id, name, kind, sort_order, created_at, updated_at) "
+                "VALUES (gen_random_uuid(), 'Konyha', 'room', 100, now(), now())"
+            )
+        )
+
+    await asyncio.to_thread(command.upgrade, _config(), "head")
+
+    async with blank_database.connect() as connection:
+        names = sorted(
+            (await connection.execute(text("SELECT name FROM places ORDER BY name"))).scalars()
+        )
+    # The oldest keeps the name; the others are numbered, visibly, for editing afterwards.
+    assert names == ["Garázs", "Garázs (2)", "Garázs (3)", "Konyha"]
