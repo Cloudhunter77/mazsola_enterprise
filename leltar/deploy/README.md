@@ -172,6 +172,12 @@ The working order is: **pick the room first**, then photograph. The app remember
 between uploads, because cataloguing one is a dozen photographs in a row and re-picking it
 each time is the one thing guaranteed to make you stop.
 
+**Fénykép készítése** opens the camera directly; **Tallózás a galériában** picks pictures
+you already took, several at once. (Two buttons rather than one, because the attribute
+that sends a browser to the camera is the same one that rules out picking several files.
+Neither needs HTTPS — the page hands off to the phone's own camera app rather than opening
+a video stream, which a NAS on plain HTTP could not do.)
+
 Then choose what kind of photograph you are taking:
 
 - **Egy tárgy** — one thing, deliberately. That photograph becomes the item's picture, and

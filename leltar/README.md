@@ -64,7 +64,8 @@ A row of text is not an inventory entry you can use. Which of the two drills is 
 Which blue box? So every item carries its own picture:
 
 - **Photograph one object** ("Egy tárgy" on the capture screen) and that photograph is the
-  item's picture. The model is told the frame has one subject, so it names the drill and
+  item's picture. **Fénykép készítése** goes straight to the phone's camera;
+  **Tallózás a galériában** picks from the library instead, several at a time. The model is told the frame has one subject, so it names the drill and
   not the workbench under it.
 - **Photograph a whole shelf** ("Polc, szoba") and the model also returns a box around each
   object it names. Each box is cut out of the **original** photograph - not the downscale

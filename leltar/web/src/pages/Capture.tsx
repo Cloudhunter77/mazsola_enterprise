@@ -33,7 +33,8 @@ export default function Capture() {
   const [result, setResult] = useState<UploadResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [queue, setQueue] = useState<StatsSummary | null>(null);
-  const input = useRef<HTMLInputElement>(null);
+  const camera = useRef<HTMLInputElement>(null);
+  const gallery = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
   // How far ahead of the other person you are. When one of you photographs and the other
@@ -84,7 +85,10 @@ export default function Capture() {
       setError((err as Error).message);
     } finally {
       setProgress(null);
-      if (input.current) input.current.value = "";
+      // Both are cleared, whichever was used: without it, photographing the same thing
+      // twice in a row fires no change event the second time and nothing happens.
+      if (camera.current) camera.current.value = "";
+      if (gallery.current) gallery.current.value = "";
     }
   }
 
@@ -129,16 +133,37 @@ export default function Capture() {
       </Card>
 
       <Card>
+        {/* Two inputs, not one with a choice inside it. `capture` is what sends a phone
+            straight to its camera instead of a file picker, and a browser that honours it
+            ignores `multiple` - one press, one photograph. So the camera and the gallery
+            are separate controls, and the gallery keeps the multi-select that makes
+            emptying a morning's photographs into the app one action.
+
+            This route needs no HTTPS: it hands off to the phone's own camera app rather
+            than opening a video stream in the page, which is what getUserMedia would do
+            and what a NAS reached over plain HTTP on a VPN could not offer. */}
         <label className="capture">
           <span className="glyph" aria-hidden>📷</span>
-          <strong>Fénykép készítése vagy kiválasztása</strong>
+          <strong>Fénykép készítése</strong>
           <span className="muted">
             {mode === "single"
               ? "Egy tárgyról készült kép: a gép a főszereplőt nevezi meg, nem az asztalt alatta."
               : "Egy polcról készült kép: minden tárgyat felismer, és mindegyikhez kivág egy képet."}
           </span>
           <input
-            ref={input}
+            ref={camera}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            style={{ display: "none" }}
+            onChange={(event) => upload(event.target.files)}
+          />
+        </label>
+
+        <label className="btn block" style={{ marginTop: 10 }}>
+          🖼️ Tallózás a galériában
+          <input
+            ref={gallery}
             type="file"
             accept="image/*"
             multiple

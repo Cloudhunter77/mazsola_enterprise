@@ -288,8 +288,9 @@ step 0: the Apps subsystem cannot pull the image.
    moves it inside another place. Places nest, and asking for the garage later shows what
    is in the boxes in the garage. A place holding things will not delete; move or delete
    its contents first.
-3. **Rögzítés** — pick the room first, then choose the mode. This is the part worth getting
-   right, so explain both to me:
+3. **Rögzítés** — pick the room first, then choose the mode. **Fénykép készítése** opens
+   the camera; **Tallózás a galériában** picks from the library, several at a time. This
+   is the part worth getting right, so explain both modes to me:
    - **Egy tárgy** — one object, deliberately. That frame becomes the item's picture and
      the model is told to name the subject rather than the table under it.
    - **Polc, szoba** — a whole shelf. A photo of eight things costs the same to read as a
