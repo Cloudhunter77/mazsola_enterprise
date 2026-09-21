@@ -30,7 +30,7 @@ class IdentificationWorker:
     def __init__(self, settings: Settings | None = None):
         self.settings = settings or get_settings()
         self._identifier: ObjectIdentifier | None = None
-        self._task: asyncio.Task | None = None
+        self._tasks: list[asyncio.Task] = []
         self._stopping = asyncio.Event()
 
     @property
@@ -43,19 +43,34 @@ class IdentificationWorker:
 
     # --- lifecycle -----------------------------------------------------------
     def start(self) -> None:
-        if self._task is None:
-            self._task = asyncio.create_task(self.run_forever(), name="home-inventory-worker")
-            log.info("identification worker started (engine=%s)", self.settings.identifier)
+        """Run several claim loops side by side.
+
+        They share nothing but the queue, and the claim below takes a row with
+        `FOR UPDATE SKIP LOCKED`, so two loops can never take the same photograph - the
+        same mechanism that already stopped an old and a new container paying to read one
+        photo twice during an update.
+        """
+        if self._tasks:
+            return
+        for index in range(self.settings.worker_concurrency):
+            self._tasks.append(
+                asyncio.create_task(self.run_forever(), name=f"home-inventory-worker-{index}")
+            )
+        log.info(
+            "identification worker started (engine=%s, %d in parallel)",
+            self.settings.identifier, len(self._tasks),
+        )
 
     async def stop(self) -> None:
         self._stopping.set()
-        if self._task is not None:
-            self._task.cancel()
+        for task in self._tasks:
+            task.cancel()
+        for task in self._tasks:
             try:
-                await self._task
+                await task
             except asyncio.CancelledError:
                 pass
-            self._task = None
+        self._tasks = []
 
     async def run_forever(self) -> None:
         while not self._stopping.is_set():

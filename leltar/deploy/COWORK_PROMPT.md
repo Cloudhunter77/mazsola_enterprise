@@ -311,7 +311,29 @@ not actually read (shown as *"A márkát nem lehetett elolvasni a képen, ezért
 flagging a vague name like "doboz", and falling back to the whole photograph when it could
 not place a box.
 
-## Step 8 — Check the thing that makes it a database
+## Step 8 — If two of us will do this together
+
+The intended way to catalogue a house is in pairs: one walks it with the camera, the other
+sits with the review screen approving names. It needs no setup — both of us log in with the
+same password on our own devices — but tell me these three things, because they change how
+we split up:
+
+- The review screen refreshes itself while it is open, so a photograph taken upstairs
+  appears on the reviewer's screen a few seconds later with nothing to press.
+- Its queue is oldest-first, so the reviewer follows the order the photographer walked in.
+- The capture screen shows how many photographs are still being read and how many are
+  waiting for the reviewer, so the photographer can tell whether to keep going.
+
+If we find the reviewer waiting on the queue rather than on their own judgement, the number
+of photographs read at once is `WORKER_CONCURRENCY` in the compose file (2 by default; up
+to 8). Raising it does not change the cost per photograph, only how many requests are in
+flight.
+
+One thing to warn me about: there are no separate accounts, so the app cannot tell which of
+us did what, and if we both edit the same entry at once the last save wins. Splitting the
+roles avoids both.
+
+## Step 9 — Check the thing that makes it a database
 
 In **Leltár**, have me search for something I just added, **typed without accents** —
 `bogre` should find a *bögre*, `funyiro` a *fűnyíró*. Words can come in any order and each
@@ -322,7 +344,7 @@ If that works, the catalogue is doing its job. Also check **Statisztika** → th
 tile: it says what share of the catalogue has a picture, which is the number that decides
 whether I can recognise a row without reading it.
 
-## Step 9 — Once it works
+## Step 10 — Once it works
 
 - On my phone: open the site over the VPN and add it to the home screen, so it opens
   full-screen and the capture button goes straight to the camera.

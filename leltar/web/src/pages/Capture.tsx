@@ -1,7 +1,7 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { api, type UploadResponse } from "../lib/api";
+import { api, type StatsSummary, type UploadResponse } from "../lib/api";
 import { AsyncBlock, Card, useAsync } from "../components/ui";
 
 /** Photograph things, say where they are, and hand them to the worker.
@@ -32,8 +32,27 @@ export default function Capture() {
   const [progress, setProgress] = useState<number | null>(null);
   const [result, setResult] = useState<UploadResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [queue, setQueue] = useState<StatsSummary | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
+
+  // How far ahead of the other person you are. When one of you photographs and the other
+  // approves names, this is the only thing on the capture screen that tells you whether
+  // to keep walking or to go and help - and it is why the photographer does not need to
+  // ask out loud.
+  useEffect(() => {
+    const refresh = () => {
+      if (document.hidden) return;
+      api.summary().then(setQueue).catch(() => undefined);
+    };
+    refresh();
+    const timer = setInterval(refresh, 8000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [progress, result]);
 
   function rememberPlace(value: string) {
     setPlaceId(value);
@@ -134,6 +153,16 @@ export default function Capture() {
           </p>
         )}
         {error && <p className="error" style={{ marginTop: 12 }}>{error}</p>}
+
+        {queue && (queue.photos_pending > 0 || queue.photos_needing_review > 0) && (
+          <p className="card-note" style={{ marginTop: 12 }}>
+            {queue.photos_pending > 0 && <>🔄 {queue.photos_pending} kép beolvasás alatt</>}
+            {queue.photos_pending > 0 && queue.photos_needing_review > 0 && " · "}
+            {queue.photos_needing_review > 0 && (
+              <>✅ {queue.photos_needing_review} vár ellenőrzésre</>
+            )}
+          </p>
+        )}
 
         {result && (
           <div style={{ marginTop: 14 }}>

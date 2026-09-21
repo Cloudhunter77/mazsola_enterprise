@@ -81,6 +81,18 @@ class Settings(BaseSettings):
 
     # --- worker --------------------------------------------------------------
     worker_enabled: bool = True
+    worker_concurrency: int = Field(
+        default=2,
+        ge=1,
+        le=8,
+        description=(
+            "How many photographs may be read at once. Two people working together - one "
+            "photographing, one approving names - produce frames faster than a single "
+            "sequential reader gets through them, and the person reviewing then waits on "
+            "the queue rather than on their own judgement. Raising it multiplies the "
+            "requests in flight, not the cost per photograph."
+        ),
+    )
     worker_poll_seconds: float = 3.0
     worker_max_attempts: int = 3
     worker_stale_seconds: int = Field(

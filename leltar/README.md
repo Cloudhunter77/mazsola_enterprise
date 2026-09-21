@@ -79,6 +79,33 @@ pinprick or the entire frame is discarded, and an item whose box did not survive
 gets the whole photograph as its picture - visibly wider, never wrong. The review screen
 shows each crop next to its name, which is where a box on the wrong object is obvious.
 
+## Two people, one catalogue
+
+Cataloguing a house divides naturally: one person walks it with the camera, the other sits
+with the review screen approving names. The app is built for that, and it is the fastest
+way to use it — the photographer never stops to type, and the reviewer never waits for a
+photograph to be taken.
+
+- **The review queue watches for new work.** It refreshes itself the whole time it is
+  open, every 3 seconds while something is being read and every 6 while idle, so a
+  photograph taken in another room appears on the reviewer's screen within a few seconds
+  of being uploaded without them touching anything. A backgrounded tab — a phone in a
+  pocket — stops asking, and catches up the moment it comes back.
+- **The queue is oldest-first**, unlike every other list in the app. The photographer
+  moves through the house in an order; following it is how the two of you stay in step.
+- **The photographer can see the backlog.** The capture screen shows how many photographs
+  are being read and how many are waiting for the reviewer, so "am I too far ahead?" has
+  an answer without shouting up the stairs.
+- **Several photographs are read at once** (`WORKER_CONCURRENCY`, 2 by default). One
+  camera easily outruns one sequential reader, and then the reviewer is waiting on the
+  queue rather than on their own judgement. The claim is `FOR UPDATE SKIP LOCKED`, so two
+  readers can never take the same photograph and pay for it twice.
+
+What it does *not* do: there is one password and no user accounts, so the app cannot tell
+which of you did what, and nothing stops two people editing the same entry at once — the
+last save wins. Neither matters when the roles are split; both would if you were both
+reviewing the same queue.
+
 ## Finding things again
 
 A catalogue of a whole household is only as good as its search, so the search is built for
@@ -162,6 +189,7 @@ python scripts/seed_demo.py --clear   # removes exactly what it created
 | `APP_PASSWORD_HASH` | – | `python scripts/hash_password.py` |
 | `API_KEY` | – | For an iOS Shortcut's `X-API-Key` header |
 | `AUTH_DISABLED` | `false` | Local development only |
+| `WORKER_CONCURRENCY` | `2` | Photographs read at once; raise it when two people work together |
 | `WORKER_ENABLED` | `true` | Off means photos queue but are not read |
 
 ## What it costs to run

@@ -7,31 +7,58 @@ import { Link } from "react-router-dom";
 
 /** The queue: photographs whose guesses nobody has looked at yet.
  *
- *  It refreshes itself while anything is still being read, because the normal use is to
- *  photograph a shelf and then wait ten seconds on this screen.
+ *  This screen is half of a two-person job - one person walks the house photographing,
+ *  the other sits here approving names - so it refreshes itself the whole time it is
+ *  open, not only while something it already knows about is being read. Waiting for the
+ *  reviewer to press a button before they can see the photographer's work is what would
+ *  make the pair worse than one person doing both.
+ *
+ *  Polling, not a live connection: two people on a home NAS, and a request every few
+ *  seconds costs less than a socket that has to survive a phone locking itself.
  */
+const POLL_BUSY_MS = 3000;   // something is mid-read; the answer is seconds away
+const POLL_IDLE_MS = 6000;   // just watching for the other person's next photograph
+
 export default function Review() {
   const [nonce, setNonce] = useState(0);
   const photos = useAsync(() => api.photos({ limit: 100 }), [nonce]);
 
-  const waiting = (photos.data ?? []).some(
+  const reading = (photos.data ?? []).filter(
     (photo) => photo.status === "pending" || photo.status === "processing",
-  );
+  ).length;
 
   useEffect(() => {
-    if (!waiting) return;
-    const timer = setInterval(() => setNonce((value) => value + 1), 4000);
-    return () => clearInterval(timer);
-  }, [waiting]);
+    const refresh = () => {
+      // A backgrounded tab is a phone in a pocket: stop asking until it comes back.
+      if (!document.hidden) setNonce((value) => value + 1);
+    };
+    const timer = setInterval(refresh, reading > 0 ? POLL_BUSY_MS : POLL_IDLE_MS);
+    // And catch up the moment it does, rather than after another full interval.
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [reading]);
 
-  const pending = (photos.data ?? []).filter((photo) => photo.status !== "reviewed");
+  const pending = (photos.data ?? [])
+    .filter((photo) => photo.status !== "reviewed")
+    // Oldest first, unlike everywhere else in the app: the photographer works through
+    // the house in an order, and following it is how the two of you stay in step.
+    .reverse();
   const done = (photos.data ?? []).filter((photo) => photo.status === "reviewed");
 
   return (
     <>
       <Card
         title="Ellenőrzésre vár"
-        note={waiting ? "olvasás folyamatban…" : undefined}
+        note={
+          reading > 0
+            ? `${reading} kép beolvasás alatt…`
+            : pending.length > 0
+              ? `${pending.length} kép vár rád`
+              : "figyelem az új képeket"
+        }
         action={
           <button className="btn" onClick={() => setNonce((value) => value + 1)}>
             Frissítés

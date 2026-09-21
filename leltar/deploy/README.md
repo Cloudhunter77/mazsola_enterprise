@@ -186,6 +186,14 @@ done.
 Later, open any item from the **Leltár** list to add more pictures of it — the serial
 plate, the damage, the thing out of its case — and to set which one the list shows.
 
+**Two people at once** is the fastest way to work: one photographs, the other approves
+names on the review screen. Both log in with the same password on their own devices;
+nothing else is needed. The review screen refreshes itself while it is open, so a
+photograph taken in another room turns up within a few seconds, and the capture screen
+shows the photographer how many pictures are still waiting. If the reviewer ends up
+waiting on the queue, raise `WORKER_CONCURRENCY` (2 by default, up to 8) — it changes how
+many photographs are read at once, not what each one costs.
+
 **Finding things again** is what the catalogue is for, so the search box ignores accents
 (`bogre` finds the *bögre*), takes words in any order, and looks in the name, brand,
 model, description, serial number and your notes. Choosing a place shows everything inside

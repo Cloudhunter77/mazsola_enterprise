@@ -290,3 +290,71 @@ async def test_the_worker_tells_the_model_when_one_object_was_photographed(
     await worker.process_next()
 
     assert stub.singles == [True]
+
+
+async def test_two_readers_never_take_the_same_photograph(
+    sessionmaker_fixture, settings, item_photo, monkeypatch
+):
+    """The two-person flow: one person photographing, several loops reading.
+
+    `FOR UPDATE SKIP LOCKED` is what makes this safe, and this is the test that says so -
+    a photograph read twice is paid for twice and produces two sets of drafts for the same
+    objects, which is exactly the mess the person reviewing does not need.
+    """
+    import asyncio
+    import io
+
+    from PIL import Image
+
+    from leltar import worker as worker_module
+    from leltar.worker import IdentificationWorker
+
+    monkeypatch.setattr(worker_module, "SessionLocal", sessionmaker_fixture)
+
+    def jpeg(colour):
+        buffer = io.BytesIO()
+        Image.new("RGB", (900, 600), colour).save(buffer, format="JPEG")
+        return buffer.getvalue()
+
+    async with sessionmaker_fixture() as session:
+        await seed_if_empty(session)
+        for colour in [(10, 20, 30), (200, 100, 50), (40, 160, 90), (90, 90, 90)]:
+            await ingest_photo(session, jpeg(colour), settings)
+        await session.commit()
+
+    # Four loops against four photographs, started together.
+    workers = []
+    for _ in range(4):
+        worker = IdentificationWorker(settings)
+        worker._identifier = StubIdentifier()
+        workers.append(worker)
+
+    results = await asyncio.gather(*(worker.process_next() for worker in workers))
+    assert all(results)
+
+    async with sessionmaker_fixture() as session:
+        photos = (await session.scalars(select(Photo))).all()
+        assert len(photos) == 4
+        # Each was claimed exactly once: a second claim would show as a second attempt.
+        assert [photo.attempts for photo in photos] == [1, 1, 1, 1]
+        assert {photo.status for photo in photos} == {PhotoStatus.IDENTIFIED.value}
+        # And each produced its own drafts rather than two loops doubling one photo's.
+        items = (await session.scalars(select(Item))).all()
+        assert len(items) == 4 * 3
+
+
+async def test_the_number_of_readers_is_configurable(settings):
+    """One is the old behaviour; more is what keeps a reviewer from waiting on the queue."""
+    from leltar.worker import IdentificationWorker
+
+    worker = IdentificationWorker(settings.model_copy(update={"worker_concurrency": 3}))
+    worker._identifier = StubIdentifier()
+    worker.start()
+    try:
+        assert len(worker._tasks) == 3
+        # Starting twice must not silently double the readers.
+        worker.start()
+        assert len(worker._tasks) == 3
+    finally:
+        await worker.stop()
+    assert worker._tasks == []
