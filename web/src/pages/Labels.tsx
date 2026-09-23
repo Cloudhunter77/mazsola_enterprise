@@ -10,7 +10,7 @@
  *  total - it only feeds price history, where it is drawn differently from a purchase.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, type LabelPhoto } from "../lib/api";
@@ -36,6 +36,9 @@ export default function Labels() {
   const [shop, setShop] = useState(rememberedShop);
   const [pending, setPending] = useState<Pending[]>([]);
   const [reload, setReload] = useState(0);
+  // Which photo is open beneath the table. The label is only half of what the picture holds:
+  // the product itself is usually in frame behind it, which is the reason for keeping it.
+  const [openPhoto, setOpenPhoto] = useState<string | null>(null);
   const photos = useAsync(() => api.labelPhotos(30), [reload]);
   const prices = useAsync(() => api.scannedPrices(200), [reload]);
   const cameraInput = useRef<HTMLInputElement>(null);
@@ -204,11 +207,13 @@ export default function Labels() {
                     <th className="num">Egységár</th>
                     <th>Bolt</th>
                     <th>Mikor</th>
+                    <th />
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((row) => (
-                    <tr key={row.id}>
+                    <Fragment key={row.id}>
+                    <tr>
                       <td>
                         {row.raw_name}
                         {row.product_name && (
@@ -240,7 +245,47 @@ export default function Labels() {
                       </td>
                       <td>{row.merchant_name ?? <span className="muted">?</span>}</td>
                       <td>{new Date(row.observed_at).toLocaleDateString("hu-HU")}</td>
+                      <td className="num">
+                        <button
+                          className="btn"
+                          aria-label="A címke fotója"
+                          onClick={() =>
+                            setOpenPhoto(openPhoto === row.photo_id ? null : row.photo_id)
+                          }
+                        >
+                          {openPhoto === row.photo_id ? "✕" : "🔍"}
+                        </button>
+                      </td>
                     </tr>
+                    {openPhoto === row.photo_id && (
+                      <tr>
+                        <td colSpan={6} style={{ padding: 0 }}>
+                          <a
+                            href={api.labelImageUrl(row.photo_id)}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Megnyitás teljes méretben"
+                          >
+                            <img
+                              src={api.labelImageUrl(row.photo_id)}
+                              alt="A polccímke fotója"
+                              style={{
+                                display: "block",
+                                width: "100%",
+                                maxHeight: "70vh",
+                                objectFit: "contain",
+                                background: "var(--grid)",
+                              }}
+                            />
+                          </a>
+                          <p className="muted" style={{ fontSize: "0.8rem", margin: "6px 0" }}>
+                            Koppints a képre a teljes méretért. Az eredeti fotó van eltárolva,
+                            nem a kicsinyített másolat – a termék is látszik rajta.
+                          </p>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
@@ -261,6 +306,7 @@ export default function Labels() {
               <table>
                 <thead>
                   <tr>
+                    <th />
                     <th>Mikor</th>
                     <th>Bolt</th>
                     <th className="num">Címke</th>
@@ -270,6 +316,27 @@ export default function Labels() {
                 <tbody>
                   {rows.map((photo) => (
                     <tr key={photo.id}>
+                      <td style={{ width: 56 }}>
+                        <a
+                          href={api.labelImageUrl(photo.id)}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="A fotó megnyitása"
+                        >
+                          <img
+                            src={api.labelImageUrl(photo.id)}
+                            alt=""
+                            loading="lazy"
+                            style={{
+                              width: 48,
+                              height: 48,
+                              objectFit: "cover",
+                              borderRadius: 6,
+                              background: "var(--grid)",
+                            }}
+                          />
+                        </a>
+                      </td>
                       <td>{new Date(photo.observed_at).toLocaleString("hu-HU")}</td>
                       <td>{photo.merchant_name ?? <span className="muted">ismeretlen</span>}</td>
                       <td className="num">{photo.observation_count}</td>

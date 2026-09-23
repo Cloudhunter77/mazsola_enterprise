@@ -556,3 +556,71 @@ class TestWhenTheLabelWasSeen:
 
         history = await stats.price_history(session, product.id)
         assert history.points[0].purchased_at.date().isoformat() == "2026-09-12"
+
+
+@requires_db
+class TestThePhotographIsKept:
+    """The picture is worth keeping beyond reading the price off it.
+
+    A shelf photo usually has the product itself in frame behind the label, so it answers
+    questions the extracted numbers cannot: what the packaging looks like, what else was on
+    the shelf, whether the label really said what the reading claims.
+    """
+
+    async def test_the_original_bytes_are_stored_not_a_downscaled_copy(
+        self, session, label_settings, shelf_photo
+    ):
+        """The model gets a shrunken copy; what lands on disk is what the camera produced."""
+        from pathlib import Path
+
+        photo, _ = await ingest_label_photo(
+            session, shelf_photo, label_settings, merchant_name="Aldi"
+        )
+        await session.commit()
+
+        assert Path(photo.image_path).read_bytes() == shelf_photo
+
+    async def test_it_is_served_back(self, auth_client, session, shelf_photo):
+        response = await auth_client.post(
+            "/api/labels?shop=Aldi", files={"file": ("shelf.jpg", shelf_photo, "image/jpeg")}
+        )
+        photo_id = response.json()["id"]
+
+        image = await auth_client.get(f"/api/labels/{photo_id}/image")
+        assert image.status_code == 200
+        assert image.content == shelf_photo
+
+    async def test_the_price_list_says_which_photo_it_came_from(
+        self, auth_client, session, label_settings, shelf_photo
+    ):
+        """Without that link there is no way to get from a price back to its evidence."""
+        photo = await _photo(session, label_settings, shelf_photo)
+        await persist_labels(session, photo, labels_result(label()))
+        await session.commit()
+
+        rows = (await auth_client.get("/api/labels/prices")).json()
+        assert rows and rows[0]["photo_id"] == str(photo.id)
+
+    async def test_a_missing_file_is_a_404_not_a_crash(
+        self, auth_client, session, label_settings, shelf_photo
+    ):
+        from pathlib import Path
+
+        photo = await _photo(session, label_settings, shelf_photo)
+        Path(photo.image_path).unlink()
+
+        response = await auth_client.get(f"/api/labels/{photo.id}/image")
+        assert response.status_code == 404
+
+    async def test_deleting_the_photo_removes_the_file(
+        self, auth_client, session, label_settings, shelf_photo
+    ):
+        """A photo you deleted should not still be sitting on the NAS."""
+        from pathlib import Path
+
+        photo = await _photo(session, label_settings, shelf_photo)
+        path = Path(photo.image_path)
+        assert path.is_file()
+
+        assert (await auth_client.delete(f"/api/labels/{photo.id}")).status_code == 204
+        assert not path.exists()
