@@ -247,23 +247,39 @@ class InflationPoint(BaseModel):
 # --- costs -------------------------------------------------------------------
 class CostByMonth(BaseModel):
     month: date
+    # What the engine was reading: receipt, price_label or product_photo. Three documents
+    # with three different shapes, so three different bills.
+    kind: str
     model: str | None
-    receipts: int
+    calls: int
     total_usd: Decimal
     avg_usd: Decimal
     # The token counts are here so a surprising bill can be diagnosed rather than just
-    # observed. A per-receipt cost far above the model's list price is almost always an
+    # observed. A per-call cost far above the model's list price is almost always an
     # input-token count far above expectation - usually the image - and the only way to
     # tell that apart from simply having picked a dear model is to see both numbers.
     avg_input_tokens: int | None = None
     avg_output_tokens: int | None = None
 
 
+class CostByKind(BaseModel):
+    """One habit's bill. Totals tell you what the app costs; this tells you what to change."""
+
+    kind: str
+    calls: int
+    total_usd: Decimal
+    avg_usd: Decimal
+    avg_input_tokens: int | None = None
+    avg_output_tokens: int | None = None
+    failures: int = 0
+
+
 class CostSummary(BaseModel):
     total_usd: Decimal
-    receipts_extracted: int
+    calls: int
     average_usd: Decimal
     projected_yearly_usd: Decimal
+    by_kind: list[CostByKind]
     by_month: list[CostByMonth]
     failures: int
 

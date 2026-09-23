@@ -270,7 +270,7 @@ class TestStatsEndpoints:
     async def test_costs_with_no_extractions(self, auth_client):
         response = await auth_client.get("/api/costs/summary")
         assert response.status_code == 200
-        assert response.json()["receipts_extracted"] == 0
+        assert response.json()["calls"] == 0
 
 
 class TestCatalogEndpoints:

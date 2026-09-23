@@ -21,6 +21,7 @@ from app.db import SessionLocal
 from app.extraction.base import ExtractionError, ReceiptExtractor
 from app.extraction.factory import build_extractor
 from app.models import (
+    AttemptKind,
     LabelStatus,
     PriceLabelPhoto,
     Receipt,
@@ -307,20 +308,43 @@ class ExtractionWorker:
                 )
                 return True
             except ExtractionError as exc:
+                await self._record_label_failure(session, photo, str(exc))
                 await self._fail_label(session, photo, str(exc))
                 return True
             except Exception as exc:  # noqa: BLE001 - surface anything unexpected on the photo
                 log.exception("unexpected label failure for %s", photo.id)
-                await self._fail_label(session, photo, f"{type(exc).__name__}: {exc}")
+                message = f"{type(exc).__name__}: {exc}"
+                await self._record_label_failure(session, photo, message)
+                await self._fail_label(session, photo, message)
                 return True
 
             reasons = await persist_labels(session, photo, result)
+            await record_attempt(
+                session,
+                extractor=self.extractor.name,
+                result=result,
+                kind=AttemptKind.PRICE_LABEL.value,
+                price_label_photo_id=photo.id,
+            )
             await session.commit()
             log.info(
                 "shelf photo %s -> %s%s",
                 photo.id, photo.status, f" ({', '.join(reasons)})" if reasons else "",
             )
             return True
+
+    async def _record_label_failure(
+        self, session: AsyncSession, photo: PriceLabelPhoto, message: str
+    ) -> None:
+        """A call that failed still cost something, or at least still happened."""
+        await record_attempt(
+            session,
+            extractor=self.settings.extractor,
+            model=self.settings.active_model,
+            error=message,
+            kind=AttemptKind.PRICE_LABEL.value,
+            price_label_photo_id=photo.id,
+        )
 
     async def _claim_label(self, session: AsyncSession) -> PriceLabelPhoto | None:
         """Take the oldest waiting shelf photo, including any stranded mid-read."""
@@ -413,10 +437,25 @@ class ExtractionWorker:
                 log.warning("could not identify shopping photo %s: %s", item.id, exc)
                 item.status = ScanStatus.FAILED.value
                 item.error = str(exc)
+                await record_attempt(
+                    session,
+                    extractor=self.settings.extractor,
+                    model=self.settings.active_model,
+                    error=str(exc),
+                    kind=AttemptKind.PRODUCT_PHOTO.value,
+                    shopping_item_id=item.id,
+                )
                 await session.commit()
                 return True
 
             await apply_recognition(session, item, result)
+            await record_attempt(
+                session,
+                extractor=self.extractor.name,
+                result=result,
+                kind=AttemptKind.PRODUCT_PHOTO.value,
+                shopping_item_id=item.id,
+            )
             await session.commit()
             return True
 

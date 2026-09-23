@@ -136,9 +136,18 @@ export default function Prices() {
                       </thead>
                       <tbody>
                         {[...data.points].reverse().map((point) => (
-                          <tr key={`${point.receipt_id}-${point.purchased_at}`}>
+                          <tr key={point.receipt_id ?? point.observation_id ?? point.purchased_at}>
                             <td className="mono">{date(point.purchased_at)}</td>
-                            <td>{point.merchant_name}</td>
+                            <td>
+                              {point.merchant_name}
+                              {/* A shelf price is what the shop asked, not what you paid - worth
+                                  saying, because the two diverge exactly when it matters. */}
+                              {point.source === "label" && (
+                                <span className="muted" style={{ fontSize: "0.78rem" }}>
+                                  {" "}· árcímke{point.is_promotion ? ", akció" : ""}
+                                </span>
+                              )}
+                            </td>
                             <td className="num">{ft(point.unit_price)}</td>
                           </tr>
                         ))}

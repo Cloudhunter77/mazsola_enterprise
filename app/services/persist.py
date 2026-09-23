@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.extraction.base import ExtractionResult
+from app.extraction.base import ExtractionResult, LabelResult, ProductPhotoResult
 from app.extraction.hu_rules import (
     Validation,
     classify_line,
@@ -20,6 +21,7 @@ from app.extraction.hu_rules import (
     validate,
 )
 from app.models import (
+    AttemptKind,
     ExtractionAttempt,
     LineKind,
     PaymentMethod,
@@ -35,16 +37,31 @@ log = logging.getLogger(__name__)
 
 async def record_attempt(
     session: AsyncSession,
-    receipt: Receipt,
+    receipt: Receipt | None = None,
     *,
     extractor: str,
     model: str | None = None,
-    result: ExtractionResult | None = None,
+    result: ExtractionResult | LabelResult | ProductPhotoResult | None = None,
     error: str | None = None,
+    kind: str = AttemptKind.RECEIPT.value,
+    price_label_photo_id: uuid.UUID | None = None,
+    shopping_item_id: uuid.UUID | None = None,
 ) -> ExtractionAttempt:
-    """Log one engine call - succeeded or not - with its token cost."""
+    """Log one engine call - succeeded or not - with what it read and what it cost.
+
+    Every document type goes through here. It used to take a receipt and nothing else,
+    which meant shelf labels and shopping photographs called the model and recorded
+    nothing at all: the Costs page answered the receipt bill while looking like it
+    answered the bill.
+
+    `result` is any of the three result types. Only the accounting fields are read from it,
+    and those are the same on all three.
+    """
     attempt = ExtractionAttempt(
-        receipt_id=receipt.id,
+        kind=kind,
+        receipt_id=receipt.id if receipt is not None else None,
+        price_label_photo_id=price_label_photo_id,
+        shopping_item_id=shopping_item_id,
         extractor=extractor,
         model=model or (result.model if result else None),
         succeeded=result is not None and error is None,

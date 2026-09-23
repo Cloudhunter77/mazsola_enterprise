@@ -83,13 +83,25 @@ export interface SpendSummary {
 export interface MonthlySpend { month: string; total: Money; receipt_count: number }
 export interface CategorySpend { category_id: string | null; category_name: string; total: Money; share: number; item_count: number }
 export interface MerchantSpend { merchant_id: string | null; merchant_name: string; total: Money; receipt_count: number; average_basket: Money }
-export interface PricePoint { purchased_at: string; merchant_id: string | null; merchant_name: string; unit_price: Money; quantity: Money | null; unit: string | null; receipt_id: string }
+// A price point is either something you bought or something you photographed on a shelf, and
+// the two are not interchangeable: a shelf price is what the shop asks, a purchase price is
+// what you paid. `receipt_id` is null on the former, `observation_id` on the latter.
+export interface PricePoint {
+  purchased_at: string; merchant_id: string | null; merchant_name: string;
+  unit_price: Money; quantity: Money | null; unit: string | null;
+  source: "purchase" | "label"; is_promotion: boolean;
+  receipt_id: string | null; observation_id: string | null;
+}
 export interface PriceHistory { product_id: string; product_name: string; points: PricePoint[]; cheapest_merchant: string | null; latest_price: Money | null; change_pct: number | null }
 export interface BasketMerchant { merchant_id: string; merchant_name: string; covered_products: number; basket_total: Money }
 export interface BasketComparison { product_count: number; merchants: BasketMerchant[]; potential_saving: Money; window_days: number }
 export interface InflationPoint { month: string; index: number; product_count: number }
-export interface CostByMonth { month: string; model: string | null; receipts: number; total_usd: Money; avg_usd: Money; avg_input_tokens: number | null; avg_output_tokens: number | null }
-export interface CostSummary { total_usd: Money; receipts_extracted: number; average_usd: Money; projected_yearly_usd: Money; by_month: CostByMonth[]; failures: number }
+// `kind` is what the engine was reading: a receipt, a shelf label or a product photograph.
+// Three documents of very different shapes, so three different bills.
+export type AttemptKind = "receipt" | "price_label" | "product_photo";
+export interface CostByMonth { month: string; kind: AttemptKind; model: string | null; calls: number; total_usd: Money; avg_usd: Money; avg_input_tokens: number | null; avg_output_tokens: number | null }
+export interface CostByKind { kind: AttemptKind; calls: number; total_usd: Money; avg_usd: Money; avg_input_tokens: number | null; avg_output_tokens: number | null; failures: number }
+export interface CostSummary { total_usd: Money; calls: number; average_usd: Money; projected_yearly_usd: Money; by_kind: CostByKind[]; by_month: CostByMonth[]; failures: number }
 export interface Budget { id: string; category_id: string | null; month: string; amount: Money | null }
 
 // Request bodies, not responses: money goes out as a plain number and pydantic converts it.
