@@ -7,6 +7,7 @@ import Capture from "./pages/Capture";
 import Costs from "./pages/Costs";
 import Dashboard from "./pages/Dashboard";
 import Labels from "./pages/Labels";
+import Shopping from "./pages/Shopping";
 import Login from "./pages/Login";
 import Manual from "./pages/Manual";
 import Prices from "./pages/Prices";
@@ -100,6 +101,7 @@ export default function App() {
           <Route path="/statisztika" element={<Dashboard />} />
           <Route path="/arak" element={<Prices />} />
           <Route path="/arcimkek" element={<Labels />} />
+          <Route path="/lista" element={<Shopping />} />
           <Route path="/koltseg" element={<Costs />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

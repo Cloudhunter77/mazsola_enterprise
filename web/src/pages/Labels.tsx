@@ -245,7 +245,23 @@ export default function Labels() {
                       </td>
                       <td>{row.merchant_name ?? <span className="muted">?</span>}</td>
                       <td>{new Date(row.observed_at).toLocaleDateString("hu-HU")}</td>
-                      <td className="num">
+                      <td className="num" style={{ whiteSpace: "nowrap" }}>
+                        <button
+                          className="btn"
+                          aria-label={`${row.raw_name} a listára`}
+                          title="Fel a bevásárlólistára"
+                          onClick={() =>
+                            api
+                              .addToList(
+                                row.product_id
+                                  ? { product_id: row.product_id }
+                                  : { raw_name: row.raw_name },
+                              )
+                              .catch(() => undefined)
+                          }
+                        >
+                          🛒
+                        </button>{" "}
                         <button
                           className="btn"
                           aria-label="A címke fotója"

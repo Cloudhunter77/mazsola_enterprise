@@ -17,7 +17,17 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from app.api import auth, catalog, costs, labels, receipts, recurring, stats, system
+from app.api import (
+    auth,
+    catalog,
+    costs,
+    labels,
+    receipts,
+    recurring,
+    shopping,
+    stats,
+    system,
+)
 from app.config import get_settings
 from app.db import SessionLocal, engine
 from app.security import check_configuration
@@ -93,6 +103,7 @@ def create_app() -> FastAPI:
     app.include_router(receipts.router)
     app.include_router(catalog.router)
     app.include_router(labels.router)
+    app.include_router(shopping.router)
     app.include_router(stats.router)
     app.include_router(costs.router)
     app.include_router(recurring.router)

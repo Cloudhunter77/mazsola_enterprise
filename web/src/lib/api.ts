@@ -162,6 +162,26 @@ export type ScannedPrice = {
   confidence: number | null;
 };
 
+export type ShoppingItem = {
+  id: string;
+  product_id: string | null;
+  product_name: string | null;
+  raw_name: string | null;
+  label: string;
+  has_photo: boolean;
+  quantity: string | null;
+  note: string | null;
+  source: string;
+  status: string;
+  confidence: number | null;
+  error: string | null;
+  done: boolean;
+  done_at: string | null;
+  created_at: string;
+};
+
+export type ShoppingSuggestion = { product_id: string; canonical_name: string };
+
 export type LabelPhoto = {
   id: string;
   status: string;
@@ -227,6 +247,42 @@ export const api = {
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           resolve(JSON.parse(xhr.responseText) as LabelUploadResponse);
+        } else {
+          let detail = `Feltöltés sikertelen (${xhr.status})`;
+          try { detail = JSON.parse(xhr.responseText).detail ?? detail; } catch { /* ignore */ }
+          reject(new ApiError(detail, xhr.status));
+        }
+      };
+      xhr.onerror = () => reject(new ApiError("Nem sikerült elérni a szervert.", 0));
+      xhr.send(form);
+    });
+  },
+
+  shoppingList: () => request<ShoppingItem[]>("/api/shopping"),
+  shoppingSuggestions: () =>
+    request<ShoppingSuggestion[]>("/api/shopping/suggestions"),
+  addToList: (body: Record<string, unknown>) =>
+    request<ShoppingItem>("/api/shopping", json("POST", body)),
+  updateListItem: (id: string, patch: Record<string, unknown>) =>
+    request<ShoppingItem>(`/api/shopping/${id}`, json("PATCH", patch)),
+  deleteListItem: (id: string) =>
+    request<void>(`/api/shopping/${id}`, { method: "DELETE" }),
+  clearDone: () =>
+    request<{ removed: number }>("/api/shopping/clear-done", { method: "POST" }),
+  listItemImageUrl: (id: string) => `/api/shopping/${id}/image`,
+
+  scanOntoList(file: File, onProgress?: (fraction: number) => void): Promise<ShoppingItem> {
+    return new Promise((resolve, reject) => {
+      const form = new FormData();
+      form.append("file", file);
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/shopping/scan");
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable && onProgress) onProgress(event.loaded / event.total);
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(JSON.parse(xhr.responseText) as ShoppingItem);
         } else {
           let detail = `Feltöltés sikertelen (${xhr.status})`;
           try { detail = JSON.parse(xhr.responseText).detail ?? detail; } catch { /* ignore */ }

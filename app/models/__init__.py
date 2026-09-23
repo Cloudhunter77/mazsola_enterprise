@@ -13,6 +13,7 @@ from app.models.receipt import (
     ReceiptStatus,
 )
 from app.models.recurring import Cadence, RecurringCharge, RecurringPayment
+from app.models.shopping import ItemSource, ScanStatus, ShoppingItem
 
 __all__ = [
     "Base",
@@ -21,6 +22,7 @@ __all__ = [
     "Category",
     "Correction",
     "ExtractionAttempt",
+    "ItemSource",
     "LabelStatus",
     "LineKind",
     "Merchant",
@@ -36,4 +38,6 @@ __all__ = [
     "ReceiptStatus",
     "RecurringCharge",
     "RecurringPayment",
+    "ScanStatus",
+    "ShoppingItem",
 ]

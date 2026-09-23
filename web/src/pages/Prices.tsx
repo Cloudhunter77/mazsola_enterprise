@@ -8,6 +8,42 @@ import { date, ft, month, pct } from "../lib/format";
 import { AsyncBlock, Card, Empty, useAsync } from "../components/ui";
 import Suggestions from "../components/Suggestions";
 
+/** Put the product you are looking at onto the shopping list.
+ *
+ *  Sits here because this is where you find out a thing has got dearer, or that another
+ *  shop sells it for less - and both of those are moments when you want it on the list.
+ */
+function AddToList({ productId }: { productId: string }) {
+  const [state, setState] = useState<"idle" | "adding" | "added" | "failed">("idle");
+
+  // Back to idle when you move to a different product, so the tick belongs to what is
+  // actually on screen.
+  const [shownFor, setShownFor] = useState(productId);
+  if (shownFor !== productId) {
+    setShownFor(productId);
+    setState("idle");
+  }
+
+  return (
+    <button
+      className="btn"
+      style={{ marginBottom: 10 }}
+      disabled={state === "adding"}
+      onClick={async () => {
+        setState("adding");
+        try {
+          await api.addToList({ product_id: productId });
+          setState("added");
+        } catch {
+          setState("failed");
+        }
+      }}
+    >
+      {state === "added" ? "✓ A listán" : state === "failed" ? "Nem sikerült" : "🛒 Listára"}
+    </button>
+  );
+}
+
 export default function Prices() {
   const tracked = useAsync(() => api.trackedProducts(), []);
   const basket = useAsync(() => api.basket(), []);
@@ -50,6 +86,7 @@ export default function Prices() {
           </AsyncBlock>
         }
       >
+        {selected && <AddToList productId={selected} />}
         {!selected ? (
           <Empty>
             Társíts termékeket a blokkok tételeihez – onnantól itt látszik, hogyan változik az áruk.

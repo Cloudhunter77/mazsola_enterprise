@@ -20,12 +20,21 @@ from app.config import Settings, get_settings
 from app.db import SessionLocal
 from app.extraction.base import ExtractionError, ReceiptExtractor
 from app.extraction.factory import build_extractor
-from app.models import LabelStatus, PriceLabelPhoto, Receipt, ReceiptImage, ReceiptStatus
+from app.models import (
+    LabelStatus,
+    PriceLabelPhoto,
+    Receipt,
+    ReceiptImage,
+    ReceiptStatus,
+    ScanStatus,
+    ShoppingItem,
+)
 from app.services.autolink import autocreate_exact_groups, autolink_stored
 from app.services.categorise import categorise_stored
 from app.services.labels import persist_labels
 from app.services.persist import persist_extraction, record_attempt
 from app.services.recurring import materialise_due
+from app.services.shopping import apply_recognition
 
 log = logging.getLogger(__name__)
 
@@ -90,6 +99,15 @@ class ExtractionWorker:
                     did_work = await self.process_next_label()
                 except Exception:
                     log.exception("label worker iteration failed")
+                    did_work = False
+
+            # Last, because a shopping photo is already on the list and already useful;
+            # recognising it only improves an entry that works without it.
+            if not did_work:
+                try:
+                    did_work = await self.process_next_shopping_photo()
+                except Exception:
+                    log.exception("shopping worker iteration failed")
                     did_work = False
 
             if not did_work:
@@ -363,6 +381,85 @@ class ExtractionWorker:
             "shelf photo %s failed (attempt %d/%d): %s",
             photo.id, photo.attempts, self.settings.worker_max_attempts, message,
         )
+
+    # --- shopping list photos ------------------------------------------------
+    async def process_next_shopping_photo(self) -> bool:
+        """Identify one photographed shopping-list item. False when that queue is empty.
+
+        A failure here is deliberately gentle: the item stays on the list as a photograph,
+        which is what it already was. Nothing the person needs is lost by not recognising
+        it, so there is nothing to escalate.
+        """
+        async with SessionLocal() as session:
+            item = await self._claim_shopping_photo(session)
+            if item is None:
+                return False
+
+            images = await asyncio.to_thread(self._read_images, [item.image_path])
+            if images is None:
+                item.status = ScanStatus.FAILED.value
+                item.error = f"The photo is missing: {item.image_path}"
+                await session.commit()
+                return True
+
+            try:
+                result = await self.extractor.extract_product(images, item.image_mime)
+            except AttributeError:
+                item.status = ScanStatus.FAILED.value
+                item.error = f"The {self.settings.extractor} engine cannot identify products."
+                await session.commit()
+                return True
+            except Exception as exc:  # noqa: BLE001 - an unrecognised item is still an item
+                log.warning("could not identify shopping photo %s: %s", item.id, exc)
+                item.status = ScanStatus.FAILED.value
+                item.error = str(exc)
+                await session.commit()
+                return True
+
+            await apply_recognition(session, item, result)
+            await session.commit()
+            return True
+
+    async def _claim_shopping_photo(self, session: AsyncSession) -> ShoppingItem | None:
+        stale_before = datetime.now(UTC) - timedelta(seconds=self.settings.worker_stale_seconds)
+        stmt = (
+            select(ShoppingItem)
+            .where(ShoppingItem.image_path.is_not(None))
+            .where(
+                or_(
+                    and_(
+                        ShoppingItem.status == ScanStatus.PENDING.value,
+                        ShoppingItem.attempts < self.settings.worker_max_attempts,
+                    ),
+                    and_(
+                        ShoppingItem.status == ScanStatus.PROCESSING.value,
+                        ShoppingItem.updated_at < stale_before,
+                    ),
+                )
+            )
+            .order_by(ShoppingItem.created_at)
+            .limit(1)
+        )
+        if session.bind.dialect.name == "postgresql":
+            stmt = stmt.with_for_update(skip_locked=True)
+
+        item = await session.scalar(stmt)
+        if item is None:
+            return None
+
+        if (
+            item.status == ScanStatus.PROCESSING.value
+            and item.attempts >= self.settings.worker_max_attempts
+        ):
+            item.status = ScanStatus.FAILED.value
+            item.error = "Recognition was interrupted and no attempts remain."
+            await session.commit()
+            return None
+
+        item.status = ScanStatus.PROCESSING.value
+        item.attempts += 1
+        await session.commit()
+        return item
 
     @staticmethod
     async def _image_paths(session: AsyncSession, receipt: Receipt) -> list[str]:

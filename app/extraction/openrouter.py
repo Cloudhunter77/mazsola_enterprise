@@ -25,12 +25,23 @@ import httpx
 from pydantic import BaseModel, ValidationError
 
 from app.config import Settings
-from app.extraction.base import ExtractionError, ExtractionResult, LabelResult, as_parts
+from app.extraction.base import (
+    ExtractionError,
+    ExtractionResult,
+    LabelResult,
+    ProductPhotoResult,
+    as_parts,
+)
 from app.extraction.label_prompt import LABEL_SYSTEM_PROMPT, label_instruction_for
 from app.extraction.preprocess import prepare
+from app.extraction.product_prompt import (
+    PRODUCT_SYSTEM_PROMPT,
+    product_instruction_for,
+)
 from app.extraction.prompt import SYSTEM_PROMPT, instruction_for
 from app.schemas.extraction import ExtractedReceipt
 from app.schemas.price_label import ExtractedPriceLabels
+from app.schemas.product_photo import ExtractedProductPhoto
 
 log = logging.getLogger(__name__)
 
@@ -293,6 +304,39 @@ class OpenRouterExtractor:
             cost_usd=Decimal(str(cost)) if cost is not None else None,
             latency_ms=latency_ms,
             raw=labels.model_dump(mode="json"),
+        )
+
+
+    async def extract_product(
+        self, images: Sequence[bytes] | bytes, mime_type: str = "image/jpeg"
+    ) -> ProductPhotoResult:
+        """Identify the product in one or more photographs of the same thing."""
+        photo, usage, latency_ms, count, dimensions = await self._send(
+            images,
+            schema_model=ExtractedProductPhoto,
+            what="photograph",
+            system=PRODUCT_SYSTEM_PROMPT,
+            instruction_for_parts=product_instruction_for,
+            schema_name="product_photo",
+        )
+        cost = usage.get("cost")
+
+        log.info(
+            "identified %r via openrouter model=%s photos=%d images=%s confidence=%s "
+            "in=%s out=%s cost=%s latency=%dms",
+            photo.raw_name, self.model, count, dimensions, photo.confidence,
+            usage.get("prompt_tokens"), usage.get("completion_tokens"), cost, latency_ms,
+        )
+
+        return ProductPhotoResult(
+            photo=photo,
+            extractor=self.name,
+            model=self.model,
+            input_tokens=usage.get("prompt_tokens"),
+            output_tokens=usage.get("completion_tokens"),
+            cost_usd=Decimal(str(cost)) if cost is not None else None,
+            latency_ms=latency_ms,
+            raw=photo.model_dump(mode="json"),
         )
 
 

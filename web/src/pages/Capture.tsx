@@ -255,13 +255,22 @@ export default function Capture() {
 
           {/* One tap from the camera screen, because that is where you are when you are
               standing in the shop with the shelf in front of you. */}
-          <Link
-            className="btn big"
-            to="/arcimkek"
-            style={{ width: "100%", display: "block", textAlign: "center" }}
-          >
-            🏷️ Árcímke fotózása
-          </Link>
+          <div className="row" style={{ gap: 8 }}>
+            <Link
+              className="btn big"
+              to="/lista"
+              style={{ flex: 1, display: "block", textAlign: "center" }}
+            >
+              🛒 Bevásárlólista
+            </Link>
+            <Link
+              className="btn big"
+              to="/arcimkek"
+              style={{ flex: 1, display: "block", textAlign: "center" }}
+            >
+              🏷️ Árcímke
+            </Link>
+          </div>
           <p className="muted" style={{ fontSize: "0.82rem", marginTop: 6 }}>
             A boltban vagy? Fotózd le a polccímkét – az ár bekerül az ártörténetbe anélkül,
             hogy megvennéd. Kiadásnak nem számít.

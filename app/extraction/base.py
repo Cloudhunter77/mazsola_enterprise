@@ -14,6 +14,7 @@ from typing import Protocol, runtime_checkable
 
 from app.schemas.extraction import ExtractedReceipt
 from app.schemas.price_label import ExtractedPriceLabels
+from app.schemas.product_photo import ExtractedProductPhoto
 
 
 class ExtractionError(RuntimeError):
@@ -47,6 +48,22 @@ class LabelResult:
     """
 
     labels: ExtractedPriceLabels
+    extractor: str
+    model: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cache_read_tokens: int | None = None
+    cache_write_tokens: int | None = None
+    cost_usd: Decimal | None = None
+    latency_ms: int | None = None
+    raw: dict | None = field(default=None, repr=False)
+
+
+@dataclass(slots=True)
+class ProductPhotoResult:
+    """What one photograph said about which product it shows, plus what the call cost."""
+
+    photo: ExtractedProductPhoto
     extractor: str
     model: str | None = None
     input_tokens: int | None = None
