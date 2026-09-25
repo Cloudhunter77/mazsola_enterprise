@@ -13,10 +13,7 @@ export default function Dashboard() {
 
   return (
     <>
-      <div className="row" style={{ marginBottom: 14 }}>
-        <h1 style={{ flex: 1 }}>Statisztika</h1>
-        <Link className="btn" to="/koltseg">Felismerési költség</Link>
-      </div>
+      <h1 style={{ marginBottom: 14 }}>Statisztika</h1>
 
       <AsyncBlock state={summary}>
         {(data) => (

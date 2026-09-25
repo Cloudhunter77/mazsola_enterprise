@@ -32,6 +32,39 @@ export function useAsync<T>(loader: () => Promise<T>, deps: DependencyList = [])
   return { data, loading, error, reload };
 }
 
+/** Keep a screen current on its own, instead of a Frissítés button.
+ *
+ *  Two triggers. While `busy` says something on screen is still being worked on - a photo
+ *  being read, a receipt in the queue - it asks again a few seconds after each answer
+ *  arrives. And whenever the tab becomes visible again, it asks once, because a phone that
+ *  was in a pocket has been showing a stale list for however long it was there.
+ *
+ *  Scheduling from the end of each request rather than on a fixed interval means a slow
+ *  VPN never has requests piling up behind each other, and a failed request re-arms just
+ *  like a successful one - polling that stopped at the first dropped packet would leave
+ *  "Felismerés…" on screen for good. Nothing is polled while the tab is hidden.
+ */
+export function useLive<T>(state: AsyncState<T>, busy: (data: T) => boolean, everyMs = 3000) {
+  const { data, loading, reload } = state;
+  const active = data !== null && busy(data);
+
+  useEffect(() => {
+    if (!active || loading) return;
+    const timer = window.setTimeout(() => {
+      if (document.visibilityState === "visible") reload();
+    }, everyMs);
+    return () => window.clearTimeout(timer);
+  }, [active, loading, reload, everyMs]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") reload();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [reload]);
+}
+
 export function Card({ title, note, action, children }: {
   title?: string; note?: string; action?: ReactNode; children: ReactNode;
 }) {

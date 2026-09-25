@@ -6,7 +6,6 @@
  */
 
 import { useState } from "react";
-import { Link } from "react-router-dom";
 
 import { api, type Recurring as Rule } from "../lib/api";
 import { ft, date as fmtDate } from "../lib/format";
@@ -89,10 +88,7 @@ export default function RecurringPage() {
 
   return (
     <>
-      <div className="row page-actions" style={{ marginBottom: 14 }}>
-        <h1 style={{ flex: 1 }}>Előfizetések</h1>
-        <Link className="btn" to="/tabla">← Tábla</Link>
-      </div>
+      <h1 style={{ marginBottom: 14 }}>Előfizetések</h1>
 
       <Card>
         <p className="muted" style={{ marginTop: 0 }}>

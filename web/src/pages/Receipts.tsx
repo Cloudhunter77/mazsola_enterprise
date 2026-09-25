@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 
 import { api } from "../lib/api";
 import { STATUS_LABELS, date, ft } from "../lib/format";
-import { AsyncBlock, Card, useAsync } from "../components/ui";
+import { AsyncBlock, Card, useAsync, useLive } from "../components/ui";
 
 const FILTERS = [
   { value: "", label: "Mind" },
@@ -17,6 +17,8 @@ const FILTERS = [
 export default function Receipts() {
   const [status, setStatus] = useState("");
   const state = useAsync(() => api.receipts({ status: status || undefined, limit: 200 }), [status]);
+  // A receipt uploaded from the phone shows up as queued and turns into a result by itself.
+  useLive(state, (rows) => rows.some((row) => row.status === "pending" || row.status === "processing"));
 
   return (
     <>

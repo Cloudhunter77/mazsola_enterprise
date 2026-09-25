@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import { NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import { api } from "./lib/api";
+import { SECTIONS, sectionFor } from "./lib/nav";
 import { Loading } from "./components/ui";
 import Capture from "./pages/Capture";
 import Costs from "./pages/Costs";
 import Dashboard from "./pages/Dashboard";
 import Labels from "./pages/Labels";
+import ShelfPrices from "./pages/ShelfPrices";
 import Shopping from "./pages/Shopping";
 import Login from "./pages/Login";
 import Manual from "./pages/Manual";
@@ -42,18 +44,11 @@ function useTheme(): [Theme, (theme: Theme) => void] {
   return [theme, setTheme];
 }
 
-const TABS = [
-  { to: "/", glyph: "📷", label: "Rögzítés", end: true },
-  { to: "/blokkok", glyph: "🧾", label: "Blokkok", end: false },
-  { to: "/tabla", glyph: "📋", label: "Tábla", end: false },
-  { to: "/statisztika", glyph: "📊", label: "Statisztika", end: false },
-  { to: "/arak", glyph: "🏷️", label: "Árak", end: false },
-];
-
 export default function App() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [theme, setTheme] = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     api.me()
@@ -72,12 +67,23 @@ export default function App() {
 
   const nextTheme: Theme = theme === "dark" ? "light" : theme === "light" ? "system" : "dark";
   const themeGlyph = theme === "dark" ? "🌙" : theme === "light" ? "☀️" : "🌗";
+  const section = sectionFor(location.pathname);
 
   return (
     <div className="app">
       <header className="topbar">
         <span className="brand">🧾 Receipt Tracker</span>
         <span className="spacer" />
+        {/* Version, database and worker state: looked at rarely, so it is not a tab. */}
+        <Link
+          className="btn"
+          to="/rendszer"
+          title="Rendszer: verzió és állapot"
+          aria-label="Rendszer"
+          aria-current={location.pathname === "/rendszer" ? "page" : undefined}
+        >
+          ⚙
+        </Link>
         <button
           className="btn"
           onClick={() => setTheme(nextTheme)}
@@ -90,6 +96,15 @@ export default function App() {
       </header>
 
       <main className="content">
+        {section && section.pages.length > 1 && (
+          <nav className="subnav" aria-label={section.label}>
+            {section.pages.map((page) => (
+              <NavLink key={page.to} to={page.to} end>
+                {page.label}
+              </NavLink>
+            ))}
+          </nav>
+        )}
         <Routes>
           <Route path="/" element={<Capture />} />
           <Route path="/blokkok" element={<Receipts />} />
@@ -101,6 +116,7 @@ export default function App() {
           <Route path="/statisztika" element={<Dashboard />} />
           <Route path="/arak" element={<Prices />} />
           <Route path="/arcimkek" element={<Labels />} />
+          <Route path="/polcarak" element={<ShelfPrices />} />
           <Route path="/lista" element={<Shopping />} />
           <Route path="/koltseg" element={<Costs />} />
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -108,11 +124,19 @@ export default function App() {
       </main>
 
       <nav className="tabbar">
-        {TABS.map((tab) => (
-          <NavLink key={tab.to} to={tab.to} end={tab.end}>
+        {/* Active by section rather than by URL prefix: the Rögzítés tab owns "/", which
+            is a prefix of everything, and the Blokkok tab owns /tabla, which is not a
+            prefix of anything it shares with /blokkok. */}
+        {SECTIONS.map((tab) => (
+          <Link
+            key={tab.label}
+            to={tab.pages[0].to}
+            className={tab === section ? "active" : undefined}
+            aria-current={tab === section ? "page" : undefined}
+          >
             <span className="glyph" aria-hidden>{tab.glyph}</span>
             {tab.label}
-          </NavLink>
+          </Link>
         ))}
       </nav>
     </div>

@@ -12,15 +12,20 @@
  */
 
 import { useRef, useState } from "react";
-import { Link } from "react-router-dom";
 
 import { api, type ShoppingItem } from "../lib/api";
-import { AsyncBlock, Card, useAsync } from "../components/ui";
+import { AsyncBlock, Card, useAsync, useLive } from "../components/ui";
+
+const READING = new Set(["pending", "processing"]);
 
 export default function Shopping() {
   const [reload, setReload] = useState(0);
   const items = useAsync(() => api.shoppingList(), [reload]);
   const usual = useAsync(() => api.shoppingSuggestions(), [reload]);
+  // A photographed item lands as "Felismerés…" and the reading happens on the server
+  // afterwards, so without this the entry sat unrecognised until you left and came back.
+  // Refreshing on focus also picks up anything added from another phone.
+  useLive(items, (rows) => rows.some((row) => READING.has(row.status)));
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,10 +63,7 @@ export default function Shopping() {
 
   return (
     <>
-      <div className="row page-actions" style={{ marginBottom: 14 }}>
-        <h1 style={{ flex: 1 }}>Bevásárlólista</h1>
-        <Link className="btn" to="/">← Fotózás</Link>
-      </div>
+      <h1 style={{ marginBottom: 14 }}>Bevásárlólista</h1>
 
       <Card>
         <div className="row" style={{ gap: 8 }}>
@@ -256,7 +258,7 @@ function Row({
 }
 
 function Status({ item }: { item: ShoppingItem }) {
-  if (item.status === "pending" || item.status === "processing") {
+  if (READING.has(item.status)) {
     return <div className="muted" style={{ fontSize: "0.78rem" }}>Felismerés…</div>;
   }
   if (item.product_id) {

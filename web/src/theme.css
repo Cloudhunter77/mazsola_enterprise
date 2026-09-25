@@ -298,3 +298,24 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) {
   .btn:active { transform: none; }
 }
+
+/* --- section sub-navigation ------------------------------------------------ */
+/* The pages of one tab: Blokk / Árcímke / Kézzel under Rögzítés, and so on. A segmented
+   row rather than more tabs, so the bottom bar stays at five. Scrolls sideways instead of
+   wrapping if a label ever grows. */
+.subnav {
+  display: flex; gap: 4px; margin-bottom: 14px; padding: 4px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  overflow-x: auto; scrollbar-width: none;
+}
+.subnav::-webkit-scrollbar { display: none; }
+.subnav a {
+  flex: 1 0 auto; text-align: center; white-space: nowrap;
+  padding: 10px 12px; min-height: 44px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--ink-secondary); text-decoration: none; font-weight: 550; font-size: 0.92rem;
+  -webkit-tap-highlight-color: transparent;
+}
+.subnav a.active { background: var(--surface-raised); color: var(--series-1);
+                   box-shadow: var(--shadow); font-weight: 650; }
+.topbar .btn[aria-current="page"] { color: var(--series-1); border-color: var(--series-1); }

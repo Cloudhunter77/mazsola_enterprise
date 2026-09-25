@@ -7,7 +7,6 @@
  */
 
 import type { ReactNode } from "react";
-import { Link } from "react-router-dom";
 
 import { api } from "../lib/api";
 import { dateTime } from "../lib/format";
@@ -20,10 +19,7 @@ export default function System() {
 
   return (
     <>
-      <div className="row page-actions" style={{ marginBottom: 14 }}>
-        <h1 style={{ flex: 1 }}>Rendszer</h1>
-        <Link className="btn" to="/tabla">← Tábla</Link>
-      </div>
+      <h1 style={{ marginBottom: 14 }}>Rendszer</h1>
 
       <AsyncBlock state={info}>
         {(data) => (

@@ -4,7 +4,6 @@
  *  cheap one is only sensible with the real per-receipt figure in front of you.
  */
 
-import { Link } from "react-router-dom";
 
 import { api, type AttemptKind } from "../lib/api";
 import { month } from "../lib/format";
@@ -31,10 +30,7 @@ export default function Costs() {
 
   return (
     <>
-      <div className="row page-actions" style={{ marginBottom: 14 }}>
-        <h1 style={{ flex: 1 }}>Felismerési költség</h1>
-        <Link className="btn" to="/statisztika">← Statisztika</Link>
-      </div>
+      <h1 style={{ marginBottom: 14 }}>API költség</h1>
 
       <AsyncBlock state={costs} empty="Még nem futott felismerés.">
         {(data) => (
