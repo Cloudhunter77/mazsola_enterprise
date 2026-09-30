@@ -21,13 +21,15 @@ from __future__ import annotations
 import logging
 import re
 import uuid
+from dataclasses import dataclass
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Category, LineKind, Merchant, Product, Receipt, ReceiptItem
 from app.services.autolink import READY_FOR_STATS
 from app.services.catalog import fold
+from app.services.matching import fingerprint
 
 log = logging.getLogger(__name__)
 
@@ -181,6 +183,34 @@ async def _category_ids(session: AsyncSession) -> dict[str, uuid.UUID]:
     }
 
 
+async def _learned_categories(session: AsyncSession) -> dict[str, uuid.UUID]:
+    """What you have categorised by hand, keyed by normalised name.
+
+    This is rule 2, and for a long time it was only described in this file's docstring and
+    never run - so a category set on one line stayed on that one line, and the next receipt
+    with the same milk on it arrived uncategorised again. Keyed by fingerprint rather than
+    raw name so `UHT TEJ 1L` learns from `uht tej 1 l`.
+
+    A name you have filed under two different categories is left out: the rule cannot know
+    which you meant, and guessing is the quiet kind of wrong.
+    """
+    rows = (
+        await session.execute(
+            select(ReceiptItem.raw_name, ReceiptItem.category_id)
+            .where(ReceiptItem.category_source == "manual")
+            .where(ReceiptItem.category_id.is_not(None))
+            .group_by(ReceiptItem.raw_name, ReceiptItem.category_id)
+        )
+    ).all()
+
+    seen: dict[str, set[uuid.UUID]] = {}
+    for raw_name, category_id in rows:
+        key = fingerprint(raw_name)
+        if key and not key.startswith("|"):
+            seen.setdefault(key, set()).add(category_id)
+    return {key: next(iter(found)) for key, found in seen.items() if len(found) == 1}
+
+
 async def categorise_stored(session: AsyncSession, limit: int = 2000) -> dict[str, int]:
     """Give a category to stored lines that have none. Returns a count per rule that fired.
 
@@ -208,6 +238,7 @@ async def categorise_stored(session: AsyncSession, limit: int = 2000) -> dict[st
         return {}
 
     ids = await _category_ids(session)
+    learned = await _learned_categories(session)
     # What each product is already categorised as, so a line can inherit it.
     products = {
         product_id: category_id
@@ -225,6 +256,11 @@ async def categorise_stored(session: AsyncSession, limit: int = 2000) -> dict[st
 
         if product_id and product_id in products:
             category_id, source = products[product_id], "product"
+
+        if category_id is None:
+            category_id = learned.get(fingerprint(raw_name))
+            if category_id is not None:
+                source = "learned"
 
         if category_id is None:
             name = category_for_name(raw_name)
@@ -250,3 +286,153 @@ async def categorise_stored(session: AsyncSession, limit: int = 2000) -> dict[st
     if applied:
         log.info("categorised %s", ", ".join(f"{n} by {rule}" for rule, n in applied.items()))
     return applied
+
+
+@dataclass(slots=True)
+class Assignment:
+    """What one "file this name under X" changed, precisely enough to take it back."""
+
+    item_ids: list[uuid.UUID]
+    product_ids: list[uuid.UUID]
+    # How many of `item_ids` were other spellings or other receipts reached through the
+    # product or the learned rule, rather than the name you picked.
+    spread: int
+
+
+async def assign_by_name(
+    session: AsyncSession, raw_name: str, category_id: uuid.UUID
+) -> Assignment:
+    """File every uncategorised line printed as `raw_name` under a category, and teach it.
+
+    Three effects, all only ever filling blanks - a line or product that already has a
+    category keeps it, so this can never undo a decision made elsewhere:
+
+    * the lines with exactly this name become `manual`, the strongest source there is;
+    * a product those lines belong to takes the category too, if it has none - so the
+      next receipt with it arrives categorised through rule 1;
+    * other blank lines of that product, or whose name normalises the same way, follow
+      straight away, instead of an hour later when the timer runs.
+    """
+    counted = select(Receipt.id).where(Receipt.status.in_(READY_FOR_STATS))
+    lines = (
+        await session.execute(
+            select(ReceiptItem.id, ReceiptItem.product_id)
+            .where(ReceiptItem.raw_name == raw_name)
+            .where(ReceiptItem.kind == LineKind.ITEM.value)
+            .where(ReceiptItem.category_id.is_(None))
+            .where(ReceiptItem.receipt_id.in_(counted))
+        )
+    ).all()
+    direct = [item_id for item_id, _ in lines]
+    if direct:
+        await session.execute(
+            update(ReceiptItem)
+            .where(ReceiptItem.id.in_(direct))
+            .values(category_id=category_id, category_source="manual")
+        )
+
+    product_ids = sorted({pid for _, pid in lines if pid}, key=str)
+    changed_products: list[uuid.UUID] = []
+    if product_ids:
+        changed_products = list(
+            (
+                await session.scalars(
+                    update(Product)
+                    .where(Product.id.in_(product_ids))
+                    .where(Product.category_id.is_(None))
+                    .values(category_id=category_id)
+                    .returning(Product.id)
+                )
+            ).all()
+        )
+
+    # The rest of the family: same product, or a spelling that normalises identically.
+    key = fingerprint(raw_name)
+    candidates = (
+        await session.execute(
+            select(ReceiptItem.id, ReceiptItem.raw_name, ReceiptItem.product_id)
+            .where(ReceiptItem.kind == LineKind.ITEM.value)
+            .where(ReceiptItem.category_id.is_(None))
+            .where(ReceiptItem.receipt_id.in_(counted))
+            .where(ReceiptItem.raw_name != raw_name)
+        )
+    ).all()
+    by_product = [
+        item_id for item_id, _, pid in candidates if pid and pid in changed_products
+    ]
+    by_name = [
+        item_id
+        for item_id, name, pid in candidates
+        if item_id not in by_product and key and not key.startswith("|")
+        and fingerprint(name) == key
+    ]
+    for ids, source in ((by_product, "product"), (by_name, "learned")):
+        if ids:
+            await session.execute(
+                update(ReceiptItem)
+                .where(ReceiptItem.id.in_(ids))
+                .values(category_id=category_id, category_source=source)
+            )
+
+    return Assignment(
+        item_ids=direct + by_product + by_name,
+        product_ids=changed_products,
+        spread=len(by_product) + len(by_name),
+    )
+
+
+async def undo_assignment(
+    session: AsyncSession,
+    category_id: uuid.UUID,
+    item_ids: list[uuid.UUID],
+    product_ids: list[uuid.UUID],
+) -> int:
+    """Take back exactly what `assign_by_name` did, and nothing it did not.
+
+    Guarded on the category still being the one assigned: if something has moved a line on
+    since, it is left where it now is.
+    """
+    result = await session.execute(
+        update(ReceiptItem)
+        .where(ReceiptItem.id.in_(item_ids))
+        .where(ReceiptItem.category_id == category_id)
+        .values(category_id=None, category_source=None)
+    )
+    if product_ids:
+        await session.execute(
+            update(Product)
+            .where(Product.id.in_(product_ids))
+            .where(Product.category_id == category_id)
+            .values(category_id=None)
+        )
+    return result.rowcount or 0
+
+
+async def uncategorised_names(session: AsyncSession, limit: int = 200) -> list[tuple]:
+    """Every name still behind "Besorolatlan", most money first.
+
+    Grouped by printed name because that is the unit you recognise and the unit
+    `assign_by_name` acts on. Only lines that count towards spending, so the list adds up
+    to the number on the dashboard.
+    """
+    return list(
+        (
+            await session.execute(
+                select(
+                    ReceiptItem.raw_name,
+                    func.count(ReceiptItem.id),
+                    func.coalesce(func.sum(ReceiptItem.gross_amount), 0),
+                    func.max(Product.canonical_name),
+                    func.max(Receipt.purchased_at),
+                )
+                .join(Receipt, Receipt.id == ReceiptItem.receipt_id)
+                .outerjoin(Product, Product.id == ReceiptItem.product_id)
+                .where(ReceiptItem.category_id.is_(None))
+                .where(ReceiptItem.kind == LineKind.ITEM.value)
+                .where(Receipt.status.in_(READY_FOR_STATS))
+                .group_by(ReceiptItem.raw_name)
+                .order_by(func.sum(ReceiptItem.gross_amount).desc().nulls_last())
+                .limit(limit)
+            )
+        ).all()
+    )

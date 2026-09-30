@@ -5,6 +5,7 @@ import { api } from "./lib/api";
 import { SECTIONS, sectionFor } from "./lib/nav";
 import { Loading } from "./components/ui";
 import Capture from "./pages/Capture";
+import Categorise from "./pages/Categorise";
 import Costs from "./pages/Costs";
 import Dashboard from "./pages/Dashboard";
 import Labels from "./pages/Labels";
@@ -118,6 +119,7 @@ export default function App() {
           <Route path="/arcimkek" element={<Labels />} />
           <Route path="/polcarak" element={<ShelfPrices />} />
           <Route path="/lista" element={<Shopping />} />
+          <Route path="/kategorizalas" element={<Categorise />} />
           <Route path="/koltseg" element={<Costs />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

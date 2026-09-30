@@ -59,6 +59,7 @@ export const SECTIONS: Section[] = [
     label: "Statisztika",
     pages: [
       { to: "/statisztika", label: "Költés" },
+      { to: "/kategorizalas", label: "Kategorizálás" },
       { to: "/koltseg", label: "API költség" },
     ],
   },

@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 
-import { api } from "../lib/api";
+import { api, type CategorySpend } from "../lib/api";
 import { MonthlySpendChart, RankingChart } from "../lib/charts";
 import { ft, month } from "../lib/format";
 import { AsyncBlock, Card, Tile, useAsync } from "../components/ui";
@@ -54,6 +54,7 @@ export default function Dashboard() {
         <AsyncBlock state={categories} empty="Sorolj be tételeket kategóriába a blokk nézetben.">
           {(data) => (
             <>
+              <Uncategorised rows={data} />
               <RankingChart
                 data={data.slice(0, 10).map((row) => ({
                   label: row.category_name,
@@ -80,7 +81,13 @@ export default function Dashboard() {
                     <tbody>
                       {data.map((row) => (
                         <tr key={row.category_id ?? "none"}>
-                          <td>{row.category_name}</td>
+                          <td>
+                            {row.category_id === null ? (
+                              <Link to="/kategorizalas">{row.category_name}</Link>
+                            ) : (
+                              row.category_name
+                            )}
+                          </td>
                           <td className="num">{ft(row.total)}</td>
                           <td className="num">{(row.share * 100).toFixed(1)}%</td>
                           <td className="num">{row.item_count}</td>
@@ -109,5 +116,25 @@ export default function Dashboard() {
         </AsyncBlock>
       </Card>
     </>
+  );
+}
+
+/** The way out of "Besorolatlan", placed where you notice it. The bar alone told you how much
+ *  was uncategorised and gave you nowhere to go about it. */
+function Uncategorised({ rows }: { rows: CategorySpend[] }) {
+  const blank = rows.find((row) => row.category_id === null);
+  if (!blank) return null;
+  return (
+    <Link
+      className="btn block"
+      to="/kategorizalas"
+      style={{ marginBottom: 12, justifyContent: "space-between" }}
+    >
+      <span>
+        {blank.item_count} tétel besorolatlan
+        <span className="muted"> · {ft(blank.total)}</span>
+      </span>
+      <span>Kategorizálás →</span>
+    </Link>
   );
 }

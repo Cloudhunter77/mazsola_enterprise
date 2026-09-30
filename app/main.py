@@ -20,6 +20,7 @@ from sqlalchemy import text
 from app.api import (
     auth,
     catalog,
+    categorising,
     costs,
     labels,
     receipts,
@@ -102,6 +103,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(receipts.router)
     app.include_router(catalog.router)
+    app.include_router(categorising.router)
     app.include_router(labels.router)
     app.include_router(shopping.router)
     app.include_router(stats.router)

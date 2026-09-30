@@ -122,6 +122,13 @@ export interface Suggestion {
   product_members: string[]; member_occurrences: Record<string, number>;
   member_prices: Record<string, Money>;
 }
+export interface UncategorisedName {
+  raw_name: string; lines: number; total: Money; product_name: string | null;
+  last_bought: string | null;
+}
+export interface CategoryAssignment {
+  category_id: string; item_ids: string[]; product_ids: string[]; lines: number; spread: number;
+}
 export interface Suggestions { unmapped_lines: number; groups: Suggestion[] }
 
 export interface ManualItem {
@@ -366,6 +373,13 @@ export const api = {
   system: () => request<SystemInfo>("/api/system"),
 
   suggestions: () => request<Suggestions>("/api/suggestions"),
+  uncategorised: () => request<UncategorisedName[]>("/api/categorise/uncategorised"),
+  assignCategory: (raw_name: string, category_id: string) =>
+    request<CategoryAssignment>("/api/categorise/assign", json("POST", { raw_name, category_id })),
+  undoCategory: (done: CategoryAssignment) =>
+    request<{ reverted: number }>("/api/categorise/undo", json("POST", {
+      category_id: done.category_id, item_ids: done.item_ids, product_ids: done.product_ids,
+    })),
   applySuggestion: (body: Record<string, unknown>) =>
     request<Product>("/api/suggestions/apply", json("POST", body)),
   autolink: () =>
