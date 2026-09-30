@@ -370,6 +370,10 @@ class SuggestionOut(BaseModel):
     # How many times each spelling was bought, so you can tell a one-off from a staple
     # before deciding whether it belongs.
     member_occurrences: dict[str, int] = Field(default_factory=dict)
+    # The typical price of one, per spelling. Names can be near-identical while prices are
+    # not, and a spelling at half or double the others' price is usually a different product
+    # - a bigger pack, a premium line, a variant the till abbreviated away.
+    member_prices: dict[str, Decimal] = Field(default_factory=dict)
 
 
 class SuggestionsOut(BaseModel):

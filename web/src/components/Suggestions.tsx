@@ -17,6 +17,18 @@ import { api, type Suggestion } from "../lib/api";
 import { ft } from "../lib/format";
 import { AsyncBlock, Card, useAsync } from "../components/ui";
 
+// A spelling this far from the main one's price - half, or one and a half times - is flagged.
+// Not unticked: a different shop, a multipack or an akció can all explain it, and only you
+// know which. But lactose-free beside regular, or a premium line beside the house brand,
+// usually shows up here first.
+const PRICE_GAP = 1.5;
+
+/** How far a price is from the reference, or null when either is missing. */
+function priceGap(price: number | null, reference: number | null): number | null {
+  if (price == null || reference == null || price <= 0 || reference <= 0) return null;
+  return price / reference - 1;
+}
+
 const BANDS: Record<string, { label: string; className: string; hint: string }> = {
   green: {
     label: "Biztos",
@@ -182,6 +194,15 @@ function Group({ group, busy, onConfirm }: {
   const band = BANDS[group.band] ?? BANDS.red;
   const several = group.members.length > 1;
 
+  // Compared against the most-bought spelling, which is first in the list and names the
+  // group - the price you already know. A median would put two members either side of
+  // an average neither of them costs.
+  const priceOf = (member: string) => {
+    const value = group.member_prices[member];
+    return value == null ? null : Number(value);
+  };
+  const reference = priceOf(group.members[0]);
+
   function toggle(member: string) {
     setPicked((current) => {
       const next = new Set(current);
@@ -228,7 +249,11 @@ function Group({ group, busy, onConfirm }: {
                 style={{ width: 22, height: 22, flex: "0 0 auto" }}
               />
               <span style={{ flex: 1, minWidth: 0 }}>{member}</span>
-              <span className="muted" style={{ fontSize: "0.78rem" }}>
+              <PriceTag
+                price={priceOf(member)}
+                gap={member === group.members[0] ? null : priceGap(priceOf(member), reference)}
+              />
+              <span className="muted" style={{ fontSize: "0.78rem", minWidth: "2.2em", textAlign: "right" }}>
                 {group.member_occurrences[member] ?? 0}×
               </span>
             </label>
@@ -278,5 +303,25 @@ function Group({ group, busy, onConfirm }: {
         </p>
       )}
     </div>
+  );
+}
+
+function PriceTag({ price, gap }: { price: number | null; gap: number | null }) {
+  if (price == null) return null;
+  const ratio = gap === null ? 1 : 1 + gap;
+  const far = ratio >= PRICE_GAP || 1 / ratio >= PRICE_GAP;
+  return (
+    <span style={{ textAlign: "right", whiteSpace: "nowrap", fontSize: "0.82rem" }}>
+      <span className={far ? undefined : "muted"}>{ft(price)}</span>
+      {far && gap !== null && (
+        <span
+          className="badge warn"
+          style={{ marginLeft: 6, fontSize: "0.72rem" }}
+          title="Ennyivel tér el a legtöbbször vett írásmód árától – lehet, hogy más termék."
+        >
+          {gap > 0 ? "+" : "−"}{Math.round(Math.abs(gap) * 100)}%
+        </span>
+      )}
+    </span>
   );
 }

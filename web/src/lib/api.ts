@@ -120,6 +120,7 @@ export interface Suggestion {
   score: number; band: "green" | "yellow" | "red"; total_spent: Money;
   product_id: string | null; product_name: string | null;
   product_members: string[]; member_occurrences: Record<string, number>;
+  member_prices: Record<string, Money>;
 }
 export interface Suggestions { unmapped_lines: number; groups: Suggestion[] }
 

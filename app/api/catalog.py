@@ -159,12 +159,23 @@ async def product_suggestions(
     Everything here is derived on the fly rather than stored: the grouping rules can change
     without a migration, and a suggestion nobody acted on is not worth a row.
     """
+    # What one of it cost: the printed unit price, else the line split by its quantity, else
+    # the line itself. Per unit rather than per line, or buying two would look like a
+    # different product at twice the price.
+    unit_price = func.coalesce(
+        ReceiptItem.unit_price,
+        ReceiptItem.gross_amount / func.nullif(ReceiptItem.quantity, 0),
+        ReceiptItem.gross_amount,
+    )
     rows = (
         await session.execute(
             select(
                 ReceiptItem.raw_name,
                 func.count(ReceiptItem.id),
                 func.coalesce(func.sum(ReceiptItem.gross_amount), 0),
+                # The median, not the mean: one akciós purchase at half price should not
+                # make a spelling look like a different product.
+                func.percentile_cont(0.5).within_group(unit_price),
             )
             .join(Receipt, Receipt.id == ReceiptItem.receipt_id)
             .where(ReceiptItem.product_id.is_(None))
@@ -174,8 +185,13 @@ async def product_suggestions(
         )
     ).all()
 
-    counts = {name: count for name, count, _ in rows}
-    spend = {name: Decimal(total) for name, _, total in rows}
+    counts = {name: count for name, count, _, _ in rows}
+    spend = {name: Decimal(total) for name, _, total, _ in rows}
+    prices = {
+        name: Decimal(str(median)).quantize(Decimal("1"))
+        for name, _, _, median in rows
+        if median is not None
+    }
     if not counts:
         return SuggestionsOut(unmapped_lines=0, groups=[])
 
@@ -211,6 +227,7 @@ async def product_suggestions(
                 if product_id
                 else [],
                 member_occurrences={m: counts[m] for m in group.members},
+                member_prices={m: prices[m] for m in group.members if m in prices},
             )
         )
 

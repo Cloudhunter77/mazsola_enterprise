@@ -83,15 +83,29 @@ async def create_manual_receipt(
         if kind == LineKind.DISCOUNT.value:
             amount = -abs(amount)
 
-        quantity = raw.get("quantity")
+        # Three places, as the column holds: 0.412 kg rounded to 0.41 would misstate the
+        # per-kilo price derived from it below.
+        quantity = (
+            Decimal(str(raw["quantity"])).quantize(Decimal("0.001"))
+            if raw.get("quantity") is not None
+            else Decimal("1.000")
+        )
         unit_price = raw.get("unit_price")
+        if unit_price is not None:
+            unit_price = _money(unit_price)
+        elif quantity:
+            # Not the line total: "4 tej, 1516 Ft" is milk at 379, and price history reads
+            # this column as the price of one.
+            unit_price = _money(amount / quantity)
+        else:
+            unit_price = amount
         lines.append(
             ReceiptItem(
                 line_no=index,
                 raw_name=name[:300],
-                quantity=_money(quantity) if quantity is not None else Decimal("1.00"),
+                quantity=quantity,
                 unit=(str(raw.get("unit")) if raw.get("unit") else "db")[:10],
-                unit_price=_money(unit_price) if unit_price is not None else amount,
+                unit_price=unit_price,
                 gross_amount=amount,
                 vat_rate=raw.get("vat_rate"),
                 kind=kind,

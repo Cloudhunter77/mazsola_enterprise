@@ -127,3 +127,83 @@ class TestPickingWhichToMerge:
         body = (await auth_client.get("/api/suggestions")).json()
         assert body["groups"][0]["product_name"] == "LM tej 1l"
         assert (await session.scalar(select(ProductAlias.fingerprint))) == "stale"
+
+
+@requires_db
+class TestThePriceBesideEachSpelling:
+    """A 50% price gap between two near-identical names usually means two products."""
+
+    async def _bought(self, session, items):
+        from datetime import UTC, datetime
+
+        from app.services.manual import create_manual_receipt
+
+        await create_manual_receipt(
+            session,
+            merchant_name="Teszt Bolt",
+            purchased_at=datetime(2026, 9, 1, 12, 0, tzinfo=UTC),
+            items=items,
+        )
+        await session.commit()
+
+    async def test_each_spelling_carries_its_typical_price(self, auth_client, session):
+        await self._bought(session, [
+            {"raw_name": "UHT tej 1l", "gross_amount": 379},
+            {"raw_name": "SPAR UHT tej 1l", "gross_amount": 589},
+        ])
+        body = (await auth_client.get("/api/suggestions")).json()
+        group = next(g for g in body["groups"] if "UHT tej 1l" in g["members"])
+        assert {k: float(v) for k, v in group["member_prices"].items()} == {
+            "UHT tej 1l": 379, "SPAR UHT tej 1l": 589,
+        }
+
+    async def test_it_is_the_price_of_one_not_of_the_line(self, auth_client, session):
+        """Buying four must not make a spelling look four times dearer."""
+        await self._bought(session, [
+            {"raw_name": "UHT tej 1l", "gross_amount": 1516, "quantity": 4},
+        ])
+        body = (await auth_client.get("/api/suggestions")).json()
+        assert float(body["groups"][0]["member_prices"]["UHT tej 1l"]) == 379
+
+    async def test_one_sale_price_does_not_move_it(self, auth_client, session):
+        """The median, so a single akciós purchase does not make it look like another product."""
+        await self._bought(session, [
+            {"raw_name": "UHT tej 1l", "gross_amount": 379},
+            {"raw_name": "UHT tej 1l", "gross_amount": 389},
+            {"raw_name": "UHT tej 1l", "gross_amount": 189},
+        ])
+        body = (await auth_client.get("/api/suggestions")).json()
+        assert float(body["groups"][0]["member_prices"]["UHT tej 1l"]) == 379
+
+
+@requires_db
+class TestManualUnitPrice:
+    """Found while adding the price column: a typed line with a quantity stored its whole
+    total as the price of one, so price history recorded four litres of milk as one."""
+
+    async def test_the_unit_price_is_the_line_split_by_its_quantity(self, session):
+        from datetime import UTC, datetime
+        from decimal import Decimal
+
+        from app.services.manual import create_manual_receipt
+
+        await create_manual_receipt(
+            session,
+            merchant_name="Teszt Bolt",
+            purchased_at=datetime(2026, 9, 1, 12, 0, tzinfo=UTC),
+            items=[
+                {"raw_name": "UHT tej 1l", "gross_amount": 1516, "quantity": 4},
+                {"raw_name": "Alma", "gross_amount": 247, "quantity": 0.412, "unit": "kg"},
+                {"raw_name": "Kenyér", "gross_amount": 599},
+            ],
+        )
+        await session.commit()
+
+        lines = {
+            line.raw_name: line
+            for line in (await session.scalars(select(ReceiptItem))).all()
+        }
+        assert lines["UHT tej 1l"].unit_price == Decimal("379.00")
+        assert lines["Alma"].quantity == Decimal("0.412")
+        assert lines["Alma"].unit_price == Decimal("599.51")
+        assert lines["Kenyér"].unit_price == Decimal("599.00")
