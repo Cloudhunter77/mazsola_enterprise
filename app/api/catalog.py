@@ -34,6 +34,7 @@ from app.services.autolink import (
     READY_FOR_STATS,
     autocreate_exact_groups,
     autolink_stored,
+    refresh_fingerprints,
 )
 from app.services.catalog import link_product
 from app.services.categorise import categorise_stored
@@ -180,10 +181,11 @@ async def product_suggestions(
 
     # Which existing product, if any, each normalised name already belongs to - so a group
     # can join a price history instead of starting a second one beside it.
+    # Computed from the spelling rather than read from the stored key, so a suggestion is
+    # never wrong just because the hourly refresh has not run since the rules changed.
     known: dict[str, uuid.UUID] = {}
     for alias in (await session.scalars(select(ProductAlias))).all():
-        if alias.fingerprint:
-            known.setdefault(alias.fingerprint, alias.product_id)
+        known.setdefault(fingerprint(alias.raw_name)[:320], alias.product_id)
     names = {
         product.id: product.canonical_name
         for product in (await session.scalars(select(Product))).all()
@@ -191,9 +193,8 @@ async def product_suggestions(
 
     groups: list[SuggestionOut] = []
     for group in cluster(counts)[:limit]:
-        product_id = next(
-            (known[fp] for fp in (fingerprint(m) for m in group.members) if fp in known), None
-        )
+        member_products = {m: known.get(fingerprint(m)[:320]) for m in group.members}
+        product_id = next((pid for pid in member_products.values() if pid), None)
         groups.append(
             SuggestionOut(
                 suggested_name=group.suggested_name,
@@ -204,6 +205,12 @@ async def product_suggestions(
                 total_spent=sum((spend[m] for m in group.members), Decimal("0.00")),
                 product_id=product_id,
                 product_name=names.get(product_id) if product_id else None,
+                # Which spellings are the reason for that product. When you untick them, the
+                # rest are not that product - the screen needs to know to stop offering it.
+                product_members=[m for m, pid in member_products.items() if pid == product_id]
+                if product_id
+                else [],
+                member_occurrences={m: counts[m] for m in group.members},
             )
         )
 
@@ -269,6 +276,7 @@ async def autolink(_: AuthDep, session: SessionDep) -> dict:
     right after mapping a product, not an hour later. Only exact normalised matches, so
     there is nothing here to review afterwards.
     """
+    await refresh_fingerprints(session)
     linked = await autolink_stored(session)
     created = await autocreate_exact_groups(session)
     # Again, because the products just created give the first pass something to match.

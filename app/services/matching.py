@@ -10,12 +10,18 @@ to confirm - the score can be explained by pointing at the tokens. A model pass 
 leftovers is a reasonable future addition; starting there would have made every grouping
 unexplainable and cost money per receipt.
 
-Two rules do most of the work:
+Three rules do most of the work:
 
 * **Size is part of identity.** Pepsi 1.5 l and Pepsi 0.5 l are different products, because
   500 Ft for each is not the same price and merging them makes unit-price history
   meaningless. Sizes are normalised first (1500 ml *is* 1.5 l) and then compared, so the
   rule catches genuine matches rather than just identical spellings.
+* **A variant is part of identity too.** `UHT tej 2,8% 1l` and `LM uht tej 2,8% 1l` share
+  every word but one, and the containment rule below would call that a till printing less.
+  The missing word is *laktózmentes*: a different product at a different price, and merging
+  the two gives a price history that jumps between them. So a marker like that has to agree
+  on both sides, the way a size does - and its abbreviations are folded together first, so
+  `LM` and `laktózmentes` still find each other.
 * **Only an exact normalised match is automatic.** Everything else is a suggestion for a
   person, because a wrong link corrupts price history quietly and is not noticed for months.
 """
@@ -53,6 +59,22 @@ NOISE_TOKENS = frozenset({
     "kiszereles", "termek", "ft", "x", "db",
 })
 
+# Words that make a product a different product rather than a longer name for the same one.
+# Each maps to one canonical spelling, so the abbreviation a till prints and the full word on
+# a shelf label compare equal. Only unambiguous abbreviations belong here: `zero` is its own
+# marker rather than a synonym of `cukormentes`, because folding two markers together would
+# let an exact-match link be made on a guess.
+VARIANT_SYNONYMS: dict[str, str] = {
+    "lm": "lm", "laktozmentes": "lm", "laktozm": "lm",
+    "cukormentes": "cukormentes", "cukorm": "cukormentes",
+    "zero": "zero",
+    "light": "light", "lite": "light",
+    "koffeinmentes": "koffeinmentes", "decaf": "koffeinmentes",
+    "alkoholmentes": "alkoholmentes",
+    "glutenmentes": "glutenmentes",
+}
+VARIANTS = frozenset(VARIANT_SYNONYMS.values())
+
 # Above this a pair is worth showing as a likely match; below, it is a guess. An identical
 # normalised name scores exactly 1, and that is the only score that links itself.
 LIKELY = 0.72
@@ -71,6 +93,10 @@ class NameParts:
         """The key two names share when they are letter-for-letter the same product."""
         size = f"{self.size.normalize()}{self.unit}" if self.size and self.unit else ""
         return f"{' '.join(self.tokens)}|{size}"
+
+    @property
+    def variants(self) -> frozenset[str]:
+        return frozenset(token for token in self.tokens if token in VARIANTS)
 
 
 def parse_name(raw: str) -> NameParts:
@@ -92,7 +118,7 @@ def parse_name(raw: str) -> NameParts:
 
     # Remove the size text so it cannot also count as a word, then keep what identifies it.
     without_size = SIZE_PATTERN.sub(" ", folded)
-    words = re.findall(r"[a-z0-9%]+", without_size)
+    words = [VARIANT_SYNONYMS.get(w, w) for w in re.findall(r"[a-z0-9%]+", without_size)]
     tokens = tuple(sorted({w for w in words if w not in NOISE_TOKENS and len(w) > 1}))
 
     return NameParts(tokens=tokens, size=size, unit=unit)
@@ -108,6 +134,9 @@ def similarity(left: NameParts, right: NameParts) -> float:
     if left.size and right.size and (left.size != right.size or left.unit != right.unit):
         return 0.0
     if not left.tokens or not right.tokens:
+        return 0.0
+    # Likewise a variant: lactose-free milk is not milk with a word missing.
+    if left.variants != right.variants:
         return 0.0
     if left.fingerprint == right.fingerprint:
         return 1.0

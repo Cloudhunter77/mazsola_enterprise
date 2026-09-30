@@ -365,6 +365,11 @@ class SuggestionOut(BaseModel):
     # price history rather than starting a parallel one.
     product_id: uuid.UUID | None = None
     product_name: str | None = None
+    # The members whose spelling is already an alias of that product.
+    product_members: list[str] = Field(default_factory=list)
+    # How many times each spelling was bought, so you can tell a one-off from a staple
+    # before deciding whether it belongs.
+    member_occurrences: dict[str, int] = Field(default_factory=dict)
 
 
 class SuggestionsOut(BaseModel):

@@ -24,9 +24,9 @@ import uuid
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import LineKind, Product, Receipt, ReceiptItem, ReceiptStatus
+from app.models import LineKind, Product, ProductAlias, Receipt, ReceiptItem, ReceiptStatus
 from app.services.catalog import link_product, resolve_product
-from app.services.matching import cluster, parse_name
+from app.services.matching import cluster, fingerprint, parse_name
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +40,28 @@ READY_FOR_STATS = (
 # One pass is bounded so the hourly tick cannot turn into a long transaction on a big
 # database. Whatever is left is picked up an hour later, or by the button.
 MAX_NAMES_PER_PASS = 400
+
+
+async def refresh_fingerprints(session: AsyncSession) -> int:
+    """Recompute every alias's stored match key under the current rules. Returns how many moved.
+
+    The key is written once, when the alias is made. When the normalisation improves - a
+    variant marker becoming part of identity, a new synonym - every alias made before keeps
+    its old key, and a new receipt line computed under the new rules silently fails to find
+    it. Nothing breaks visibly; lines just stop linking. So the stored keys are brought up to
+    date before anything relies on them. The alias table is small (one row per spelling
+    you have mapped), so this is a scan of names, not of receipts.
+    """
+    moved = 0
+    for alias in (await session.scalars(select(ProductAlias))).all():
+        current = fingerprint(alias.raw_name)[:320]
+        if alias.fingerprint != current:
+            alias.fingerprint = current
+            moved += 1
+    if moved:
+        await session.flush()
+        log.info("refreshed %d alias fingerprints", moved)
+    return moved
 
 
 async def autolink_stored(session: AsyncSession, limit: int = MAX_NAMES_PER_PASS) -> int:

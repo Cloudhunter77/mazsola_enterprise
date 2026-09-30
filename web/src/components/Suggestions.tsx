@@ -11,7 +11,7 @@
  *  certain asks first.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { api, type Suggestion } from "../lib/api";
 import { ft } from "../lib/format";
@@ -26,12 +26,12 @@ const BANDS: Record<string, { label: string; className: string; hint: string }> 
   yellow: {
     label: "Valószínű",
     className: "warn",
-    hint: "Nagyon hasonló, de nem azonos. Nézd meg, és hagyd jóvá.",
+    hint: "Nagyon hasonló, de nem azonos. Vedd ki a pipát abból, ami más termék.",
   },
   red: {
     label: "Bizonytalan",
     className: "bad",
-    hint: "Csak tipp. Akkor kapcsold össze, ha tényleg ugyanaz.",
+    hint: "Csak tipp. Csak azt hagyd bepipálva, ami tényleg ugyanaz.",
   },
 };
 
@@ -61,14 +61,18 @@ export default function Suggestions() {
     }
   }
 
-  async function confirm(group: Suggestion, canonicalName: string) {
+  async function confirm(
+    group: Suggestion, members: string[], canonicalName: string, productId: string | null,
+  ) {
     setBusy(group.suggested_name);
     setError(null);
     try {
+      // Only the ticked spellings. The rest stay unmapped and come back as a group of their
+      // own - which, for lactose-free beside regular, is exactly the second product.
       await api.applySuggestion({
-        raw_names: group.members,
+        raw_names: members,
         canonical_name: canonicalName,
-        product_id: group.product_id ?? undefined,
+        product_id: productId ?? undefined,
       });
       setReload((n) => n + 1);
     } catch (err) {
@@ -149,12 +153,43 @@ export default function Suggestions() {
 function Group({ group, busy, onConfirm }: {
   group: Suggestion;
   busy: boolean;
-  onConfirm: (group: Suggestion, canonicalName: string) => void;
+  onConfirm: (
+    group: Suggestion, members: string[], canonicalName: string, productId: string | null,
+  ) => void;
 }) {
+  // Every spelling starts ticked: the grouping is usually right, and unticking the odd one
+  // out is one tap where re-ticking five would be five.
+  const [picked, setPicked] = useState<Set<string>>(() => new Set(group.members));
+  const chosen = group.members.filter((member) => picked.has(member));
+
+  // The existing product only applies while one of the spellings that *are* that product is
+  // still ticked. Untick those and the rest would otherwise be filed under it anyway - the
+  // regular milk merged into the lactose-free one because the box that named it stayed.
+  const joinsProduct =
+    group.product_id !== null && chosen.some((member) => group.product_members.includes(member));
+
   // Pre-filled with the spelling seen most often, because that is the one you recognise -
   // but editable, since the tidiest name is rarely the one the till printed.
   const [name, setName] = useState(group.product_name ?? group.suggested_name);
+  useEffect(() => {
+    // The product's name stops being right the moment the product stops applying: saving
+    // under it would find that product by name and join it all the same.
+    if (!joinsProduct && group.product_name && name === group.product_name) {
+      setName(chosen[0] ?? group.suggested_name);
+    }
+  }, [joinsProduct]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const band = BANDS[group.band] ?? BANDS.red;
+  const several = group.members.length > 1;
+
+  function toggle(member: string) {
+    setPicked((current) => {
+      const next = new Set(current);
+      if (next.has(member)) next.delete(member);
+      else next.add(member);
+      return next;
+    });
+  }
 
   return (
     <div
@@ -173,23 +208,47 @@ function Group({ group, busy, onConfirm }: {
         </span>
       </div>
 
-      {group.members.length > 1 ? (
-        <ul className="muted" style={{ margin: "0 0 8px", paddingLeft: 20, fontSize: "0.86rem" }}>
-          {group.members.map((member) => <li key={member}>{member}</li>)}
-        </ul>
+      {several ? (
+        <div style={{ margin: "0 0 8px" }}>
+          {group.members.map((member) => (
+            <label
+              key={member}
+              style={{
+                display: "flex", alignItems: "center", gap: 10,
+                minHeight: 40, fontSize: "0.9rem", cursor: "pointer",
+                color: picked.has(member) ? undefined : "var(--ink-muted)",
+                textDecoration: picked.has(member) ? undefined : "line-through",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={picked.has(member)}
+                onChange={() => toggle(member)}
+                disabled={busy}
+                style={{ width: 22, height: 22, flex: "0 0 auto" }}
+              />
+              <span style={{ flex: 1, minWidth: 0 }}>{member}</span>
+              <span className="muted" style={{ fontSize: "0.78rem" }}>
+                {group.member_occurrences[member] ?? 0}×
+              </span>
+            </label>
+          ))}
+        </div>
       ) : (
         <div className="muted" style={{ marginBottom: 8, fontSize: "0.86rem" }}>
           {group.members[0]}
         </div>
       )}
 
-      {group.product_name && (
+      {joinsProduct && (
         <p className="muted" style={{ fontSize: "0.82rem", marginTop: 0 }}>
           Meglévő termékhez kapcsolódik: <strong>{group.product_name}</strong>
         </p>
       )}
 
-      <p className="muted" style={{ fontSize: "0.8rem", marginTop: 0 }}>{band.hint}</p>
+      <p className="muted" style={{ fontSize: "0.8rem", marginTop: 0 }}>
+        {band.hint}
+      </p>
 
       <div className="row" style={{ gap: 8 }}>
         <input
@@ -201,12 +260,23 @@ function Group({ group, busy, onConfirm }: {
         <button
           className="btn primary"
           style={{ flex: "1 1 120px" }}
-          disabled={busy || !name.trim()}
-          onClick={() => onConfirm(group, name.trim())}
+          disabled={busy || !name.trim() || chosen.length === 0}
+          onClick={() =>
+            onConfirm(group, chosen, name.trim(), joinsProduct ? group.product_id : null)
+          }
         >
-          {busy ? "Mentés…" : "Összekapcsolás"}
+          {busy
+            ? "Mentés…"
+            : several && chosen.length < group.members.length
+              ? `Összekapcsolás (${chosen.length})`
+              : "Összekapcsolás"}
         </button>
       </div>
+      {several && chosen.length < group.members.length && chosen.length > 0 && (
+        <p className="muted" style={{ fontSize: "0.78rem", marginBottom: 0 }}>
+          A kihagyottak a listán maradnak, és külön csoportként jönnek vissza.
+        </p>
+      )}
     </div>
   );
 }

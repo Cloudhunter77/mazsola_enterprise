@@ -119,6 +119,7 @@ export interface Suggestion {
   suggested_name: string; members: string[]; occurrences: number;
   score: number; band: "green" | "yellow" | "red"; total_spent: Money;
   product_id: string | null; product_name: string | null;
+  product_members: string[]; member_occurrences: Record<string, number>;
 }
 export interface Suggestions { unmapped_lines: number; groups: Suggestion[] }
 

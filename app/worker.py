@@ -30,7 +30,11 @@ from app.models import (
     ScanStatus,
     ShoppingItem,
 )
-from app.services.autolink import autocreate_exact_groups, autolink_stored
+from app.services.autolink import (
+    autocreate_exact_groups,
+    autolink_stored,
+    refresh_fingerprints,
+)
 from app.services.categorise import categorise_stored
 from app.services.labels import persist_labels
 from app.services.persist import persist_extraction, record_attempt
@@ -168,6 +172,7 @@ class ExtractionWorker:
         reported in the log line each pass writes for itself.
         """
         async with SessionLocal() as session:
+            await refresh_fingerprints(session)
             linked = await autolink_stored(session)
             await autocreate_exact_groups(session)
             await autolink_stored(session)
