@@ -1,10 +1,10 @@
-"""Clearing out "Besorolatlan": filing the names nothing could categorise on its own.
+"""Clearing out "Besorolatlan", a receipt at a time.
 
-The automatic rules categorise what they recognise and leave the rest blank on purpose - a
-wrong category is the quiet kind of wrong. That blank has to go somewhere a person can act
-on it, and one line at a time inside each receipt was not that place: the same milk on
-twenty receipts meant twenty trips. Here each name appears once, and filing it files every
-line printed that way, teaches the product, and reaches the other spellings of it.
+The automatic rules file what they recognise and leave the rest blank on purpose - a wrong
+category is the quiet kind of wrong. The receipt is the unit that blank is dealt with in,
+because it is the unit you remember: a restaurant bill, a pharmacy visit, a hardware-store
+run is one kind of spending however many lines it prints. A mixed supermarket shop is the
+exception, and for that the receipt's own screen still files line by line.
 """
 
 from __future__ import annotations
@@ -14,55 +14,54 @@ from decimal import Decimal
 from fastapi import APIRouter, HTTPException, Query
 
 from app.api.deps import AuthDep, SessionDep
-from app.models import Category
-from app.schemas.api import (
-    AssignCategoryIn,
-    AssignCategoryOut,
-    UncategorisedName,
-    UndoCategoryIn,
-)
-from app.services.categorise import assign_by_name, uncategorised_names, undo_assignment
+from app.models import Category, Receipt
+from app.schemas.api import FileReceiptIn, FileReceiptOut, ReceiptToFile, UndoFilingIn
+from app.services.categorise import file_receipt, receipts_to_file, undo_filing
 
 router = APIRouter(prefix="/api/categorise", tags=["categorise"])
 
 
-@router.get("/uncategorised", response_model=list[UncategorisedName])
-async def list_uncategorised(
-    _: AuthDep, session: SessionDep, limit: int = Query(200, ge=1, le=1000)
-) -> list[UncategorisedName]:
+@router.get("/receipts", response_model=list[ReceiptToFile])
+async def list_receipts(
+    _: AuthDep, session: SessionDep, limit: int = Query(100, ge=1, le=500)
+) -> list[ReceiptToFile]:
     return [
-        UncategorisedName(
-            raw_name=raw_name,
-            lines=count,
-            total=Decimal(total).quantize(Decimal("0.01")),
-            product_name=product_name,
-            last_bought=last_bought,
+        ReceiptToFile(
+            **{
+                **row,
+                "uncategorised_amount": Decimal(row["uncategorised_amount"]).quantize(
+                    Decimal("0.01")
+                ),
+            }
         )
-        for raw_name, count, total, product_name, last_bought in await uncategorised_names(
-            session, limit
-        )
+        for row in await receipts_to_file(session, limit)
     ]
 
 
-@router.post("/assign", response_model=AssignCategoryOut)
-async def assign(_: AuthDep, session: SessionDep, body: AssignCategoryIn) -> AssignCategoryOut:
+@router.post("/receipt", response_model=FileReceiptOut)
+async def file_one(_: AuthDep, session: SessionDep, body: FileReceiptIn) -> FileReceiptOut:
     if await session.get(Category, body.category_id) is None:
         raise HTTPException(status_code=404, detail="No such category.")
-    done = await assign_by_name(session, body.raw_name, body.category_id)
+    if await session.get(Receipt, body.receipt_id) is None:
+        raise HTTPException(status_code=404, detail="No such receipt.")
+    filing = await file_receipt(
+        session, body.receipt_id, body.category_id, remember_shop=body.remember_shop
+    )
     await session.commit()
-    return AssignCategoryOut(
+    return FileReceiptOut(
         category_id=body.category_id,
-        item_ids=done.item_ids,
-        product_ids=done.product_ids,
-        lines=len(done.item_ids),
-        spread=done.spread,
+        item_ids=filing.item_ids,
+        lines=len(filing.item_ids) - filing.spread,
+        spread=filing.spread,
+        merchant_id=filing.merchant_id,
+        previous_default=filing.previous_default,
     )
 
 
 @router.post("/undo")
-async def undo(_: AuthDep, session: SessionDep, body: UndoCategoryIn) -> dict:
-    reverted = await undo_assignment(
-        session, body.category_id, body.item_ids, body.product_ids
+async def undo(_: AuthDep, session: SessionDep, body: UndoFilingIn) -> dict:
+    reverted = await undo_filing(
+        session, body.category_id, body.item_ids, body.merchant_id, body.previous_default
     )
     await session.commit()
     return {"reverted": reverted}

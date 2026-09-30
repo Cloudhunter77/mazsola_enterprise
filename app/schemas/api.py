@@ -288,36 +288,46 @@ class CostSummary(BaseModel):
 
 
 # --- categorising -------------------------------------------------------------
-class UncategorisedName(BaseModel):
-    """One printed name still behind "Besorolatlan", with what it adds up to."""
+class ReceiptToFile(BaseModel):
+    """A receipt with lines still behind "Besorolatlan"."""
 
-    raw_name: str
-    lines: int
-    total: Decimal
-    product_name: str | None = None
-    last_bought: datetime | None = None
+    receipt_id: uuid.UUID
+    purchased_at: datetime | None
+    total_gross: Decimal | None
+    merchant_id: uuid.UUID | None
+    merchant_name: str | None
+    # The category you told this shop to always mean, if any.
+    shop_default_id: uuid.UUID | None = None
+    uncategorised_lines: int
+    uncategorised_amount: Decimal
+    item_lines: int
+    # A few of the uncategorised names, dearest first: a shop and a date rarely say on
+    # their own whether this was one kind of thing or a mixed shop.
+    names: list[str]
 
 
-class AssignCategoryIn(BaseModel):
-    raw_name: str = Field(min_length=1, max_length=300)
+class FileReceiptIn(BaseModel):
+    receipt_id: uuid.UUID
     category_id: uuid.UUID
+    remember_shop: bool = False
 
 
-class AssignCategoryOut(BaseModel):
+class FileReceiptOut(BaseModel):
     category_id: uuid.UUID
     # Exactly what changed, so the screen can offer to take it back.
     item_ids: list[uuid.UUID]
-    product_ids: list[uuid.UUID]
     lines: int
-    # Lines reached beyond the name picked: other receipts of the same product, or
-    # spellings that normalise the same way.
+    # Lines on the same shop's other receipts, filed by the shop default just set.
     spread: int
+    merchant_id: uuid.UUID | None = None
+    previous_default: uuid.UUID | None = None
 
 
-class UndoCategoryIn(BaseModel):
+class UndoFilingIn(BaseModel):
     category_id: uuid.UUID
     item_ids: list[uuid.UUID] = Field(max_length=100_000)
-    product_ids: list[uuid.UUID] = Field(default_factory=list)
+    merchant_id: uuid.UUID | None = None
+    previous_default: uuid.UUID | None = None
 
 
 # --- manual entry ------------------------------------------------------------

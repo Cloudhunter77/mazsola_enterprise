@@ -122,12 +122,14 @@ export interface Suggestion {
   product_members: string[]; member_occurrences: Record<string, number>;
   member_prices: Record<string, Money>;
 }
-export interface UncategorisedName {
-  raw_name: string; lines: number; total: Money; product_name: string | null;
-  last_bought: string | null;
+export interface ReceiptToFile {
+  receipt_id: string; purchased_at: string | null; total_gross: Money | null;
+  merchant_id: string | null; merchant_name: string | null; shop_default_id: string | null;
+  uncategorised_lines: number; uncategorised_amount: Money; item_lines: number; names: string[];
 }
-export interface CategoryAssignment {
-  category_id: string; item_ids: string[]; product_ids: string[]; lines: number; spread: number;
+export interface ReceiptFiling {
+  category_id: string; item_ids: string[]; lines: number; spread: number;
+  merchant_id: string | null; previous_default: string | null;
 }
 export interface Suggestions { unmapped_lines: number; groups: Suggestion[] }
 
@@ -373,12 +375,15 @@ export const api = {
   system: () => request<SystemInfo>("/api/system"),
 
   suggestions: () => request<Suggestions>("/api/suggestions"),
-  uncategorised: () => request<UncategorisedName[]>("/api/categorise/uncategorised"),
-  assignCategory: (raw_name: string, category_id: string) =>
-    request<CategoryAssignment>("/api/categorise/assign", json("POST", { raw_name, category_id })),
-  undoCategory: (done: CategoryAssignment) =>
+  receiptsToFile: () => request<ReceiptToFile[]>("/api/categorise/receipts"),
+  fileReceipt: (receipt_id: string, category_id: string, remember_shop: boolean) =>
+    request<ReceiptFiling>("/api/categorise/receipt", json("POST", {
+      receipt_id, category_id, remember_shop,
+    })),
+  undoFiling: (done: ReceiptFiling) =>
     request<{ reverted: number }>("/api/categorise/undo", json("POST", {
-      category_id: done.category_id, item_ids: done.item_ids, product_ids: done.product_ids,
+      category_id: done.category_id, item_ids: done.item_ids,
+      merchant_id: done.merchant_id, previous_default: done.previous_default,
     })),
   applySuggestion: (body: Record<string, unknown>) =>
     request<Product>("/api/suggestions/apply", json("POST", body)),

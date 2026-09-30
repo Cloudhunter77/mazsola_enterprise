@@ -1,42 +1,37 @@
-/** Clearing out "Besorolatlan".
+/** Clearing out "Besorolatlan", a receipt at a time.
  *
- *  The automatic rules file what they recognise and leave the rest blank on purpose - a
- *  wrong category is the quiet kind of wrong. This is where the blank goes to be dealt with:
- *  each printed name once, most money first, so the top of the list is where an answer moves
- *  the dashboard most.
+ *  The receipt is the unit you remember: a restaurant bill, a pharmacy visit, a hardware
+ *  run is one kind of spending however many lines it prints, so it takes one choice. A
+ *  mixed supermarket shop is the exception, and it keeps what the keywords already filed -
+ *  only the blanks follow your choice - with the receipt's own screen a tap away for
+ *  anything that needs going through line by line.
  *
- *  Picking a category saves at once, because on a phone a second confirm tap per row is the
- *  difference between clearing the list and giving up on it. The cost of that is a mis-tap,
- *  so every row can be taken back until you leave the page.
+ *  Choosing saves at once, because a second confirm tap per row is what makes a list like
+ *  this get abandoned. The cost of that is a mis-tap, so every row can be taken back.
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 
-import {
-  api,
-  type Category,
-  type CategoryAssignment,
-  type UncategorisedName,
-} from "../lib/api";
+import { api, type Category, type ReceiptFiling, type ReceiptToFile } from "../lib/api";
 import { date, ft } from "../lib/format";
 import { AsyncBlock, Card, useAsync } from "../components/ui";
 
-type Done = { assignment: CategoryAssignment; categoryName: string };
+type Done = { filing: ReceiptFiling; categoryName: string };
 
 export default function Categorise() {
   const [reload, setReload] = useState(0);
-  const list = useAsync(() => api.uncategorised(), [reload]);
+  const list = useAsync(() => api.receiptsToFile(), [reload]);
   const categories = useAsync(() => api.categories(), []);
 
   // The rows as first loaded, kept in place while you work so filing one does not make the
-  // rest jump. `gone` are names that another answer filed on your behalf - a second
-  // spelling of the same product - and `done` the ones you filed yourself.
-  const [snapshot, setSnapshot] = useState<UncategorisedName[] | null>(null);
+  // rest jump. `gone` are receipts another answer filed for you - the same shop, once you
+  // told it what it always means - and `done` the ones you filed yourself.
+  const [snapshot, setSnapshot] = useState<ReceiptToFile[] | null>(null);
   const [gone, setGone] = useState<Set<string>>(new Set());
   const [done, setDone] = useState<Record<string, Done>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
 
   useEffect(() => {
     if (!list.data) return;
@@ -44,21 +39,18 @@ export default function Categorise() {
       setSnapshot(list.data);
       return;
     }
-    const still = new Set(list.data.map((row) => row.raw_name));
-    setGone(new Set(snapshot.filter((row) => !still.has(row.raw_name)).map((r) => r.raw_name)));
+    const still = new Set(list.data.map((row) => row.receipt_id));
+    setGone(new Set(snapshot.filter((r) => !still.has(r.receipt_id)).map((r) => r.receipt_id)));
   }, [list.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function assign(row: UncategorisedName, category: Category) {
-    setBusy(row.raw_name);
+  async function file(row: ReceiptToFile, category: Category, rememberShop: boolean) {
+    setBusy(row.receipt_id);
     setError(null);
     try {
-      const assignment = await api.assignCategory(row.raw_name, category.id);
-      setDone((current) => ({
-        ...current,
-        [row.raw_name]: { assignment, categoryName: category.name },
-      }));
-      // Others may have been filed along with it; ask which, so they leave the list.
-      if (assignment.spread > 0) setReload((n) => n + 1);
+      const filing = await api.fileReceipt(row.receipt_id, category.id, rememberShop);
+      setDone((current) => ({ ...current, [row.receipt_id]: { filing, categoryName: category.name } }));
+      // The shop's other receipts may have followed; ask which, so they leave the list.
+      if (filing.spread > 0) setReload((n) => n + 1);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -66,16 +58,16 @@ export default function Categorise() {
     }
   }
 
-  async function undo(row: UncategorisedName) {
-    const entry = done[row.raw_name];
+  async function undo(row: ReceiptToFile) {
+    const entry = done[row.receipt_id];
     if (!entry) return;
-    setBusy(row.raw_name);
+    setBusy(row.receipt_id);
     setError(null);
     try {
-      await api.undoCategory(entry.assignment);
+      await api.undoFiling(entry.filing);
       setDone((current) => {
         const next = { ...current };
-        delete next[row.raw_name];
+        delete next[row.receipt_id];
         return next;
       });
       setReload((n) => n + 1);
@@ -86,13 +78,8 @@ export default function Categorise() {
     }
   }
 
-  const needle = query.trim().toLowerCase();
-  const rows = (snapshot ?? []).filter(
-    (row) =>
-      (done[row.raw_name] || !gone.has(row.raw_name)) &&
-      (!needle || row.raw_name.toLowerCase().includes(needle)),
-  );
-  const left = (snapshot ?? []).filter((row) => !done[row.raw_name] && !gone.has(row.raw_name));
+  const rows = (snapshot ?? []).filter((row) => done[row.receipt_id] || !gone.has(row.receipt_id));
+  const left = rows.filter((row) => !done[row.receipt_id]);
 
   return (
     <>
@@ -101,40 +88,27 @@ export default function Categorise() {
       <AsyncBlock state={list} empty="Nincs besorolatlan tétel – minden a helyén van.">
         {() => (
           <Card
-            title="Besorolatlan tételek"
-            note={`${left.length} név · ${ft(left.reduce((sum, row) => sum + Number(row.total), 0))}`}
+            title="Besorolatlan blokkok"
+            note={`${left.length} blokk · ${ft(left.reduce((sum, r) => sum + Number(r.uncategorised_amount), 0))}`}
           >
             <p className="muted" style={{ marginTop: 0, fontSize: "0.86rem" }}>
-              Válassz kategóriát, és az összes így nevezett tétel oda kerül – a korábbiak is.
-              A hozzá tartozó termék is megtanulja, így a következő blokkon már magától
-              besorolódik. Amit már kézzel beállítottál, azt nem írja felül.
+              Válassz kategóriát a blokknak, és minden még besorolatlan tétele oda kerül. Ami
+              már be van sorolva, az marad. Vegyes bevásárlásnál nyisd meg a blokkot, és
+              sorold be tételenként.
             </p>
-
-            {(snapshot?.length ?? 0) > 8 && (
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Keresés a nevek között"
-                aria-label="Keresés"
-                style={{ width: "100%", marginBottom: 6 }}
-              />
-            )}
             {error && <p className="error">{error}</p>}
 
             {rows.map((row) => (
               <Row
-                key={row.raw_name}
+                key={row.receipt_id}
                 row={row}
-                done={done[row.raw_name]}
-                busy={busy === row.raw_name}
+                done={done[row.receipt_id]}
+                busy={busy === row.receipt_id}
                 categories={categories.data ?? []}
-                onAssign={assign}
+                onFile={file}
                 onUndo={undo}
               />
             ))}
-            {rows.length === 0 && needle && (
-              <p className="muted" style={{ marginBottom: 0 }}>Nincs ilyen nevű tétel.</p>
-            )}
           </Card>
         )}
       </AsyncBlock>
@@ -142,31 +116,50 @@ export default function Categorise() {
   );
 }
 
-function Row({ row, done, busy, categories, onAssign, onUndo }: {
-  row: UncategorisedName;
+function Row({ row, done, busy, categories, onFile, onUndo }: {
+  row: ReceiptToFile;
   done: Done | undefined;
   busy: boolean;
   categories: Category[];
-  onAssign: (row: UncategorisedName, category: Category) => void;
-  onUndo: (row: UncategorisedName) => void;
+  onFile: (row: ReceiptToFile, category: Category, rememberShop: boolean) => void;
+  onUndo: (row: ReceiptToFile) => void;
 }) {
   const groups = useMemo(() => grouped(categories), [categories]);
+  // Off by default: for a supermarket it would be wrong, and a default filed wrongly is
+  // silent. For a restaurant or a pharmacy it is one tick that saves every future receipt.
+  const [rememberShop, setRememberShop] = useState(false);
+  const shop = row.merchant_name ?? "Ismeretlen bolt";
+  const all = row.uncategorised_lines === row.item_lines;
 
   return (
-    <div style={{ borderTop: "1px solid var(--grid)", paddingTop: 10, marginTop: 10 }}>
-      <div style={{ fontWeight: 600, opacity: done ? 0.6 : 1 }}>{row.raw_name}</div>
+    <div style={{ borderTop: "1px solid var(--grid)", paddingTop: 12, marginTop: 12 }}>
+      <div className="row" style={{ gap: 8, alignItems: "baseline", opacity: done ? 0.6 : 1 }}>
+        <Link to={`/blokkok/${row.receipt_id}`} style={{ flex: 1, fontWeight: 600 }}>
+          {shop}
+          <span className="muted" style={{ fontWeight: 400 }}> · {date(row.purchased_at)}</span>
+        </Link>
+        <span className="num" style={{ whiteSpace: "nowrap" }}>{ft(row.total_gross)}</span>
+      </div>
+      <div className="muted" style={{ fontSize: "0.8rem" }}>
+        {all
+          ? `mind a ${row.item_lines} tétel besorolatlan`
+          : `${row.uncategorised_lines} / ${row.item_lines} tétel besorolatlan`}
+        {" · "}{ft(row.uncategorised_amount)}
+      </div>
       <div className="muted" style={{ fontSize: "0.8rem", marginBottom: 8 }}>
-        {row.lines}× · {ft(row.total)}
-        {row.last_bought && <> · utoljára {date(row.last_bought)}</>}
-        {row.product_name && <> · termék: {row.product_name}</>}
+        {row.names.join(" · ")}
+        {row.uncategorised_lines > row.names.length && " · …"}
       </div>
 
       {done ? (
         <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <span style={{ flex: "1 1 100%", color: "var(--good-text)", fontSize: "0.9rem" }}>
-            ✓ {done.categoryName} · {done.assignment.lines} tétel
-            {done.assignment.spread > 0 && (
-              <span className="muted"> (ebből {done.assignment.spread} más írásmóddal)</span>
+            ✓ {done.categoryName} · {done.filing.lines} tétel
+            {done.filing.merchant_id && (
+              <span className="muted">
+                {" "}· {shop} mostantól mindig ez
+                {done.filing.spread > 0 && ` (+${done.filing.spread} tétel a többi blokkján)`}
+              </span>
             )}
           </span>
           <button className="btn" disabled={busy} onClick={() => onUndo(row)}>
@@ -174,28 +167,47 @@ function Row({ row, done, busy, categories, onAssign, onUndo }: {
           </button>
         </div>
       ) : (
-        <select
-          value=""
-          disabled={busy || categories.length === 0}
-          aria-label={`${row.raw_name} kategóriája`}
-          style={{ width: "100%" }}
-          onChange={(event) => {
-            const category = categories.find((c) => c.id === event.target.value);
-            if (category) onAssign(row, category);
-          }}
-        >
-          <option value="" disabled>
-            {busy ? "Mentés…" : "Kategória választása…"}
-          </option>
-          {groups.map(({ parent, children }) => (
-            <optgroup key={parent.id} label={parent.name}>
-              <option value={parent.id}>{parent.name}</option>
-              {children.map((child) => (
-                <option key={child.id} value={child.id}>{child.name}</option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
+        <>
+          {row.merchant_id && (
+            <label
+              style={{
+                display: "flex", alignItems: "center", gap: 10, minHeight: 40,
+                fontSize: "0.88rem", cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={rememberShop}
+                onChange={(event) => setRememberShop(event.target.checked)}
+                disabled={busy}
+                style={{ width: 22, height: 22, flex: "0 0 auto" }}
+              />
+              <span>{shop} mindig ez legyen – a többi blokkja is</span>
+            </label>
+          )}
+          <select
+            value=""
+            disabled={busy || categories.length === 0}
+            aria-label={`${shop} ${date(row.purchased_at)} kategóriája`}
+            style={{ width: "100%" }}
+            onChange={(event) => {
+              const category = categories.find((c) => c.id === event.target.value);
+              if (category) onFile(row, category, rememberShop);
+            }}
+          >
+            <option value="" disabled>
+              {busy ? "Mentés…" : "Kategória választása…"}
+            </option>
+            {groups.map(({ parent, children }) => (
+              <optgroup key={parent.id} label={parent.name}>
+                <option value={parent.id}>{parent.name}</option>
+                {children.map((child) => (
+                  <option key={child.id} value={child.id}>{child.name}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </>
       )}
     </div>
   );
