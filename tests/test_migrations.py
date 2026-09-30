@@ -97,7 +97,7 @@ def test_the_revisions_form_one_chain():
 # --- upgrading over real rows ------------------------------------------------
 
 IDS = {name: uuid.uuid4() for name in (
-    "category", "merchant", "product", "receipt", "mapped", "unmapped", "rule"
+    "category", "merchant", "product", "receipt", "mapped", "unmapped", "rule", "manual"
 )}
 
 # Written as SQL rather than through the ORM on purpose: at the revision being seeded, the
@@ -127,7 +127,7 @@ SEED = (
 )
 
 
-async def _seeded_then_upgraded(start: str):
+async def _seeded_then_upgraded(start: str, extra: tuple[str, ...] = ()):
     """Build a database at `start`, fill it with rows, then upgrade it to head."""
     engine = create_async_engine(TEST_DATABASE_URL, poolclass=None)
     async with engine.begin() as conn:
@@ -137,7 +137,7 @@ async def _seeded_then_upgraded(start: str):
     await _alembic(command.upgrade, start)
 
     async with engine.begin() as conn:
-        for statement in SEED:
+        for statement in SEED + extra:
             # UUID objects rather than strings: asyncpg types a parameter from the
             # prepared statement, and a uuid column wants a uuid.
             await conn.execute(text(statement), IDS)
@@ -244,3 +244,79 @@ class TestTheNewColumnCoversWhatIsAlreadyStored:
             found = await resolve_product(session, "PEPSI 1500ML", IDS["merchant"])
             assert found is not None, "1500 ml is 1,5 l; this should link itself"
             assert found.canonical_name == "Pepsi 1,5 l"
+
+
+# The last revision before hand-typed unit prices were corrected.
+BEFORE_UNIT_PRICE_FIX = "c93f0b2a45de"
+
+# Hand-typed lines as the old manual entry stored them, beside every kind of line the fix
+# must leave alone. The ids ride on the line names so each can be looked up afterwards.
+MANUAL_SEED = (
+    "INSERT INTO receipts (id, merchant_id, purchased_at, total_gross, currency, "
+    "payment_method, status, source, image_mime, attempts) "
+    "VALUES (:manual, :merchant, '2026-09-14 17:00+02', 3162.00, 'HUF', 'cash', "
+    "'confirmed', 'manual', 'image/jpeg', 0)",
+    # The bug: four of them, and the line total stored as the price of one.
+    "INSERT INTO receipt_items (id, receipt_id, line_no, raw_name, quantity, unit_price, "
+    "gross_amount, kind) VALUES (gen_random_uuid(), :manual, 1, 'buggy', 4, 1516.00, "
+    "1516.00, 'item')",
+    # A weighed line, same bug.
+    "INSERT INTO receipt_items (id, receipt_id, line_no, raw_name, quantity, unit_price, "
+    "gross_amount, kind) VALUES (gen_random_uuid(), :manual, 2, 'weighed', 0.412, 247.00, "
+    "247.00, 'item')",
+    # Bought once: price of one and the total are rightly the same.
+    "INSERT INTO receipt_items (id, receipt_id, line_no, raw_name, quantity, unit_price, "
+    "gross_amount, kind) VALUES (gen_random_uuid(), :manual, 3, 'single', 1, 599.00, "
+    "599.00, 'item')",
+    # A unit price typed by hand, which is not the bug's signature.
+    "INSERT INTO receipt_items (id, receipt_id, line_no, raw_name, quantity, unit_price, "
+    "gross_amount, kind) VALUES (gen_random_uuid(), :manual, 4, 'typed', 2, 400.00, "
+    "800.00, 'item')",
+    # A photographed receipt with the same numbers: read by the model, not this code path.
+    "INSERT INTO receipt_items (id, receipt_id, line_no, raw_name, quantity, unit_price, "
+    "gross_amount, kind) VALUES (gen_random_uuid(), :receipt, 9, 'photographed', 3, 900.00, "
+    "900.00, 'item')",
+)
+
+
+@pytest.fixture
+async def upgraded_from_before_unit_price_fix():
+    async for engine in _seeded_then_upgraded(BEFORE_UNIT_PRICE_FIX, MANUAL_SEED):
+        yield engine
+
+
+@requires_db
+class TestHandTypedUnitPricesAreCorrected:
+    """The only migration that changes values, so it is tested on what it must not touch."""
+
+    async def _unit_prices(self, engine) -> dict[str, tuple]:
+        async with engine.connect() as conn:
+            rows = (await conn.execute(text(
+                "SELECT raw_name, unit_price, gross_amount FROM receipt_items"
+            ))).all()
+        return {name: (price, gross) for name, price, gross in rows}
+
+    async def test_a_line_bought_four_times_gets_the_price_of_one(
+        self, upgraded_from_before_unit_price_fix
+    ):
+        from decimal import Decimal
+
+        prices = await self._unit_prices(upgraded_from_before_unit_price_fix)
+        assert prices["buggy"][0] == Decimal("379.00")
+        assert prices["weighed"][0] == Decimal("599.51")
+
+    async def test_nothing_else_moves(self, upgraded_from_before_unit_price_fix):
+        from decimal import Decimal
+
+        prices = await self._unit_prices(upgraded_from_before_unit_price_fix)
+        assert prices["single"][0] == Decimal("599.00")
+        assert prices["typed"][0] == Decimal("400.00")
+        assert prices["photographed"][0] == Decimal("900.00")
+
+    async def test_no_amount_you_spent_changes(self, upgraded_from_before_unit_price_fix):
+        """Spending totals are made of gross amounts; the fix must not touch one."""
+        from decimal import Decimal
+
+        prices = await self._unit_prices(upgraded_from_before_unit_price_fix)
+        assert prices["buggy"][1] == Decimal("1516.00")
+        assert prices["weighed"][1] == Decimal("247.00")

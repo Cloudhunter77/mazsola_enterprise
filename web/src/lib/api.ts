@@ -90,7 +90,7 @@ export interface PricePoint {
   purchased_at: string; merchant_id: string | null; merchant_name: string;
   unit_price: Money; quantity: Money | null; unit: string | null;
   source: "purchase" | "label"; is_promotion: boolean;
-  receipt_id: string | null; observation_id: string | null;
+  receipt_id: string | null; observation_id: string | null; label_photo_id: string | null;
 }
 export interface PriceHistory { product_id: string; product_name: string; points: PricePoint[]; cheapest_merchant: string | null; latest_price: Money | null; change_pct: number | null }
 export interface BasketMerchant { merchant_id: string; merchant_name: string; covered_products: number; basket_total: Money }

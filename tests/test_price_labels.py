@@ -332,6 +332,16 @@ class TestPriceHistory:
         assert point.receipt_id is None
         assert point.observation_id is not None
 
+    async def test_it_can_be_traced_to_its_photograph(
+        self, session, label_settings, shelf_photo
+    ):
+        """A purchase opens its receipt; a shelf price opens the photo it was read from."""
+        product = await self._tracked(session, label_settings, shelf_photo)
+        history = await stats.price_history(session, product.id)
+
+        photo_id = await session.scalar(select(PriceLabelPhoto.id))
+        assert history.points[0].label_photo_id == photo_id
+
     async def test_a_promotion_does_not_decide_the_cheapest_shop(
         self, session, label_settings, shelf_photo
     ):

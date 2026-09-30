@@ -1,8 +1,9 @@
 /** The save-money screen: what individual things cost, where, and how that is moving. */
 
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
-import { api } from "../lib/api";
+import { api, type PricePoint } from "../lib/api";
 import { IndexChart, MAX_SERIES, PriceHistoryChart, RankingChart } from "../lib/charts";
 import { date, ft, month, pct } from "../lib/format";
 import { AsyncBlock, Card, Empty, useAsync } from "../components/ui";
@@ -135,9 +136,11 @@ export default function Prices() {
                         </tr>
                       </thead>
                       <tbody>
-                        {[...data.points].reverse().map((point) => (
-                          <tr key={point.receipt_id ?? point.observation_id ?? point.purchased_at}>
-                            <td className="mono">{date(point.purchased_at)}</td>
+                        {byOrigin([...data.points].reverse()).map(({ point, count }) => (
+                          <tr key={`${point.receipt_id ?? point.observation_id}-${point.unit_price}`}>
+                            <td className="mono">
+                              <Origin point={point} />
+                            </td>
                             <td>
                               {point.merchant_name}
                               {/* A shelf price is what the shop asked, not what you paid - worth
@@ -148,7 +151,10 @@ export default function Prices() {
                                 </span>
                               )}
                             </td>
-                            <td className="num">{ft(point.unit_price)}</td>
+                            <td className="num">
+                              {ft(point.unit_price)}
+                              {count > 1 && <span className="muted"> · {count}×</span>}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -216,6 +222,53 @@ export default function Prices() {
 
 /** Group price points by shop, keeping the busiest shops and folding the rest into "Egyéb",
  *  because the palette is only validated for four simultaneous series. */
+/** One row per receipt (or shelf photo) and price, with how many lines it stands for.
+ *
+ *  Aldi prints every scan as its own line, so two bottles of milk were two identical rows
+ *  and the table read as if each purchase had been recorded twice. Collapsed, a real
+ *  duplicate - the same receipt uploaded twice - shows as what it is: two rows linking to
+ *  two different receipts.
+ */
+function byOrigin(points: PricePoint[]): { point: PricePoint; count: number }[] {
+  const rows: { point: PricePoint; count: number }[] = [];
+  const index = new Map<string, number>();
+  for (const point of points) {
+    const key = `${point.receipt_id ?? point.observation_id}|${point.unit_price}`;
+    const at = index.get(key);
+    if (at === undefined) {
+      index.set(key, rows.length);
+      rows.push({ point, count: 1 });
+    } else {
+      rows[at].count += 1;
+    }
+  }
+  return rows;
+}
+
+/** The date, as a way back to where the price came from - so it can be checked. */
+function Origin({ point }: { point: PricePoint }) {
+  if (point.receipt_id) {
+    return (
+      <Link to={`/blokkok/${point.receipt_id}`} title="A blokk megnyitása">
+        {date(point.purchased_at)}
+      </Link>
+    );
+  }
+  if (point.label_photo_id) {
+    return (
+      <a
+        href={api.labelImageUrl(point.label_photo_id)}
+        target="_blank"
+        rel="noreferrer"
+        title="A polccímke fotója"
+      >
+        {date(point.purchased_at)}
+      </a>
+    );
+  }
+  return <>{date(point.purchased_at)}</>;
+}
+
 function toSeries(points: { purchased_at: string; merchant_name: string; unit_price: string }[]) {
   const byMerchant = new Map<string, { t: number; price: number }[]>();
   for (const point of points) {

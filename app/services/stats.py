@@ -241,6 +241,7 @@ async def _observed_prices(
                 PriceObservation.unit,
                 PriceObservation.is_promotion,
                 PriceObservation.id,
+                PriceLabelPhoto.id,
             )
             .join(PriceLabelPhoto, PriceObservation.photo_id == PriceLabelPhoto.id)
             .outerjoin(Merchant, PriceLabelPhoto.merchant_id == Merchant.id)
@@ -252,7 +253,10 @@ async def _observed_prices(
     ).all()
 
     points: list[PricePoint] = []
-    for observed_at, merchant_id, merchant_name, unit_price, unit, promo, observation_id in rows:
+    for (
+        observed_at, merchant_id, merchant_name, unit_price, unit, promo, observation_id,
+        photo_id,
+    ) in rows:
         if unit_price is None or unit_price <= 0:
             continue
         points.append(
@@ -267,6 +271,7 @@ async def _observed_prices(
                 source="label",
                 is_promotion=bool(promo),
                 observation_id=observation_id,
+                label_photo_id=photo_id,
             )
         )
     return points

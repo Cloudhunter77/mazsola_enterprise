@@ -207,6 +207,9 @@ class PricePoint(BaseModel):
     # An akciós ár is real but temporary, so it is marked rather than hidden.
     is_promotion: bool = False
     observation_id: uuid.UUID | None = None
+    # The photograph a shelf price was read from, so it can be opened and checked the way a
+    # purchase opens its receipt.
+    label_photo_id: uuid.UUID | None = None
 
 
 class ProductPriceHistory(BaseModel):
