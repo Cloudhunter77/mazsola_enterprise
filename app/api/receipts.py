@@ -370,6 +370,13 @@ async def update_item(
             _log_correction(session, item.receipt_id, field, old, value, item_id=item.id)
             setattr(item, field, value)
 
+    if "category_id" in changes:
+        # Yours now, whatever set it before. Without this a category picked here kept the
+        # source of the guess it replaced: the learning rule, which only learns from lines
+        # you filed, never saw it, and filing the whole receipt treated it as a guess it
+        # was free to overwrite.
+        item.category_source = "manual" if item.category_id else None
+
     if remember and item.product_id:
         receipt = await session.get(Receipt, item.receipt_id)
         await link_product(session, item.product_id, item.raw_name, receipt.merchant_id)

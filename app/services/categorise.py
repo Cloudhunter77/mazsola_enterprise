@@ -325,6 +325,7 @@ async def file_receipt(
     receipt_id: uuid.UUID,
     category_id: uuid.UUID,
     remember_shop: bool = False,
+    replace_guesses: bool = False,
 ) -> Filing:
     """File every uncategorised line on one receipt under one category.
 
@@ -339,6 +340,10 @@ async def file_receipt(
 
     With `remember_shop`, the shop itself is told to always mean this category: its other
     receipts' blank lines follow now, and future ones on the hourly pass.
+
+    With `replace_guesses` - choosing on the receipt's own page, where you are looking at
+    exactly this bill - the automatic rules' guesses on it are replaced too, not only its
+    blanks. A line you filed yourself is still never touched.
     """
     item_ids = list(
         (
@@ -346,7 +351,11 @@ async def file_receipt(
                 update(ReceiptItem)
                 .where(ReceiptItem.receipt_id == receipt_id)
                 .where(ReceiptItem.kind == LineKind.ITEM.value)
-                .where(ReceiptItem.category_id.is_(None))
+                .where(
+                    ReceiptItem.category_source.is_distinct_from("manual")
+                    if replace_guesses
+                    else ReceiptItem.category_id.is_(None)
+                )
                 .values(category_id=category_id, category_source="receipt")
                 .returning(ReceiptItem.id)
             )

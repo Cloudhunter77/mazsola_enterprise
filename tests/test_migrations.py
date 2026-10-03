@@ -97,7 +97,8 @@ def test_the_revisions_form_one_chain():
 # --- upgrading over real rows ------------------------------------------------
 
 IDS = {name: uuid.uuid4() for name in (
-    "category", "merchant", "product", "receipt", "mapped", "unmapped", "rule", "manual"
+    "category", "merchant", "product", "receipt", "mapped", "unmapped", "rule", "manual",
+    "other_category",
 )}
 
 # Written as SQL rather than through the ORM on purpose: at the revision being seeded, the
@@ -320,3 +321,48 @@ class TestHandTypedUnitPricesAreCorrected:
         prices = await self._unit_prices(upgraded_from_before_unit_price_fix)
         assert prices["buggy"][1] == Decimal("1516.00")
         assert prices["weighed"][1] == Decimal("247.00")
+
+
+# The last revision before per-line category choices were labelled as yours.
+BEFORE_MANUAL_LABELS = "e2b7c9d41f06"
+
+LABEL_SEED = (
+    "INSERT INTO categories (id, name, slug, sort_order) "
+    "VALUES (:other_category, 'Egyéb', 'egyeb', 2)",
+    # You chose this line's category on the receipt page, and it still holds that choice.
+    "INSERT INTO corrections (id, receipt_id, item_id, field, old_value, new_value) "
+    "VALUES (gen_random_uuid(), :receipt, :mapped, 'category_id', NULL, "
+    "CAST(CAST(:category AS uuid) AS text))",
+    # You chose one category for this line, and it holds another now.
+    "UPDATE receipt_items SET category_id = :category, category_source = 'keyword' "
+    "WHERE id = :unmapped",
+    "INSERT INTO corrections (id, receipt_id, item_id, field, old_value, new_value) "
+    "VALUES (gen_random_uuid(), :receipt, :unmapped, 'category_id', NULL, "
+    "CAST(CAST(:other_category AS uuid) AS text))",
+)
+
+
+@pytest.fixture
+async def upgraded_from_before_manual_labels():
+    async for engine in _seeded_then_upgraded(BEFORE_MANUAL_LABELS, LABEL_SEED):
+        yield engine
+
+
+@requires_db
+class TestYourLineCategoriesAreLabelledYours:
+    async def _sources(self, engine) -> dict:
+        async with engine.connect() as conn:
+            rows = (await conn.execute(text(
+                "SELECT id, category_id, category_source FROM receipt_items"
+            ))).all()
+        return {row_id: (category_id, source) for row_id, category_id, source in rows}
+
+    async def test_a_line_still_holding_your_choice_becomes_yours(
+        self, upgraded_from_before_manual_labels
+    ):
+        sources = await self._sources(upgraded_from_before_manual_labels)
+        assert sources[IDS["mapped"]] == (IDS["category"], "manual")
+
+    async def test_a_line_that_moved_on_is_left_alone(self, upgraded_from_before_manual_labels):
+        sources = await self._sources(upgraded_from_before_manual_labels)
+        assert sources[IDS["unmapped"]] == (IDS["category"], "keyword")

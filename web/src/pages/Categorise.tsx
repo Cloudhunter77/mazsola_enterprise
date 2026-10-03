@@ -14,6 +14,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, type Category, type ReceiptFiling, type ReceiptToFile } from "../lib/api";
+import { groupCategories } from "../lib/categories";
 import { date, ft } from "../lib/format";
 import { AsyncBlock, Card, useAsync } from "../components/ui";
 
@@ -124,7 +125,7 @@ function Row({ row, done, busy, categories, onFile, onUndo }: {
   onFile: (row: ReceiptToFile, category: Category, rememberShop: boolean) => void;
   onUndo: (row: ReceiptToFile) => void;
 }) {
-  const groups = useMemo(() => grouped(categories), [categories]);
+  const groups = useMemo(() => groupCategories(categories), [categories]);
   // Off by default: for a supermarket it would be wrong, and a default filed wrongly is
   // silent. For a restaurant or a pharmacy it is one tick that saves every future receipt.
   const [rememberShop, setRememberShop] = useState(false);
@@ -211,17 +212,4 @@ function Row({ row, done, busy, categories, onFile, onUndo }: {
       )}
     </div>
   );
-}
-
-/** The tree as the picker shows it: each main category with its subcategories beneath. */
-function grouped(categories: Category[]) {
-  const order = (a: Category, b: Category) =>
-    a.sort_order - b.sort_order || a.name.localeCompare(b.name, "hu");
-  return categories
-    .filter((category) => category.parent_id === null)
-    .sort(order)
-    .map((parent) => ({
-      parent,
-      children: categories.filter((c) => c.parent_id === parent.id).sort(order),
-    }));
 }

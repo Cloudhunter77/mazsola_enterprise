@@ -45,7 +45,11 @@ async def file_one(_: AuthDep, session: SessionDep, body: FileReceiptIn) -> File
     if await session.get(Receipt, body.receipt_id) is None:
         raise HTTPException(status_code=404, detail="No such receipt.")
     filing = await file_receipt(
-        session, body.receipt_id, body.category_id, remember_shop=body.remember_shop
+        session,
+        body.receipt_id,
+        body.category_id,
+        remember_shop=body.remember_shop,
+        replace_guesses=body.replace_guesses,
     )
     await session.commit()
     return FileReceiptOut(

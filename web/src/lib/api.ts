@@ -59,6 +59,8 @@ export interface Item {
   gross_amount: Money | null; discount_amount: Money | null;
   vat_rate: Money | null; vat_code: string | null; kind: string;
   product_id: string | null; category_id: string | null; confidence: number | null;
+  // Which rule filed it, or "manual" when you did.
+  category_source: string | null;
 }
 
 export interface ReceiptSummary {
@@ -415,9 +417,9 @@ export const api = {
 
   suggestions: () => request<Suggestions>("/api/suggestions"),
   receiptsToFile: () => request<ReceiptToFile[]>("/api/categorise/receipts"),
-  fileReceipt: (receipt_id: string, category_id: string, remember_shop: boolean) =>
+  fileReceipt: (receipt_id: string, category_id: string, remember_shop: boolean, replace_guesses = false) =>
     request<ReceiptFiling>("/api/categorise/receipt", json("POST", {
-      receipt_id, category_id, remember_shop,
+      receipt_id, category_id, remember_shop, replace_guesses,
     })),
   undoFiling: (done: ReceiptFiling) =>
     request<{ reverted: number }>("/api/categorise/undo", json("POST", {

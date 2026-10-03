@@ -214,3 +214,69 @@ class TestTakingItBack:
 
     async def test_it_needs_a_login(self, client):
         assert (await client.get("/api/categorise/receipts")).status_code == 401
+
+
+class TestChoosingOnTheReceiptPage:
+    """The receipt page files a whole bill, and a line you set there is yours."""
+
+    async def test_a_line_you_set_is_marked_as_yours(self, auth_client, session):
+        dairy = await category(session, "Tejtermék")
+        await _receipt_with(session, ["ZORBA"])
+        # The id, not the object: `lines` expires the session, and reading an attribute of
+        # an expired object afterwards is a lazy load, which an async session refuses.
+        item_id = await session.scalar(select(ReceiptItem.id))
+
+        await auth_client.patch(f"/api/receipts/items/{item_id}", json={"category_id": str(dairy)})
+        assert (await lines(session))["ZORBA"] == (dairy, "manual")
+
+        await auth_client.patch(f"/api/receipts/items/{item_id}", json={"category_id": None})
+        assert (await lines(session))["ZORBA"] == (None, None)
+
+    async def test_the_learning_rule_now_sees_it(self, auth_client, session):
+        """It only learns from lines marked yours, which per-line choices never were."""
+        dairy = await category(session, "Tejtermék")
+        await _receipt_with(session, ["ZORBA 1L"])
+        await _receipt_with(session, ["zorba 1 l"])
+        item = await session.scalar(select(ReceiptItem).where(ReceiptItem.raw_name == "ZORBA 1L"))
+        await auth_client.patch(f"/api/receipts/items/{item.id}", json={"category_id": str(dairy)})
+
+        await categorise_stored(session)
+        await session.commit()
+        assert (await lines(session))["zorba 1 l"] == (dairy, "learned")
+
+    async def test_it_replaces_the_guesses_but_not_your_choices(self, auth_client, session):
+        eating_out = await category(session, "Vendéglátás")
+        dairy = await session.scalar(select(Category.id).where(Category.name == "Tejtermék"))
+        other = await session.scalar(select(Category.id).where(Category.name == "Egyéb"))
+        receipt = await _receipt_with(session, ["Tejeskávé", "Croissant", "Ásványvíz"])
+        guessed, mine, _ = (await session.scalars(
+            select(ReceiptItem).order_by(ReceiptItem.line_no)
+        )).all()
+        guessed.category_id, guessed.category_source = dairy, "keyword"
+        mine.category_id, mine.category_source = other, "manual"
+        await session.commit()
+
+        response = await auth_client.post("/api/categorise/receipt", json={
+            "receipt_id": str(receipt.id), "category_id": str(eating_out),
+            "replace_guesses": True,
+        })
+        assert response.json()["lines"] == 2
+        assert await lines(session) == {
+            "Tejeskávé": (eating_out, "receipt"),
+            "Croissant": (other, "manual"),
+            "Ásványvíz": (eating_out, "receipt"),
+        }
+
+    async def test_without_it_only_blanks_are_filled(self, auth_client, session):
+        """The Kategorizálás page keeps its meaning: it clears blanks and nothing else."""
+        eating_out = await category(session, "Vendéglátás")
+        dairy = await session.scalar(select(Category.id).where(Category.name == "Tejtermék"))
+        receipt = await _receipt_with(session, ["Tejeskávé", "Croissant"])
+        guessed = await session.scalar(
+            select(ReceiptItem).where(ReceiptItem.raw_name == "Tejeskávé")
+        )
+        guessed.category_id, guessed.category_source = dairy, "keyword"
+        await session.commit()
+
+        await file(auth_client, receipt, eating_out)
+        assert (await lines(session))["Tejeskávé"] == (dairy, "keyword")

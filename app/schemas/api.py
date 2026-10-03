@@ -150,6 +150,9 @@ class ItemOut(ORMModel):
     kind: str
     product_id: uuid.UUID | None
     category_id: uuid.UUID | None
+    # Which rule filed it, or "manual" when you did - so a screen can say which lines a
+    # whole-receipt choice will leave alone.
+    category_source: str | None = None
     confidence: float | None
 
 
@@ -419,6 +422,8 @@ class FileReceiptIn(BaseModel):
     receipt_id: uuid.UUID
     category_id: uuid.UUID
     remember_shop: bool = False
+    # From the receipt's own page: replace the automatic guesses too, not only the blanks.
+    replace_guesses: bool = False
 
 
 class FileReceiptOut(BaseModel):
