@@ -16,6 +16,7 @@ import { Link } from "react-router-dom";
 
 import { api, ApiError, type ReceiptDetail, type ReceiptSummary } from "../lib/api";
 import { KIND_LABELS, REVIEW_REASONS, ft, dateTime } from "../lib/format";
+import SplitBill from "../components/SplitBill";
 import { Card } from "../components/ui";
 
 type Phase = "idle" | "uploading" | "waiting" | "done" | "error";
@@ -300,7 +301,7 @@ export default function Capture() {
                 </p>
               )}
               {message && <p className={phase === "error" ? "error" : "muted"}>{message}</p>}
-              {receipt && phase === "done" && <Result receipt={receipt} />}
+              {receipt && phase === "done" && <Result receipt={receipt} onChange={setReceipt} />}
             </div>
           </div>
         </Card>
@@ -345,7 +346,10 @@ function PartStrip({ parts, onRemove }: { parts: Part[]; onRemove: (index: numbe
   );
 }
 
-function Result({ receipt }: { receipt: ReceiptDetail }) {
+function Result({ receipt, onChange }: {
+  receipt: ReceiptDetail;
+  onChange: (receipt: ReceiptDetail) => void;
+}) {
   if (receipt.status === "failed") {
     return (
       <>
@@ -394,6 +398,11 @@ function Result({ receipt }: { receipt: ReceiptDetail }) {
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Right here, while you still remember who paid at the till. */}
+      <div style={{ borderTop: "1px solid var(--grid)", marginTop: 14, paddingTop: 12 }}>
+        <SplitBill receipt={receipt} onSaved={onChange} bare />
       </div>
 
       <div className="row" style={{ marginTop: 12 }}>

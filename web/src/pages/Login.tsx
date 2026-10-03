@@ -1,8 +1,9 @@
 import { type FormEvent, useState } from "react";
 
-import { api } from "../lib/api";
+import { api, ApiError, type SessionInfo } from "../lib/api";
 
-export default function Login({ onSuccess }: { onSuccess: () => void }) {
+export default function Login({ onSuccess }: { onSuccess: (session: SessionInfo) => void }) {
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -12,10 +13,15 @@ export default function Login({ onSuccess }: { onSuccess: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      await api.login(password);
-      onSuccess();
+      onSuccess(await api.login(username.trim(), password));
     } catch (err) {
-      setError((err as Error).message);
+      // One message for both halves, matching the server, which deliberately does not say
+      // whether it was the name or the password.
+      setError(
+        err instanceof ApiError && err.status === 401
+          ? "Hibás felhasználónév vagy jelszó."
+          : (err as Error).message,
+      );
     } finally {
       setBusy(false);
     }
@@ -29,11 +35,23 @@ export default function Login({ onSuccess }: { onSuccess: () => void }) {
       </p>
       <form className="card" onSubmit={submit}>
         <div className="field">
+          <label htmlFor="username">Felhasználónév</label>
+          <input
+            id="username"
+            autoFocus
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            autoComplete="username"
+            value={username}
+            onChange={(event) => setUsername(event.target.value)}
+          />
+        </div>
+        <div className="field">
           <label htmlFor="password">Jelszó</label>
           <input
             id="password"
             type="password"
-            autoFocus
             autoComplete="current-password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}

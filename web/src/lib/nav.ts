@@ -43,6 +43,7 @@ export const SECTIONS: Section[] = [
       { to: "/blokkok", label: "Lista" },
       { to: "/tabla", label: "Tábla" },
       { to: "/elofizetesek", label: "Előfizetések" },
+      { to: "/elszamolas", label: "Elszámolás" },
     ],
     also: /^\/blokkok\//,
   },

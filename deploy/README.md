@@ -158,6 +158,23 @@ A receipt too long to fit one legible frame goes up in sections: take the first 
 **Feldolgozás** when the whole receipt is covered. Up to eight sections make one receipt;
 they are read together as a single document.
 
+### More than one person
+
+The password in `APP_PASSWORD_HASH` becomes the first login the first time the app starts,
+with the username **`admin`**: log in with that and your usual password. On the ⚙ page,
+**Felhasználók** lets you rename yourself and add the others in the household, each with
+their own username and password. Everyone sees the same receipts and statistics; who paid a
+bill and how it is split are recorded per person, and **Blokkok → Elszámolás** shows who
+owes whom.
+
+After that first start, accounts live in the database: changing `APP_PASSWORD_HASH` no
+longer changes anyone's password. If someone forgets theirs, an admin can set a new one on
+the ⚙ page. If nobody can log in at all, open a shell in the app container and run
+
+    python scripts/set_password.py admin
+
+It asks for the new password without echoing it, so it never lands in your shell history.
+
 ### iOS Shortcut (optional)
 
 For a one-tap capture from the lock screen or Action Button:
@@ -173,6 +190,9 @@ For a one-tap capture from the lock screen or Action Button:
 
 The upload returns immediately; the reading happens on the NAS. Open the app later to
 review anything flagged.
+
+The shortcut's key acts as the first login, so receipts it uploads are recorded as paid by
+that person. Anyone else uploading through it can change who paid on the receipt's page.
 
 ## 6. Things that never printed a receipt
 

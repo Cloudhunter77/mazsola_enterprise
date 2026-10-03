@@ -84,6 +84,14 @@ class Settings(BaseSettings):
         default=None,
         description="Argon2 hash of the single user's password; see scripts/hash_password.py.",
     )
+    app_username: str = Field(
+        default="admin",
+        description="Username of the first login, created from APP_PASSWORD_HASH on first start.",
+    )
+    app_display_name: str | None = Field(
+        default=None,
+        description="Name shown for the first login; changeable afterwards in the app.",
+    )
     api_key: str | None = Field(
         default=None,
         description="Static key for the iOS Shortcut upload path (X-API-Key header).",

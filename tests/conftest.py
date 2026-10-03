@@ -150,6 +150,18 @@ TEST_PASSWORD = "helyes-jelszo-123"
 TEST_API_KEY = "test-api-key-0123456789"
 
 
+@pytest.fixture(autouse=True)
+def _fresh_login_throttle():
+    """The failed-login counter is process-wide and keyed by caller address, and every test
+    client calls from the same one. Without this, the throttle test leaves that address
+    locked out and every later test that logs in gets a 429 instead of its answer."""
+    from app.security import _failures
+
+    _failures.clear()
+    yield
+    _failures.clear()
+
+
 @pytest.fixture
 def app_settings(tmp_path) -> Settings:
     return Settings(

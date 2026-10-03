@@ -133,14 +133,14 @@ class TestAuthentication:
         assert response.status_code == 401
 
     async def test_a_forged_cookie_is_rejected(self, app_settings):
-        token = issue_session(app_settings)
-        assert read_session(app_settings, token) == "owner"
+        token = issue_session(app_settings, "some-user-id")
+        assert read_session(app_settings, token) == "some-user-id"
         assert read_session(app_settings, token[:-4] + "AAAA") is None
         assert read_session(app_settings, "not-a-token") is None
 
     async def test_a_cookie_signed_with_another_key_is_rejected(self, app_settings):
         other = Settings(secret_key="a" * 64)
-        assert read_session(app_settings, issue_session(other)) is None
+        assert read_session(app_settings, issue_session(other, "some-user-id")) is None
 
     def test_api_key_comparison_rejects_empties(self):
         assert verify_api_key("abc", "abc") is True
@@ -256,9 +256,12 @@ class TestUploadLimits:
             _verify_image(b"")
 
 
+@requires_db
 class TestAuthDisabled:
     """The development escape hatch must work, and only when asked for."""
 
     async def test_auth_disabled_allows_anonymous_access(self, tmp_path, sessionmaker_fixture):
         settings = Settings(data_dir=tmp_path, auth_disabled=True, worker_enabled=False)
-        assert await require_auth(settings, None, None) == "dev"
+        async with sessionmaker_fixture() as session:
+            principal = await require_auth(settings, session, None, None)
+        assert principal.via == "dev"

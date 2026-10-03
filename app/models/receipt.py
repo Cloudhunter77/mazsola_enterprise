@@ -76,6 +76,15 @@ class Receipt(Base, TimestampMixin):
         ForeignKey("merchants.id", ondelete="SET NULL"), nullable=True, index=True
     )
     merchant_raw_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    # Who paid, and who put it into the app. Usually the same person; not always - the
+    # one with the phone scans what the other paid for. Null on receipts from before there
+    # were several people, and on subscriptions, which nobody uploads.
+    paid_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    uploaded_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     tax_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
     purchased_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True

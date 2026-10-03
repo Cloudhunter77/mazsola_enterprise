@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, Query, Response, UploadFile, status
@@ -28,11 +29,14 @@ from app.schemas.api import (
     ReceiptDetail,
     ReceiptPatch,
     ReceiptSummary,
+    ShareOut,
+    SplitIn,
     UploadResponse,
 )
 from app.services.catalog import link_product, resolve_merchant
 from app.services.ingest import IngestError, ingest_images
 from app.services.manual import ManualEntryError, create_manual_receipt
+from app.services.splits import SplitError, owed, set_split, shares_of
 
 router = APIRouter(prefix="/api/receipts", tags=["receipts"])
 
@@ -54,7 +58,7 @@ def _to_summary(receipt: Receipt, merchant_name: str | None, item_count: int) ->
 
 @router.post("", response_model=UploadResponse, status_code=status.HTTP_202_ACCEPTED)
 async def upload_receipt(
-    _: AuthDep,
+    principal: AuthDep,
     session: SessionDep,
     settings: SettingsDep,
     response: Response,
@@ -78,6 +82,11 @@ async def upload_receipt(
     except IngestError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
+    if created and principal.user_id:
+        # Whoever scans it usually paid for it. Not always - it is one tap to change on
+        # the result screen - but the guess is right far more often than "nobody".
+        receipt.uploaded_by_id = principal.user_id
+        receipt.paid_by_id = principal.user_id
     await session.commit()
     if not created:
         response.status_code = status.HTTP_200_OK
@@ -86,7 +95,7 @@ async def upload_receipt(
 
 @router.post("/manual", response_model=ReceiptDetail, status_code=status.HTTP_201_CREATED)
 async def create_manual(
-    _: AuthDep, session: SessionDep, body: ManualReceiptIn
+    principal: AuthDep, session: SessionDep, body: ManualReceiptIn
 ) -> ReceiptDetail:
     """Type in a receipt you no longer have.
 
@@ -107,8 +116,9 @@ async def create_manual(
     except ManualEntryError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
+    receipt.uploaded_by_id = receipt.paid_by_id = principal.user_id
     await session.commit()
-    return await get_receipt(_, session, receipt.id)
+    return await get_receipt(principal, session, receipt.id)
 
 
 @router.get("", response_model=list[ReceiptSummary])
@@ -191,7 +201,34 @@ async def get_receipt(_: AuthDep, session: SessionDep, receipt_id: uuid.UUID) ->
     if receipt.merchant_id:
         merchant = await session.get(Merchant, receipt.merchant_id)
         detail.merchant_name = merchant.name if merchant else None
+    detail.shares = [
+        ShareOut(
+            user_id=share.user_id,
+            percent=share.percent,
+            amount=owed(Decimal(receipt.total_gross or 0), Decimal(share.percent)),
+        )
+        for share in await shares_of(session, receipt.id)
+    ]
     return detail
+
+
+@router.put("/{receipt_id}/split", response_model=ReceiptDetail)
+async def split_receipt(
+    principal: AuthDep, session: SessionDep, receipt_id: uuid.UUID, body: SplitIn
+) -> ReceiptDetail:
+    """Who paid this, and how it divides between the people in the household."""
+    receipt = await session.get(Receipt, receipt_id)
+    if receipt is None:
+        raise HTTPException(status_code=404, detail="No such receipt.")
+    try:
+        await set_split(
+            session, receipt, body.paid_by_id,
+            [(share.user_id, share.percent) for share in body.shares],
+        )
+    except SplitError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await session.commit()
+    return await get_receipt(principal, session, receipt_id)
 
 
 @router.get("/{receipt_id}/image")

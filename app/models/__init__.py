@@ -2,6 +2,7 @@
 
 from app.models.base import Base
 from app.models.catalog import Category, Merchant, MerchantAlias, Product, ProductAlias
+from app.models.household import ReceiptShare, Settlement, User
 from app.models.ops import AttemptKind, Budget, Correction, ExtractionAttempt
 from app.models.price import LabelStatus, PriceLabelPhoto, PriceObservation
 from app.models.receipt import (
@@ -36,9 +37,12 @@ __all__ = [
     "Receipt",
     "ReceiptImage",
     "ReceiptItem",
+    "ReceiptShare",
     "ReceiptStatus",
     "RecurringCharge",
     "RecurringPayment",
     "ScanStatus",
+    "Settlement",
     "ShoppingItem",
+    "User",
 ]

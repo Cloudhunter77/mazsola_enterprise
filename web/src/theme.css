@@ -319,3 +319,15 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .subnav a.active { background: var(--surface-raised); color: var(--series-1);
                    box-shadow: var(--shadow); font-weight: 650; }
 .topbar .btn[aria-current="page"] { color: var(--series-1); border-color: var(--series-1); }
+
+/* --- choices and sliders ------------------------------------------------------- */
+/* A button that is one of a set of choices - who paid, which filter - says it is the
+   chosen one the same way everywhere. */
+.btn[aria-pressed="true"] {
+  border-color: var(--series-1); color: var(--series-1); font-weight: 650;
+  background: var(--surface);
+}
+/* A slider you can hit with a thumb on a bus: the native control is ~16px tall. */
+input[type="range"] {
+  width: 100%; height: 44px; margin: 0; accent-color: var(--series-1); cursor: pointer;
+}

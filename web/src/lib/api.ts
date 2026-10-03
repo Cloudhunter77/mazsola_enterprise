@@ -43,7 +43,14 @@ const json = (method: string, body: unknown): RequestInit => ({
 // --- types (mirroring app/schemas/api.py) ---------------------------------
 export type Money = string;
 
-export interface SessionInfo { authenticated: boolean; subject: string | null }
+export interface SessionInfo {
+  authenticated: boolean; subject: string | null;
+  user_id: string | null; display_name: string | null; is_admin: boolean;
+}
+export interface User {
+  id: string; username: string; display_name: string; is_admin: boolean; active: boolean;
+  is_me: boolean;
+}
 export interface UploadResponse { id: string; status: string; duplicate: boolean }
 
 export interface Item {
@@ -59,8 +66,10 @@ export interface ReceiptSummary {
   merchant_id: string | null; merchant_name: string | null;
   total_gross: Money | null; currency: string;
   review_reasons: string[] | null; confidence: number | null;
-  item_count: number; created_at: string;
+  item_count: number; created_at: string; paid_by_id: string | null;
 }
+
+export interface Share { user_id: string; percent: Money; amount: Money }
 
 export interface ReceiptDetail extends ReceiptSummary {
   merchant_raw_name: string | null; tax_number: string | null;
@@ -69,7 +78,22 @@ export interface ReceiptDetail extends ReceiptSummary {
   payment_method: string; receipt_no: string | null; nav_ap_code: string | null;
   notes: string | null; error: string | null; attempts: number;
   parsed_at: string | null; confirmed_at: string | null; items: Item[];
-  pages: number;
+  pages: number; uploaded_by_id: string | null;
+  // Empty when the bill is not split.
+  shares: Share[];
+}
+
+export interface SplitReceipt {
+  receipt_id: string; purchased_at: string | null; merchant_name: string | null;
+  total_gross: Money | null; paid_by_id: string | null; shares: Share[];
+}
+export interface Transfer {
+  from_user_id: string; from_name: string; to_user_id: string; to_name: string; amount: Money;
+}
+export interface Settlement extends Transfer { id: string; settled_at: string; note: string | null }
+export interface SplitSummary {
+  balances: { user_id: string; display_name: string; net: Money }[];
+  transfers: Transfer[]; receipts: SplitReceipt[]; settlements: Settlement[];
 }
 
 export interface Category { id: string; parent_id: string | null; name: string; slug: string; color: string | null; sort_order: number }
@@ -223,7 +247,15 @@ export type LabelPhotoDetail = Omit<LabelPhoto, "observation_count"> & {
 
 export const api = {
   me: () => request<SessionInfo>("/api/auth/me"),
-  login: (password: string) => request<SessionInfo>("/api/auth/login", json("POST", { password })),
+  login: (username: string, password: string) =>
+    request<SessionInfo>("/api/auth/login", json("POST", { username: username || null, password })),
+  users: () => request<User[]>("/api/users"),
+  createUser: (body: { username: string; display_name: string; password: string; is_admin: boolean }) =>
+    request<User>("/api/users", json("POST", body)),
+  updateUser: (id: string, body: Partial<{
+    display_name: string; username: string; password: string; current_password: string;
+    is_admin: boolean; active: boolean;
+  }>) => request<User>(`/api/users/${id}`, json("PATCH", body)),
   logout: () => request<SessionInfo>("/api/auth/logout", { method: "POST" }),
 
   upload(files: File | File[], onProgress?: (fraction: number) => void): Promise<UploadResponse> {
@@ -337,6 +369,13 @@ export const api = {
     return request<ReceiptSummary[]>(`/api/receipts?${query}`);
   },
   receipt: (id: string) => request<ReceiptDetail>(`/api/receipts/${id}`),
+  splitReceipt: (id: string, paid_by_id: string | null, shares: { user_id: string; percent: number }[]) =>
+    request<ReceiptDetail>(`/api/receipts/${id}/split`, json("PUT", { paid_by_id, shares })),
+  splitSummary: () => request<SplitSummary>("/api/split/summary"),
+  settle: (from_user_id: string, to_user_id: string, amount: number, note?: string) =>
+    request<Settlement>("/api/split/settlements", json("POST", { from_user_id, to_user_id, amount, note })),
+  deleteSettlement: (id: string) =>
+    request<void>(`/api/split/settlements/${id}`, { method: "DELETE" }),
   latestReceipt: () =>
     request<ReceiptSummary[]>("/api/receipts?limit=1").then((rows) => rows[0] ?? null),
   imageUrl: (id: string, part = 0) => `/api/receipts/${id}/image?part=${part}`,

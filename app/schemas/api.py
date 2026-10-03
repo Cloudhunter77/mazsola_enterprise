@@ -16,12 +16,117 @@ class ORMModel(BaseModel):
 
 # --- auth --------------------------------------------------------------------
 class LoginRequest(BaseModel):
-    password: str
+    # Optional: without one, the password is checked against the first login, as it was
+    # before there were several.
+    username: str | None = Field(default=None, max_length=60)
+    password: str = Field(max_length=1024)
 
 
 class SessionInfo(BaseModel):
     authenticated: bool
     subject: str | None = None
+    user_id: uuid.UUID | None = None
+    display_name: str | None = None
+    is_admin: bool = False
+
+    @classmethod
+    def for_user(cls, user) -> SessionInfo:
+        return cls(
+            authenticated=True,
+            subject=str(user.id),
+            user_id=user.id,
+            display_name=user.display_name,
+            is_admin=user.is_admin,
+        )
+
+
+# --- users -------------------------------------------------------------------
+class UserOut(BaseModel):
+    id: uuid.UUID
+    username: str
+    display_name: str
+    is_admin: bool
+    active: bool
+    is_me: bool = False
+
+
+class UserCreate(BaseModel):
+    username: str = Field(min_length=2, max_length=60)
+    display_name: str = Field(min_length=1, max_length=80)
+    password: str = Field(max_length=1024)
+    is_admin: bool = False
+
+
+class UserUpdate(BaseModel):
+    display_name: str | None = Field(default=None, min_length=1, max_length=80)
+    username: str | None = Field(default=None, min_length=2, max_length=60)
+    password: str | None = Field(default=None, max_length=1024)
+    current_password: str | None = Field(default=None, max_length=1024)
+    is_admin: bool | None = None
+    active: bool | None = None
+
+
+# --- splitting bills ----------------------------------------------------------
+class ShareIn(BaseModel):
+    user_id: uuid.UUID
+    percent: Decimal = Field(ge=0, le=100)
+
+
+class SplitIn(BaseModel):
+    """Who paid, and how the bill divides. No shares means it is not split."""
+
+    paid_by_id: uuid.UUID | None
+    shares: list[ShareIn] = Field(default_factory=list, max_length=20)
+
+
+class ShareOut(BaseModel):
+    user_id: uuid.UUID
+    percent: Decimal
+    amount: Decimal
+
+
+class SplitReceipt(BaseModel):
+    receipt_id: uuid.UUID
+    purchased_at: datetime | None
+    merchant_name: str | None
+    total_gross: Decimal | None
+    paid_by_id: uuid.UUID | None
+    shares: list[ShareOut]
+
+
+class UserBalance(BaseModel):
+    user_id: uuid.UUID
+    display_name: str
+    # Positive: owed money. Negative: owes money.
+    net: Decimal
+
+
+class TransferOut(BaseModel):
+    from_user_id: uuid.UUID
+    from_name: str
+    to_user_id: uuid.UUID
+    to_name: str
+    amount: Decimal
+
+
+class SettlementIn(BaseModel):
+    from_user_id: uuid.UUID
+    to_user_id: uuid.UUID
+    amount: Decimal = Field(gt=0, le=Decimal("100000000"))
+    note: str | None = Field(default=None, max_length=500)
+
+
+class SettlementOut(TransferOut):
+    id: uuid.UUID
+    settled_at: datetime
+    note: str | None
+
+
+class SplitSummary(BaseModel):
+    balances: list[UserBalance]
+    transfers: list[TransferOut]
+    receipts: list[SplitReceipt]
+    settlements: list[SettlementOut]
 
 
 # --- receipts ----------------------------------------------------------------
@@ -61,6 +166,7 @@ class ReceiptSummary(ORMModel):
     confidence: float | None
     item_count: int = 0
     created_at: datetime
+    paid_by_id: uuid.UUID | None = None
 
 
 class ReceiptDetail(ReceiptSummary):
@@ -82,6 +188,9 @@ class ReceiptDetail(ReceiptSummary):
     # How many photographs make up this receipt. 1 for everything captured in one frame,
     # which is nearly all of them; the review screen only shows a page switcher above that.
     pages: int = 1
+    uploaded_by_id: uuid.UUID | None = None
+    # Empty when the bill is not split.
+    shares: list[ShareOut] = []
 
 
 class ReceiptPatch(BaseModel):

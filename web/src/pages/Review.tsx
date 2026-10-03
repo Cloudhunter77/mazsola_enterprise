@@ -13,6 +13,7 @@ import { api, type Item, type Product, type ReceiptDetail } from "../lib/api";
 import {
   KIND_LABELS, REVIEW_REASONS, STATUS_LABELS, dateTime, fromLocalInput, ft, qty, toLocalInput,
 } from "../lib/format";
+import SplitBill from "../components/SplitBill";
 import { AsyncBlock, Card, useAsync } from "../components/ui";
 
 const KINDS = ["item", "deposit", "discount", "rounding", "fee"];
@@ -94,6 +95,8 @@ export default function Review() {
                 onSave={(patch) => act(() => api.patchReceipt(receipt.id, patch))}
                 busy={busy}
               />
+
+              <SplitBill receipt={receipt} onSaved={() => state.reload()} />
 
               <Card title="Műveletek">
                 <div className="row">

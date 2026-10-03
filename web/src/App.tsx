@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
-import { api } from "./lib/api";
+import { api, type SessionInfo } from "./lib/api";
+import { SessionContext } from "./lib/session";
 import { SECTIONS, sectionFor } from "./lib/nav";
 import { Loading } from "./components/ui";
 import Capture from "./pages/Capture";
@@ -9,6 +10,7 @@ import Categorise from "./pages/Categorise";
 import Costs from "./pages/Costs";
 import Dashboard from "./pages/Dashboard";
 import Labels from "./pages/Labels";
+import Settle from "./pages/Settle";
 import ShelfPrices from "./pages/ShelfPrices";
 import Shopping from "./pages/Shopping";
 import Login from "./pages/Login";
@@ -21,6 +23,10 @@ import System from "./pages/System";
 import TableView from "./pages/Table";
 
 type Theme = "light" | "dark" | "system";
+
+const ANONYMOUS: SessionInfo = {
+  authenticated: false, subject: null, user_id: null, display_name: null, is_admin: false,
+};
 
 function useTheme(): [Theme, (theme: Theme) => void] {
   const [theme, setTheme] = useState<Theme>(() => {
@@ -46,31 +52,33 @@ function useTheme(): [Theme, (theme: Theme) => void] {
 }
 
 export default function App() {
-  const [authenticated, setAuthenticated] = useState<boolean | null>(null);
+  // null while asking; then who is logged in, or `authenticated: false`.
+  const [session, setSession] = useState<SessionInfo | null>(null);
   const [theme, setTheme] = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
     api.me()
-      .then((info) => setAuthenticated(info.authenticated))
-      .catch(() => setAuthenticated(false));
+      .then(setSession)
+      .catch(() => setSession(ANONYMOUS));
   }, []);
 
   const logout = useCallback(async () => {
     await api.logout().catch(() => undefined);
-    setAuthenticated(false);
+    setSession(ANONYMOUS);
     navigate("/");
   }, [navigate]);
 
-  if (authenticated === null) return <Loading label="Indulás…" />;
-  if (!authenticated) return <Login onSuccess={() => setAuthenticated(true)} />;
+  if (session === null) return <Loading label="Indulás…" />;
+  if (!session.authenticated) return <Login onSuccess={setSession} />;
 
   const nextTheme: Theme = theme === "dark" ? "light" : theme === "light" ? "system" : "dark";
   const themeGlyph = theme === "dark" ? "🌙" : theme === "light" ? "☀️" : "🌗";
   const section = sectionFor(location.pathname);
 
   return (
+    <SessionContext.Provider value={session}>
     <div className="app">
       <header className="topbar">
         <span className="brand">🧾 Receipt Tracker</span>
@@ -114,6 +122,7 @@ export default function App() {
           <Route path="/kezi" element={<Manual />} />
           <Route path="/rendszer" element={<System />} />
           <Route path="/elofizetesek" element={<RecurringPage />} />
+          <Route path="/elszamolas" element={<Settle />} />
           <Route path="/statisztika" element={<Dashboard />} />
           <Route path="/arak" element={<Prices />} />
           <Route path="/arcimkek" element={<Labels />} />
@@ -142,5 +151,6 @@ export default function App() {
         ))}
       </nav>
     </div>
+    </SessionContext.Provider>
   );
 }

@@ -1,7 +1,8 @@
-"""Single-user authentication.
+"""Passwords, session cookies and the shortcut's key.
 
 The app sits behind your VPN, so this is a lock on an inside door rather than the front
-gate: one password, one long-lived signed cookie, plus a static key for the phone shortcut.
+gate: a password per person, a long-lived signed cookie naming who they are, plus a static
+key for the phone shortcut. The accounts themselves live in `app.services.users`.
 """
 
 from __future__ import annotations
@@ -138,7 +139,8 @@ def _serializer(settings: Settings) -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(settings.secret_key, salt="receipt-tracker-session")
 
 
-def issue_session(settings: Settings, subject: str = "owner") -> str:
+def issue_session(settings: Settings, subject: str) -> str:
+    """A signed cookie value naming one account by its id."""
     return _serializer(settings).dumps({"sub": subject})
 
 

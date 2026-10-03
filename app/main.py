@@ -26,13 +26,16 @@ from app.api import (
     receipts,
     recurring,
     shopping,
+    splits,
     stats,
     system,
+    users,
 )
 from app.config import get_settings
 from app.db import SessionLocal, engine
 from app.security import check_configuration
 from app.services.seed import seed_if_empty
+from app.services.users import ensure_owner
 from app.version import app_version, build_info
 from app.worker import ExtractionWorker
 
@@ -74,6 +77,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     async with SessionLocal() as session:
         await seed_if_empty(session)
+        # The first login, from APP_PASSWORD_HASH, so the Felhasználók page has an admin.
+        await ensure_owner(session, settings)
 
     worker = ExtractionWorker(settings)
     app.state.worker = worker
@@ -106,10 +111,12 @@ def create_app() -> FastAPI:
     app.include_router(categorising.router)
     app.include_router(labels.router)
     app.include_router(shopping.router)
+    app.include_router(splits.router)
     app.include_router(stats.router)
     app.include_router(costs.router)
     app.include_router(recurring.router)
     app.include_router(system.router)
+    app.include_router(users.router)
 
     @app.get("/health", tags=["ops"])
     async def health() -> JSONResponse:
