@@ -249,6 +249,7 @@ function Row({
         className="btn"
         aria-label={`${item.label} törlése`}
         disabled={busy}
+        style={{ flex: "0 0 auto" }}
         onClick={() => run(() => api.deleteListItem(item.id))}
       >
         🗑

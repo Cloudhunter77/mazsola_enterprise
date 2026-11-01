@@ -129,6 +129,22 @@ class SplitSummary(BaseModel):
     settlements: list[SettlementOut]
 
 
+# --- fix notes -------------------------------------------------------------------
+class FixNoteOut(BaseModel):
+    id: uuid.UUID
+    text: str
+    has_image: bool
+    created_by: str | None
+    created_at: datetime
+    done: bool
+    done_at: datetime | None
+
+
+class FixNotePatch(BaseModel):
+    text: str | None = Field(default=None, max_length=5000)
+    done: bool | None = None
+
+
 # --- receipts ----------------------------------------------------------------
 class UploadResponse(BaseModel):
     id: uuid.UUID

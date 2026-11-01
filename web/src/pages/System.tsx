@@ -11,6 +11,7 @@ import type { ReactNode } from "react";
 import { api } from "../lib/api";
 import { dateTime } from "../lib/format";
 import { AsyncBlock, Card, Tile, useAsync } from "../components/ui";
+import FixNotes from "../components/FixNotes";
 import Users from "../components/Users";
 
 const REPO = "https://github.com/Cloudhunter77/mazsola_enterprise";
@@ -25,6 +26,7 @@ export default function System() {
       {/* First: who can log in is the thing you come to this page to change; the version
           below is only read when checking that an update took. */}
       <Users />
+      <FixNotes />
 
       <AsyncBlock state={info}>
         {(data) => (

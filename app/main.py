@@ -22,6 +22,7 @@ from app.api import (
     catalog,
     categorising,
     costs,
+    fixes,
     labels,
     receipts,
     recurring,
@@ -114,6 +115,7 @@ def create_app() -> FastAPI:
     app.include_router(splits.router)
     app.include_router(stats.router)
     app.include_router(costs.router)
+    app.include_router(fixes.router)
     app.include_router(recurring.router)
     app.include_router(system.router)
     app.include_router(users.router)

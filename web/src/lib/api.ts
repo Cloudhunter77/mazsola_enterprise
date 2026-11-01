@@ -43,6 +43,10 @@ const json = (method: string, body: unknown): RequestInit => ({
 // --- types (mirroring app/schemas/api.py) ---------------------------------
 export type Money = string;
 
+export interface FixNote {
+  id: string; text: string; has_image: boolean; created_by: string | null;
+  created_at: string; done: boolean; done_at: string | null;
+}
 export interface SessionInfo {
   authenticated: boolean; subject: string | null;
   user_id: string | null; display_name: string | null; is_admin: boolean;
@@ -252,6 +256,17 @@ export const api = {
   login: (username: string, password: string) =>
     request<SessionInfo>("/api/auth/login", json("POST", { username: username || null, password })),
   users: () => request<User[]>("/api/users"),
+  fixNotes: () => request<FixNote[]>("/api/fixes"),
+  addFixNote: (text: string, image: File | null) => {
+    const form = new FormData();
+    form.append("text", text);
+    if (image) form.append("image", image);
+    return request<FixNote>("/api/fixes", { method: "POST", body: form });
+  },
+  updateFixNote: (id: string, body: { done?: boolean; text?: string }) =>
+    request<FixNote>(`/api/fixes/${id}`, json("PATCH", body)),
+  deleteFixNote: (id: string) => request<void>(`/api/fixes/${id}`, { method: "DELETE" }),
+  fixNoteImageUrl: (id: string) => `/api/fixes/${id}/image`,
   createUser: (body: { username: string; display_name: string; password: string; is_admin: boolean }) =>
     request<User>("/api/users", json("POST", body)),
   updateUser: (id: string, body: Partial<{
