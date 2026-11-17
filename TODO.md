@@ -15,3 +15,6 @@ Top item = what to do next. The budgeting plan is in [`docs/budgeting-plan.md`](
   - [ ] A Kívánságlista pot per owner who wants one (Zsebek → + Kívánságlista-gyűjtés)
   - [ ] Wishlist: Porszívó (Közös, Alacsony), Nyomtató (Közös, Közepes), LED világítás (Közös, Magas), Pendrive (Petra, Magas), Kézi mixer (Közös, Közepes), Gyaloglópad (Petra, Közép-magas)
   - [ ] Pocket lines in Terv: Hobbi → Hobby/projektek, Kirándulás → Kirándulás, Vésztartalék → a savings pocket
+- [ ] Update the NAS to e1b08e0 (TrueNAS Apps: pull and restart), then check ⚙ Rendszer: commit e1b08e0, schema c5f2a8d1e3b9 up to date <!-- #8 -->
+- [ ] Find the 19 million Barkács entry: Statisztika → Kategóriák → tap Barkács, open the top line's receipt and correct it <!-- #9 -->
+- [ ] CI: update the GitHub Actions that still target Node 20 (checkout, setup-node, setup-python, docker/*) before GitHub drops it <!-- #10 -->

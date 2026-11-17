@@ -145,3 +145,6 @@ Replaces D10.
 
 ## D34 – A purchase on a pocket line (e.g. Hobbi) that exceeds that line's money uses the pocket's unassigned money next, and only then counts as the month's spending; a purchase linked to a goal draws only from the goal (2026-11-17)
 **Why:** D27 says the pocket pays up to its balance: money already sitting in the Hobby pocket should pay for hobby things even before it is earmarked; a goal stays strict as agreed in Q4
+
+## D35 – A Rendszeres item paid from a pocket has no plan row of its own and its bills draw from the pocket; its money is planned as that pocket's line (2026-11-17)
+**Why:** planning it both as its own row and as the pocket's monthly transfer would count the same money twice
