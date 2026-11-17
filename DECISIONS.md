@@ -39,7 +39,7 @@ Setting money aside for a goal is a transfer, not spending. A purchase linked to
 down the saved money instead of counting against that month's budget, because the goal paid for
 it. It still shows as real spending in Statisztika.
 
-## D10 — No carry-over (2026-11-06)
+## D10 — No carry-over (2026-11-06) (→ D25)
 Unspent budget does not roll into the next month.
 
 ## D11 — The wishlist and the shopping list are two lists, linked (2026-11-06)
@@ -108,3 +108,40 @@ start (nothing in the app deletes or renames a category).
 Closing writes each line's amount for that month explicitly, and plan edits to a closed month
 are refused until it is reopened. Why: amounts carry forward, so without the snapshot an edit to
 an earlier month could silently change a month already discussed.
+
+## D23 – A pot is a Revolut pocket: a pocket record (name, whose account, opening balance as of a date) added by hand; goals and pocket lines are earmarks inside it, several per pocket; money no earmark claims shows as 'nincs hozzárendelve' (2026-11-17)
+**Why:** the household keeps savings, goals and hobby money in real Revolut pockets, and one pocket (Savings) holds several purposes
+
+## D24 – Pockets have no currency: every amount is plain forints; a euro pocket like Savings is entered in its own numbers and read as euros by the user (2026-11-17)
+**Why:** the user prefers simplicity; 40 vs 40 000 is too big a difference to misread
+
+## D25 – A budget line can be 'zsebből' (pocket-funded): its monthly amount is a transfer into its pocket, its purchases draw the pocket down, and what is left carries over; Megtakarítás lines are always pocket lines (2026-11-17)
+Replaces D10.
+**Why:** money moved into a Revolut pocket stays there; no-carry-over still holds for everyday lines
+
+## D26 – Goals are earmarks with target, date and progress; their Terv row is editable, carries forward, and shows 'javasolt: (target - saved) / months left'; a bought goal's leftover is moved to another earmark or released (2026-11-17)
+**Why:** agreed in the stage 2 grilling (Q3, Q5)
+
+## D27 – A pocket pays only up to its balance: anything beyond counts as normal spending in its category that month (2026-11-17)
+**Why:** a pot going negative would hide overspending; agreed for goals and every pocket (Q4, Q18)
+
+## D28 – Meeting step 5 lists the transfers to make (who sends what to whose pocket, Közös earmarks split equally); each is ticked by default, unticked ones stay in Hónap Teendők, and only ticked transfers count toward a pocket's balance; extra deposits/withdrawals by hand on Zsebek; the meeting asks for each pocket's actual Revolut balance and shows the difference (2026-11-17)
+**Why:** pocket balances are real money, so they should only change when a transfer actually happened
+
+## D29 – A receipt can be marked as paid from a pocket ('Zsebből' selector on the receipt page, also on Rendszeres, Kézzel and 'Megvettük, nincs blokk'); it is guessed from the categories when every line falls under one pocket line, shown as a guess, and a person's choice always wins; a pocket-paid receipt counts only against that pocket (2026-11-17)
+**Why:** the user asked for a selector like the category picker; groceries on a trip belong to Kirándulás, not Kaja
+
+## D30 – Purchases are linked to a goal or wishlist item per receipt line (all ticked by default), from the receipt page or from the goal/item ('Megvettük': pick a recent receipt, or 'nincs blokk' with price and date) (2026-11-17)
+**Why:** a camera bought with an SD card should draw only the camera from the pot
+
+## D31 – Wishlist: owner, name, priority (Alacsony / Alacsony-közepes / Közepes / Közép-magas / Magas), estimated price, link or shop, note, optional catalogue product; each owner may have a wishlist earmark that its purchases draw from; 'Listára' copies to the shopping list linked, and only linking the real purchase closes the item with its actual price (2026-11-17)
+**Why:** matches the spreadsheet's five priorities and its monthly wishlist pot
+
+## D32 – Pénz sub-pages: Hónap, Terv, Rendszeres, Zsebek, Statisztika (Zsebek replaces the planned Célok); Kívánságlista is under Lista (2026-11-17)
+**Why:** goals are now earmarks inside pockets, so pockets are the page
+
+## D33 – The spreadsheet's 2 goals and 6 wishlist items are entered by hand after deploying, not imported (2026-11-17)
+**Why:** they have no amounts or dates yet, and eight entries are quicker to type than an import is to write
+
+## D34 – A purchase on a pocket line (e.g. Hobbi) that exceeds that line's money uses the pocket's unassigned money next, and only then counts as the month's spending; a purchase linked to a goal draws only from the goal (2026-11-17)
+**Why:** D27 says the pocket pays up to its balance: money already sitting in the Hobby pocket should pay for hobby things even before it is earmarked; a goal stays strict as agreed in Q4

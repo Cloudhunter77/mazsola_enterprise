@@ -25,6 +25,7 @@ type Draft = {
   amount_mode: "fixed" | "variable";
   cadence: string; day_of_month: string; month_of_year: string; starts_on: string;
   payment_method: string; owner_id: string; payer_id: string; category_id: string;
+  pocket_id: string;
   split: Split; percents: Record<string, string>;
 };
 
@@ -39,7 +40,7 @@ function blank(direction: "expense" | "income", me: string | null): Draft {
     payment_method: "card",
     // A salary is someone's; a bill is usually the household's.
     owner_id: direction === "income" ? me ?? "" : "",
-    payer_id: "", category_id: "", split: "none", percents: {},
+    payer_id: "", category_id: "", pocket_id: "", split: "none", percents: {},
   };
 }
 
@@ -54,7 +55,7 @@ function fromRule(rule: Rule): Draft {
     month_of_year: String(rule.month_of_year ?? new Date(rule.starts_on).getMonth() + 1),
     starts_on: rule.starts_on, payment_method: rule.payment_method,
     owner_id: rule.owner_id ?? "", payer_id: rule.payer_id ?? "",
-    category_id: rule.category_id ?? "",
+    category_id: rule.category_id ?? "", pocket_id: rule.pocket_id ?? "",
     split: shares.length === 0 ? "none" : equal ? "equal" : "custom", percents,
   };
 }
@@ -207,6 +208,7 @@ function RuleForm({ draft, setDraft, editing, people, categories, onCancel, onSa
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const groups = useMemo(() => groupCategories(categories), [categories]);
+  const pockets = (useAsync(() => api.pockets(), []).data ?? []).filter((p) => p.active || p.id === draft.pocket_id);
   const income = draft.direction === "income";
   const active = people.filter((p) => p.active);
   const set = (patch: Partial<Draft>) => setDraft({ ...draft, ...patch });
@@ -249,6 +251,7 @@ function RuleForm({ draft, setDraft, editing, people, categories, onCancel, onSa
       owner_id: draft.owner_id || null,
       payer_id: income ? null : draft.payer_id || null,
       category_id: income ? null : draft.category_id || null,
+      pocket_id: income ? null : draft.pocket_id || null,
       default_shares: split,
     };
 
@@ -339,6 +342,13 @@ function RuleForm({ draft, setDraft, editing, people, categories, onCancel, onSa
                      placeholder="alapból a név" />
             </label>
             <label>
+              Zsebből
+              <select value={draft.pocket_id} onChange={(e) => set({ pocket_id: e.target.value })}>
+                <option value="">– főszámláról –</option>
+                {pockets.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </label>
+            <label>
               Ki fizeti
               <select value={draft.payer_id} onChange={(e) => set({ payer_id: e.target.value })}>
                 <option value="">– nincs megadva –</option>
@@ -374,7 +384,9 @@ function RuleForm({ draft, setDraft, editing, people, categories, onCancel, onSa
       <p className="muted small">
         {income
           ? "A bevétel sosem rögzül magától: minden hónapban várja, és te jelölöd, hogy megérkezett."
-          : draft.amount_mode === "variable"
+          : draft.pocket_id
+            ? "Zsebből fizetve: a zsebet csökkenti, és nem tervez külön sort – a pénzét a zseb havi befizetése adja."
+            : draft.amount_mode === "variable"
             ? "Változó összegnél minden hónapban beírod, mennyi lett; a terv a legutóbbival számol."
             : "Fix összegnél az esedékes napon magától rögzül, megosztva, ha beállítottad. Rövidebb hónapban az utolsó napon."}
       </p>

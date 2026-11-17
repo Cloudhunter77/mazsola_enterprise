@@ -13,26 +13,33 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import AuthDep, SessionDep, SettingsDep
+from app.api.pockets import wishlist_earmark
 from app.models import (
+    BudgetLine,
     Correction,
     LineKind,
     Merchant,
+    Pocket,
     Receipt,
     ReceiptImage,
     ReceiptItem,
     ReceiptStatus,
+    WishlistItem,
 )
 from app.schemas.api import (
     ItemOut,
     ItemPatch,
     ManualReceiptIn,
     ReceiptDetail,
+    ReceiptLinkIn,
     ReceiptPatch,
+    ReceiptPocketIn,
     ReceiptSummary,
     ShareOut,
     SplitIn,
     UploadResponse,
 )
+from app.services import pockets as pk
 from app.services.catalog import link_product, resolve_merchant
 from app.services.ingest import IngestError, ingest_images
 from app.services.manual import ManualEntryError, create_manual_receipt
@@ -117,6 +124,10 @@ async def create_manual(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     receipt.uploaded_by_id = receipt.paid_by_id = principal.user_id
+    if body.pocket_id is not None:
+        if await session.get(Pocket, body.pocket_id) is None:
+            raise HTTPException(status_code=422, detail="Nincs ilyen zseb.")
+        receipt.pocket_id, receipt.pocket_source = body.pocket_id, "manual"
     await session.commit()
     return await get_receipt(principal, session, receipt.id)
 
@@ -209,6 +220,12 @@ async def get_receipt(_: AuthDep, session: SessionDep, receipt_id: uuid.UUID) ->
         )
         for share in await shares_of(session, receipt.id)
     ]
+    if receipt.pocket_source != "manual":
+        ctx = await pk.context(session)
+        owner = None if detail.shares else receipt.paid_by_id
+        detail.pocket_guess = pk.guessed_pocket(
+            pk.receipt_parts(receipt, ctx.blank), owner, ctx
+        )
     return detail
 
 
@@ -227,6 +244,82 @@ async def split_receipt(
         )
     except SplitError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await session.commit()
+    return await get_receipt(principal, session, receipt_id)
+
+
+@router.put("/{receipt_id}/pocket", response_model=ReceiptDetail)
+async def set_pocket(
+    principal: AuthDep, session: SessionDep, receipt_id: uuid.UUID, body: ReceiptPocketIn
+) -> ReceiptDetail:
+    """Which Revolut pocket paid for this - or the main account (D29).
+
+    Once chosen, the choice is kept over any guess. `auto` forgets it, so the pocket is
+    guessed from the categories again.
+    """
+    receipt = await session.get(Receipt, receipt_id)
+    if receipt is None:
+        raise HTTPException(status_code=404, detail="No such receipt.")
+    if body.auto:
+        receipt.pocket_id, receipt.pocket_source = None, None
+    else:
+        if body.pocket_id is not None and await session.get(Pocket, body.pocket_id) is None:
+            raise HTTPException(status_code=422, detail="Nincs ilyen zseb.")
+        receipt.pocket_id, receipt.pocket_source = body.pocket_id, "manual"
+    await session.commit()
+    return await get_receipt(principal, session, receipt_id)
+
+
+@router.put("/{receipt_id}/links", response_model=ReceiptDetail)
+async def link_lines(
+    principal: AuthDep, session: SessionDep, receipt_id: uuid.UUID, body: ReceiptLinkIn
+) -> ReceiptDetail:
+    """These lines were what a goal saved for, or were a wishlist item (D30).
+
+    A goal's lines are paid from its pocket. A wishlist item's lines are paid from its
+    owner's wishlist pot, if they have one, and mark the item bought at what they cost.
+    """
+    receipt = await session.scalar(
+        select(Receipt).where(Receipt.id == receipt_id).options(selectinload(Receipt.items))
+    )
+    if receipt is None:
+        raise HTTPException(status_code=404, detail="No such receipt.")
+    if body.earmark_id is not None and body.wishlist_item_id is not None:
+        raise HTTPException(status_code=422, detail="Egy célt vagy egy tételt adj meg.")
+
+    earmark_id = body.earmark_id
+    wish: WishlistItem | None = None
+    if earmark_id is not None:
+        line = await session.get(BudgetLine, earmark_id)
+        if line is None or line.pocket_id is None:
+            raise HTTPException(status_code=422, detail="Nincs ilyen cél.")
+    if body.wishlist_item_id is not None:
+        wish = await session.get(WishlistItem, body.wishlist_item_id)
+        if wish is None:
+            raise HTTPException(status_code=404, detail="Nincs ilyen tétel.")
+        earmark_id = await wishlist_earmark(session, wish.owner_id)
+
+    wanted = set(body.item_ids)
+    touched_wishes = set()
+    for item in receipt.items:
+        if item.id not in wanted:
+            continue
+        if item.wishlist_item_id:
+            touched_wishes.add(item.wishlist_item_id)
+        item.earmark_id = earmark_id
+        item.wishlist_item_id = wish.id if wish else None
+    if wish is not None and receipt.purchased_at is not None:
+        wish.bought_on = receipt.purchased_at.date()
+    await session.flush()
+    # An item whose last linked line was just unlinked is no longer bought.
+    for wish_id in touched_wishes - ({wish.id} if wish else set()):
+        still = await session.scalar(
+            select(func.count(ReceiptItem.id)).where(ReceiptItem.wishlist_item_id == wish_id)
+        )
+        if not still:
+            other = await session.get(WishlistItem, wish_id)
+            if other is not None:
+                other.bought_on = None
     await session.commit()
     return await get_receipt(principal, session, receipt_id)
 

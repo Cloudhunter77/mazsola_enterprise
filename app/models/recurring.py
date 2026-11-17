@@ -96,6 +96,10 @@ class RecurringPayment(Base, TimestampMixin):
     # How every generated receipt is split: [{"user_id": "...", "percent": "50"}, ...].
     # NULL means not split.
     default_shares: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Paid from a Revolut pocket: every receipt it generates is marked as paid from there.
+    pocket_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("pockets.id", ondelete="SET NULL"), nullable=True
+    )
 
     charges: Mapped[list[RecurringCharge]] = relationship(
         back_populates="payment", cascade="all, delete-orphan", order_by="RecurringCharge.period"

@@ -65,6 +65,8 @@ export interface Item {
   product_id: string | null; category_id: string | null; confidence: number | null;
   // Which rule filed it, or "manual" when you did.
   category_source: string | null;
+  // The goal or pocket line it was bought for, and the wishlist item it was.
+  earmark_id?: string | null; wishlist_item_id?: string | null;
 }
 
 export interface ReceiptSummary {
@@ -87,6 +89,8 @@ export interface ReceiptDetail extends ReceiptSummary {
   pages: number; uploaded_by_id: string | null;
   // Empty when the bill is not split.
   shares: Share[];
+  // Chosen ("manual"; null pocket = the main account), or only guessed from the categories.
+  pocket_id: string | null; pocket_source: string | null; pocket_guess: string | null;
 }
 
 export interface SplitReceipt {
@@ -169,6 +173,7 @@ export interface ManualItem {
 export interface ManualReceipt {
   merchant_name: string; purchased_at: string; items: ManualItem[];
   total_gross?: number | null; payment_method?: string; notes?: string | null;
+  pocket_id?: string | null;
 }
 export interface Recurring {
   id: string; name: string; merchant_name: string; amount: Money; currency: string;
@@ -179,6 +184,7 @@ export interface Recurring {
   // null is Közös.
   owner_id: string | null; payer_id: string | null;
   default_shares: { user_id: string; percent: Money }[] | null;
+  pocket_id: string | null;
   charge_count: number; next_charge: string | null;
 }
 
@@ -199,12 +205,16 @@ export interface BudgetStatus {
 export interface BudgetLine {
   id: string; name: string; owner_id: string | null; kind: LineKind;
   category_ids: string[]; active: boolean; sort_order: number; notes: string | null;
+  pocket_id: string | null; target_amount: Money | null; target_date: string | null;
+  is_wishlist: boolean; bought_on: string | null;
 }
 export interface PlanCell { amount: Money; explicit: boolean }
 export interface PlanRow {
   key: string; type: "line" | "recurring" | "income"; id: string; name: string;
   owner_id: string | null; kind: LineKind; active: boolean; category_ids: string[];
   yearly: boolean; cells: PlanCell[];
+  pocket_id: string | null; target_amount: Money | null; target_date: string | null;
+  suggestion: Money | null;
 }
 export interface PlanMonth { month: string; period_id: string | null; locked: boolean }
 export interface PersonTotals { user_id: string; income: Money; planned: Money; free: Money }
@@ -240,12 +250,52 @@ export interface MonthView {
   issues: {
     due: Occurrence[]; uncategorised: Piece[]; maybe_shared: Piece[];
     late: (Piece & { period_month: string })[];
+    maybe_pocket: Piece[]; transfers: PocketTransfer[];
   };
+  pockets: PocketView[];
   totals: {
     planned_spending: Money; planned_aside: Money; spent: Money;
     income_arrived: Money; income_expected: Money; free: Money;
   };
   meeting_due: boolean; receipt_count: number;
+}
+
+// --- pockets and the wishlist ------------------------------------------------
+export interface Pocket {
+  id: string; name: string; holder_id: string | null; opening_balance: Money;
+  opened_on: string; active: boolean; notes: string | null;
+}
+/** One earmark of a pocket, or (line_id null) the money no earmark claims. */
+export interface Bucket {
+  line_id: string | null; name: string; owner_id: string | null; kind: LineKind | null;
+  is_wishlist: boolean; target_amount: Money | null; target_date: string | null;
+  bought_on: string | null; category_ids: string[];
+  plan: Money; opening: Money; money_in: Money; money_out: Money; closing: Money;
+  suggestion: Money | null; receipts: Piece[];
+}
+export interface PocketView {
+  pocket: Pocket; opening: Money; closing: Money; buckets: Bucket[];
+  check: { checked_on: string; balance: Money; expected: Money; difference: Money } | null;
+}
+export interface PocketTransfer {
+  id: string; pocket_id: string; pocket_name: string; holder_id: string | null;
+  line_id: string | null; line_name: string | null; amount: Money; on: string;
+  kind: string; done: boolean; from_user_id: string | null; note: string | null;
+}
+export interface PocketsOverview {
+  users: Person[]; start: string; month: string; pockets: PocketView[];
+  pending: PocketTransfer[];
+}
+export interface ProposedTransfer {
+  line_id: string; line_name: string; pocket_id: string; pocket_name: string;
+  holder_id: string | null; from_user_id: string | null; amount: Money;
+}
+export interface Wish {
+  id: string; owner_id: string | null; name: string; priority: number;
+  priority_label: string; estimated_price: Money | null; link: string | null;
+  note: string | null; product_id: string | null; product_name: string | null;
+  on_list: boolean; bought_on: string | null; actual_price: Money | null;
+  receipt_ids: string[]; earmark_id: string | null;
 }
 
 // --- endpoints -------------------------------------------------------------
@@ -538,7 +588,11 @@ export const api = {
 
   budgetStatus: () => request<BudgetStatus>("/api/budget/status"),
   periods: () => request<Period[]>("/api/budget/periods"),
-  openPeriod: (body: { starts_on?: string; month?: string }) =>
+  openPeriod: (body: {
+    starts_on?: string; month?: string;
+    transfers?: { line_id: string; from_user_id: string | null; amount: number; done: boolean }[];
+    checks?: { pocket_id: string; balance: number }[];
+  }) =>
     request<Period>("/api/budget/periods", json("POST", body)),
   reopenPeriod: (id: string) =>
     request<Period>(`/api/budget/periods/${id}/reopen`, { method: "POST" }),
@@ -557,6 +611,43 @@ export const api = {
     request<BudgetLine>(`/api/budget/lines/${id}`, json("PATCH", body)),
   removeLine: (id: string) =>
     request<{ deleted: boolean }>(`/api/budget/lines/${id}`, { method: "DELETE" }),
+
+  goalBought: (id: string, body: { move_to_line_id?: string | null; release?: boolean }) =>
+    request<BudgetLine>(`/api/budget/lines/${id}/bought`, json("POST", body)),
+
+  pockets: () => request<Pocket[]>("/api/pockets"),
+  pocketsOverview: () => request<PocketsOverview>("/api/pockets/overview"),
+  createPocket: (body: Record<string, unknown>) =>
+    request<Pocket>("/api/pockets", json("POST", body)),
+  updatePocket: (id: string, body: Record<string, unknown>) =>
+    request<Pocket>(`/api/pockets/${id}`, json("PATCH", body)),
+  deletePocket: (id: string) => request<void>(`/api/pockets/${id}`, { method: "DELETE" }),
+  pocketCheck: (pocket_id: string, balance: number) =>
+    request<void>("/api/pockets/checks", json("POST", { pocket_id, balance })),
+  proposedTransfers: (month: string) =>
+    request<ProposedTransfer[]>(`/api/pockets/proposed?month=${month}`),
+  pocketTransfer: (body: { pocket_id: string; line_id: string | null; amount: number; note?: string }) =>
+    request<{ id: string }>("/api/pockets/transfers", json("POST", body)),
+  pocketMove: (body: { pocket_id: string; from_line_id: string | null; to_line_id: string | null; amount: number }) =>
+    request<void>("/api/pockets/moves", json("POST", body)),
+  transferDone: (id: string, done = true) =>
+    request<void>(`/api/pockets/transfers/${id}`, json("PATCH", { done })),
+  deleteTransfer: (id: string) =>
+    request<void>(`/api/pockets/transfers/${id}`, { method: "DELETE" }),
+  purchase: (body: Record<string, unknown>) =>
+    request<{ receipt_id: string }>("/api/pockets/purchase", json("POST", body)),
+  setReceiptPocket: (id: string, body: { pocket_id?: string | null; auto?: boolean }) =>
+    request<ReceiptDetail>(`/api/receipts/${id}/pocket`, json("PUT", body)),
+  linkLines: (id: string, body: { item_ids: string[]; earmark_id?: string | null; wishlist_item_id?: string | null }) =>
+    request<ReceiptDetail>(`/api/receipts/${id}/links`, json("PUT", body)),
+
+  wishlist: () => request<Wish[]>("/api/wishlist"),
+  addWish: (body: Record<string, unknown>) => request<Wish>("/api/wishlist", json("POST", body)),
+  updateWish: (id: string, body: Record<string, unknown>) =>
+    request<Wish>(`/api/wishlist/${id}`, json("PATCH", body)),
+  deleteWish: (id: string) => request<void>(`/api/wishlist/${id}`, { method: "DELETE" }),
+  wishToList: (id: string) => request<Wish>(`/api/wishlist/${id}/to-list`, { method: "POST" }),
+  reopenWish: (id: string) => request<Wish>(`/api/wishlist/${id}/reopen`, { method: "POST" }),
 
   income: () => request<Income[]>("/api/income"),
   addIncome: (body: { user_id: string | null; name: string; amount: number; received_on: string; notes?: string }) =>

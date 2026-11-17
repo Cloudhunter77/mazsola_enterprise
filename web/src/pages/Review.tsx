@@ -14,6 +14,7 @@ import {
   KIND_LABELS, REVIEW_REASONS, STATUS_LABELS, dateTime, fromLocalInput, ft, qty, toLocalInput,
 } from "../lib/format";
 import ReceiptCategory from "../components/ReceiptCategory";
+import PocketAndGoal from "../components/PocketAndGoal";
 import SplitBill from "../components/SplitBill";
 import { AsyncBlock, Card, useAsync } from "../components/ui";
 
@@ -104,6 +105,8 @@ export default function Review() {
               />
 
               <SplitBill receipt={receipt} onSaved={() => state.reload()} />
+
+              <PocketAndGoal receipt={receipt} onSaved={() => state.reload()} />
 
               <Card title="Műveletek">
                 <div className="row">

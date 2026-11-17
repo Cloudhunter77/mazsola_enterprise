@@ -37,7 +37,10 @@ export const SECTIONS: Section[] = [
   {
     glyph: "🛒",
     label: "Lista",
-    pages: [{ to: "/lista", label: "Bevásárlás" }],
+    pages: [
+      { to: "/lista", label: "Bevásárlás" },
+      { to: "/kivansaglista", label: "Kívánságlista" },
+    ],
   },
   {
     glyph: "🧾",
@@ -65,6 +68,7 @@ export const SECTIONS: Section[] = [
       { to: "/penz", label: "Hónap" },
       { to: "/terv", label: "Terv" },
       { to: "/rendszeres", label: "Rendszeres" },
+      { to: "/zsebek", label: "Zsebek" },
       { to: "/statisztika", label: "Statisztika" },
     ],
     also: /^\/megbeszeles$/,

@@ -170,6 +170,9 @@ class ItemOut(ORMModel):
     # whole-receipt choice will leave alone.
     category_source: str | None = None
     confidence: float | None
+    # The goal or pocket line it was bought for, and the wishlist item it was (D30).
+    earmark_id: uuid.UUID | None = None
+    wishlist_item_id: uuid.UUID | None = None
 
 
 class ReceiptSummary(ORMModel):
@@ -210,6 +213,26 @@ class ReceiptDetail(ReceiptSummary):
     uploaded_by_id: uuid.UUID | None = None
     # Empty when the bill is not split.
     shares: list[ShareOut] = []
+    # The pocket it was paid from: chosen ("manual", null meaning the main account), or a
+    # guess from its categories that nobody has confirmed (D29).
+    pocket_id: uuid.UUID | None = None
+    pocket_source: str | None = None
+    pocket_guess: uuid.UUID | None = None
+
+
+class ReceiptPocketIn(BaseModel):
+    """Which pocket paid. `auto` forgets the choice and goes back to guessing."""
+
+    pocket_id: uuid.UUID | None = None
+    auto: bool = False
+
+
+class ReceiptLinkIn(BaseModel):
+    """These lines were bought for a goal, or were a wishlist item. Neither unlinks them."""
+
+    item_ids: list[uuid.UUID] = Field(min_length=1, max_length=200)
+    earmark_id: uuid.UUID | None = None
+    wishlist_item_id: uuid.UUID | None = None
 
 
 class ReceiptPatch(BaseModel):
@@ -470,6 +493,8 @@ class ManualReceiptIn(BaseModel):
     payment_method: str = "card"
     currency: str = "HUF"
     notes: str | None = None
+    # Paid from a Revolut pocket rather than the main account.
+    pocket_id: uuid.UUID | None = None
 
 
 # --- recurring payments ------------------------------------------------------
@@ -497,6 +522,8 @@ class RecurringIn(BaseModel):
     # Who pays a bill, and how each one it generates is split. Unused for income.
     payer_id: uuid.UUID | None = None
     default_shares: list[ShareIn] | None = Field(default=None, max_length=20)
+    # Paid from a Revolut pocket: its bills draw from there, and it plans nothing itself.
+    pocket_id: uuid.UUID | None = None
 
 
 class RecurringOut(ORMModel):
@@ -519,6 +546,7 @@ class RecurringOut(ORMModel):
     owner_id: uuid.UUID | None
     payer_id: uuid.UUID | None
     default_shares: list[dict] | None
+    pocket_id: uuid.UUID | None = None
     # Filled by the API: how many receipts this rule has generated, and when it next will.
     # Deliberately not called `charges`: that is the ORM relationship, and a field of the
     # same name makes pydantic lazy-load it, which in an async session is an error rather

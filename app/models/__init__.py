@@ -13,6 +13,14 @@ from app.models.catalog import Category, Merchant, MerchantAlias, Product, Produ
 from app.models.feedback import FixNote
 from app.models.household import ReceiptShare, Settlement, User
 from app.models.ops import AttemptKind, Correction, ExtractionAttempt
+from app.models.pockets import (
+    PRIORITIES,
+    Pocket,
+    PocketCheck,
+    PocketTransfer,
+    TransferKind,
+    WishlistItem,
+)
 from app.models.price import LabelStatus, PriceLabelPhoto, PriceObservation
 from app.models.receipt import (
     LineKind,
@@ -52,7 +60,11 @@ __all__ = [
     "LineKind",
     "Merchant",
     "MerchantAlias",
+    "PRIORITIES",
     "PaymentMethod",
+    "Pocket",
+    "PocketCheck",
+    "PocketTransfer",
     "PriceLabelPhoto",
     "PriceObservation",
     "Product",
@@ -67,5 +79,7 @@ __all__ = [
     "ScanStatus",
     "Settlement",
     "ShoppingItem",
+    "TransferKind",
+    "WishlistItem",
     "User",
 ]

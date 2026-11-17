@@ -16,8 +16,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { api, type BudgetStatus, type MonthView, type Plan } from "../lib/api";
-import { amountOf, isAside, monthLabel, ownerName, periodRange, plain } from "../lib/budget";
+import { api, type BudgetStatus, type MonthView, type Plan, type ProposedTransfer } from "../lib/api";
+import { amountOf, isAside, monthLabel, ownerName, periodRange, plain, pocketLabel } from "../lib/budget";
 import { ft } from "../lib/format";
 import { useSession } from "../lib/session";
 import { AsyncBlock, Card, useAsync } from "../components/ui";
@@ -307,12 +307,30 @@ function CloseStep({ status, next, setNext }: {
   const [busy, setBusy] = useState(false);
   const options = [1, 2, 3].map((n) => addMonths(current.month, n));
   if (!options.includes(next)) options.unshift(next);
+  const proposed = useAsync(() => api.proposedTransfers(next), [next]);
+  const overview = useAsync(() => api.pocketsOverview(), []);
+  // Per proposed transfer: whether it was sent (ticked by default) and how much (D28).
+  const [sent, setSent] = useState<Record<string, { done: boolean; amount: string }>>({});
+  const [checks, setChecks] = useState<Record<string, string>>({});
+  const users = overview.data?.users ?? [];
+  const keyOf = (t: ProposedTransfer) => `${t.line_id}:${t.from_user_id ?? ""}`;
+
+  useEffect(() => {
+    setSent(Object.fromEntries((proposed.data ?? []).map((t) => [keyOf(t), { done: true, amount: plain(t.amount) }])));
+  }, [proposed.data]);
 
   async function close() {
     setBusy(true);
     setError(null);
     try {
-      await api.openPeriod({ starts_on: startsOn, month: next });
+      const transfers = (proposed.data ?? []).map((t) => {
+        const state = sent[keyOf(t)] ?? { done: true, amount: plain(t.amount) };
+        return { line_id: t.line_id, from_user_id: t.from_user_id, amount: amountOf(state.amount) ?? 0, done: state.done };
+      });
+      const balances = Object.entries(checks)
+        .filter(([, v]) => v.trim() !== "")
+        .map(([pocket_id, v]) => ({ pocket_id, balance: amountOf(v) ?? 0 }));
+      await api.openPeriod({ starts_on: startsOn, month: next, transfers, checks: balances });
       navigate("/penz");
     } catch (err) {
       setError((err as Error).message);
@@ -335,6 +353,60 @@ function CloseStep({ status, next, setNext }: {
           </select>
         </label>
       </div>
+      {(overview.data?.pockets.length ?? 0) > 0 && (
+        <>
+          <h3 style={{ margin: "14px 0 6px" }}>Mennyi van most a zsebekben?</h3>
+          <p className="muted small" style={{ marginTop: 0 }}>
+            Írd be a Revolut szerinti egyenleget, ha megnézted – az app összeveti a sajátjával.
+          </p>
+          {overview.data!.pockets.map((view) => (
+            <div key={view.pocket.id} className="row" style={{ justifyContent: "space-between", marginBottom: 6 }}>
+              <span style={{ flex: "1 1 150px" }}>
+                {pocketLabel(view.pocket, users)}
+                <span className="muted small"> · app szerint {ft(view.closing)}</span>
+              </span>
+              <input
+                style={{ width: "9em", padding: "9px 10px", border: "1px solid var(--border)", borderRadius: 8,
+                         background: "var(--surface-raised)", fontSize: 16, textAlign: "right", minHeight: 44 }}
+                inputMode="decimal" placeholder="Revolut" aria-label={`${view.pocket.name} a Revolut szerint`}
+                value={checks[view.pocket.id] ?? ""}
+                onChange={(e) => setChecks({ ...checks, [view.pocket.id]: e.target.value })}
+              />
+            </div>
+          ))}
+        </>
+      )}
+
+      {(proposed.data?.length ?? 0) > 0 && (
+        <>
+          <h3 style={{ margin: "14px 0 6px" }}>Átutalások a zsebekbe – {monthLabel(next).toLowerCase()}</h3>
+          <p className="muted small" style={{ marginTop: 0 }}>
+            Ami be van pipálva, azt elküldöttnek veszi. Ami nincs, az a Hónap teendői között vár,
+            amíg el nem küldöd.
+          </p>
+          {proposed.data!.map((t) => {
+            const state = sent[keyOf(t)] ?? { done: true, amount: plain(t.amount) };
+            const set = (patch: Partial<typeof state>) => setSent({ ...sent, [keyOf(t)]: { ...state, ...patch } });
+            return (
+              <div key={keyOf(t)} className="occ-row">
+                <label className="row" style={{ flex: "1 1 180px", display: "flex", gap: 8, color: "var(--ink)", fontSize: "0.95rem" }}>
+                  <input type="checkbox" checked={state.done} style={{ width: "auto", minHeight: 0 }}
+                         onChange={(e) => set({ done: e.target.checked })} />
+                  <span>
+                    {ownerName(users, t.from_user_id)} → {pocketLabel({ name: t.pocket_name, holder_id: t.holder_id }, users)}
+                    <span className="muted small"> · {t.line_name}</span>
+                  </span>
+                </label>
+                <div className="occ-actions">
+                  <input inputMode="decimal" aria-label={`${t.line_name} átutalás`} value={state.amount}
+                         onChange={(e) => set({ amount: e.target.value })} />
+                </div>
+              </div>
+            );
+          })}
+        </>
+      )}
+
       <p className="muted small">
         A lezárt hónap terve befagy; ha később javítani kell, a Hónap oldalon újranyitható.
       </p>

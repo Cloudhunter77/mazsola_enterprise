@@ -88,7 +88,20 @@ The household budget lives under the Pénz tab, replacing a spreadsheet. The ful
 - **Income** is never a receipt. A salary set up under Rendszeres is expected every month and
   confirmed when it arrives; a bonus is added on the Kézzel page.
 - **Havi megbeszélés** walks through the meeting: what is still open, plan against actual,
-  settling up, next month's amounts, and closing the period, which freezes its plan.
+  settling up, next month's amounts, and closing the period, which freezes its plan. Closing
+  also lists the month's transfers into the pockets, and asks what each pocket holds in
+  Revolut, to compare with what the app expects.
+- **Zsebek** are the Revolut pockets that hold the money which isn't for every day: savings,
+  goals, hobbies, trips. A pocket's balance is its opening balance, plus the transfers that
+  actually happened, minus what was paid from it, recomputed every time.
+  - Inside a pocket the money is earmarked: a goal with a target and a date (it suggests
+    what to set aside each month), a pocket-funded line like Hobbi (what is left carries
+    over), or the wishlist's savings.
+  - A receipt can be marked as paid from a pocket. It is guessed from its categories, and a
+    person's choice always wins. Such a receipt then counts only against that pocket.
+  - A pocket pays only up to what it holds; the rest is ordinary spending of that month.
+- **Kívánságlista** (under Lista) holds what you mean to buy some time. An item is bought
+  when a real purchase is linked to it: a receipt line, or one typed in.
 
 ## Getting started
 

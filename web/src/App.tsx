@@ -21,12 +21,14 @@ import Manual from "./pages/Manual";
 import Meeting from "./pages/Meeting";
 import Month from "./pages/Month";
 import PlanPage from "./pages/Plan";
+import Pockets from "./pages/Pockets";
 import Prices from "./pages/Prices";
 import Receipts from "./pages/Receipts";
 import RecurringPage from "./pages/Recurring";
 import Review from "./pages/Review";
 import System from "./pages/System";
 import TableView from "./pages/Table";
+import Wishlist from "./pages/Wishlist";
 
 type Theme = "light" | "dark" | "system";
 
@@ -137,6 +139,8 @@ export default function App() {
           <Route path="/penz" element={<Month />} />
           <Route path="/terv" element={<PlanPage />} />
           <Route path="/megbeszeles" element={<Meeting />} />
+          <Route path="/zsebek" element={<Pockets />} />
+          <Route path="/kivansaglista" element={<Wishlist />} />
           <Route path="/felhasznalok" element={<SettingsPage title="Felhasználók"><Users /></SettingsPage>} />
           <Route path="/javitani" element={<SettingsPage title="Javítani való"><FixNotes /></SettingsPage>} />
           <Route path="/elszamolas" element={<Settle />} />

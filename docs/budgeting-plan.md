@@ -1,7 +1,9 @@
 # Plan: budgeting in the app ("Pénz")
 
-**Status:** stage 1 (the planning core) is built, tested and not yet deployed
-(2026-11-06). Stages 2 and 3 are still plans. The plan was agreed in the claude.ai/code session
+**Status:** stage 1 (the planning core) and stage 2 (pockets, goals and the wishlist) are
+built and tested, and not yet deployed (2026-11-17). Stage 3 is still a plan. Stage 2 grew
+from "goals as a virtual pot" into Revolut pockets: see D23–D34 in `DECISIONS.md`, which
+supersede this document where they differ. The plan was agreed in the claude.ai/code session
 `session_015xmbBxtqJyQqJEscyjETrG` and saved here on 2026-11-06. Where building stage 1 made
 a decision the plan left open, it is recorded as D15–D22 in `DECISIONS.md`.
 

@@ -13,9 +13,10 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, type MonthRow, type MonthView, type Person } from "../lib/api";
-import { KIND_LABELS, dayLabel, isAside, monthLabel, ownerName, owners, periodRange } from "../lib/budget";
+import { KIND_LABELS, dayLabel, isAside, monthLabel, ownerName, owners, periodRange, pocketLabel } from "../lib/budget";
 import { ft } from "../lib/format";
 import Occurrences from "../components/Occurrences";
+import { TransferChecklist } from "./Pockets";
 import { AsyncBlock, Card, Tile, useAsync } from "../components/ui";
 
 export default function Month() {
@@ -61,7 +62,8 @@ function MonthBody({ data, onPick, onChange }: {
   const left = Number(totals.planned_spending) - Number(totals.spent);
   const openIssues =
     data.issues.due.filter((o) => o.direction !== "income").length +
-    data.issues.uncategorised.length + data.issues.maybe_shared.length + data.issues.late.length;
+    data.issues.uncategorised.length + data.issues.maybe_shared.length + data.issues.late.length +
+    data.issues.maybe_pocket.length + data.issues.transfers.length;
 
   async function toggleClosed() {
     setBusy(true);
@@ -147,6 +149,8 @@ function MonthBody({ data, onPick, onChange }: {
           </Card>
         );
       })}
+
+      {data.pockets.length > 0 && <PocketsCard data={data} />}
 
       {data.rows.length === 0 && (
         <Card>
@@ -292,10 +296,41 @@ function IncomeLine({ entry, users, onChange }: {
 }
 
 /** What a meeting should look at: shown here as soon as it exists, not only at the meeting. */
+/** Each pocket over the period: what it held, what went in and out, and where it stands. */
+function PocketsCard({ data }: { data: MonthView }) {
+  return (
+    <Card title="Zsebek" action={<Link className="btn" to="/zsebek">Részletek →</Link>}>
+      {data.pockets.map((view) => (
+        <div key={view.pocket.id} className="budget-row">
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <strong>{pocketLabel(view.pocket, data.users)}</strong>
+            <span className="mono">{ft(view.opening)} → {ft(view.closing)}</span>
+          </div>
+          {view.buckets.filter((b) => Number(b.money_in) || Number(b.money_out) || Number(b.plan)).map((b) => (
+            <div key={b.line_id ?? "free"} className="row small" style={{ justifyContent: "space-between" }}>
+              <span className="muted">{b.name}</span>
+              <span className="mono">
+                {Number(b.money_in) > 0 && <span>+{ft(b.money_in)} </span>}
+                {Number(b.money_out) > 0 && <span className="neg">−{ft(b.money_out)} </span>}
+                {Number(b.plan) > 0 && Number(b.money_in) === 0 && <span className="muted">terv: {ft(b.plan)}</span>}
+              </span>
+            </div>
+          ))}
+          {view.check && Number(view.check.difference) !== 0 && (
+            <div className="small neg">
+              Revolut szerint {ft(view.check.balance)} ({dayLabel(view.check.checked_on)}) – eltérés {ft(view.check.difference)}
+            </div>
+          )}
+        </div>
+      ))}
+    </Card>
+  );
+}
+
 export function Issues({ data, onChange, title = "Teendők", includeIncome = true }: {
   data: MonthView; onChange: () => void; title?: string; includeIncome?: boolean;
 }) {
-  const { uncategorised, maybe_shared: shared, late } = data.issues;
+  const { uncategorised, maybe_shared: shared, late, maybe_pocket: pocketish, transfers } = data.issues;
   const due = data.issues.due.filter((o) => includeIncome || o.direction !== "income");
   const unsortedTotal = uncategorised.reduce((sum, p) => sum + Number(p.amount), 0);
   return (
@@ -345,7 +380,30 @@ export function Issues({ data, onChange, title = "Teendők", includeIncome = tru
           </ul>
         </>
       )}
-      {due.length + uncategorised.length + shared.length + late.length === 0 && (
+      {transfers.length > 0 && (
+        <>
+          <h3 style={{ margin: "12px 0 6px" }}>Még el nem küldött átutalások</h3>
+          <TransferChecklist items={transfers} users={data.users} onChange={onChange} />
+        </>
+      )}
+      {pocketish.length > 0 && (
+        <>
+          <h3 style={{ margin: "12px 0 6px" }}>Zsebből kellett volna?</h3>
+          <p className="muted small" style={{ marginTop: 0 }}>
+            Zsebes keret kategóriájába esik, de a főszámláról ment. Ha a zsebből fizettétek,
+            jelöld a blokk oldalán.
+          </p>
+          <ul className="pieces" style={{ listStyle: "none", padding: 0 }}>
+            {pocketish.map((piece) => (
+              <li key={piece.receipt_id} className="row" style={{ justifyContent: "space-between", padding: "4px 0" }}>
+                <Link to={`/blokkok/${piece.receipt_id}`}>{dayLabel(piece.day)} · {piece.merchant ?? "?"}</Link>
+                <span className="mono">{ft(piece.amount)}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {due.length + uncategorised.length + shared.length + late.length + transfers.length + pocketish.length === 0 && (
         <p style={{ margin: 0 }}>✓ Minden rendben, nincs nyitott tétel.</p>
       )}
     </Card>

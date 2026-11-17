@@ -156,6 +156,8 @@ function IncomeForm() {
 
 function ExpenseForm() {
   const navigate = useNavigate();
+  const pockets = (useAsync(() => api.pockets(), []).data ?? []).filter((p) => p.active);
+  const [pocket, setPocket] = useState("");
   const [merchant, setMerchant] = useState("");
   const [when, setWhen] = useState(nowLocal());
   const [payment, setPayment] = useState("card");
@@ -201,6 +203,7 @@ function ExpenseForm() {
         items,
         total_gross: total ?? undefined,
         payment_method: payment,
+        pocket_id: pocket || null,
       });
       navigate(`/blokkok/${receipt.id}`);
     } catch (err) {
@@ -243,6 +246,15 @@ function ExpenseForm() {
               <option value="other">Egyéb</option>
             </select>
           </label>
+          {pockets.length > 0 && (
+            <label>
+              Zsebből
+              <select value={pocket} onChange={(event) => setPocket(event.target.value)}>
+                <option value="">– főszámláról –</option>
+                {pockets.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </label>
+          )}
         </div>
       </Card>
 

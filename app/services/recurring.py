@@ -195,6 +195,10 @@ async def _bill(
         source="recurring",
         notes=note,
     )
+    if payment.pocket_id is not None:
+        # Paid from a pocket: say so on the receipt, as a person would have (D29).
+        receipt.pocket_id = payment.pocket_id
+        receipt.pocket_source = "manual"
     if payment.payer_id is not None or payment.default_shares:
         try:
             await set_split(session, receipt, payment.payer_id, rule_shares(payment))

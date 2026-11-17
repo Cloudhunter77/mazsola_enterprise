@@ -26,6 +26,7 @@ from app.api import (
     fixes,
     income,
     labels,
+    pockets,
     receipts,
     recurring,
     shopping,
@@ -33,6 +34,7 @@ from app.api import (
     stats,
     system,
     users,
+    wishlist,
 )
 from app.config import get_settings
 from app.db import SessionLocal, engine
@@ -123,6 +125,8 @@ def create_app() -> FastAPI:
     app.include_router(recurring.router)
     app.include_router(budget.router)
     app.include_router(income.router)
+    app.include_router(pockets.router)
+    app.include_router(wishlist.router)
     app.include_router(system.router)
     app.include_router(users.router)
 

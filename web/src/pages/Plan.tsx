@@ -14,7 +14,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, type BudgetLine, type Category, type LineKind, type Plan, type PlanRow } from "../lib/api";
-import { KINDS, KIND_LABELS, amountOf, monthLabel, monthShort, owners, ownerName, plain } from "../lib/budget";
+import { KINDS, KIND_LABELS, amountOf, monthLabel, monthShort, owners, ownerName, plain, pocketLabel } from "../lib/budget";
 import { groupCategories } from "../lib/categories";
 import { ft } from "../lib/format";
 import { AsyncBlock, Card, useAsync } from "../components/ui";
@@ -29,6 +29,8 @@ type Editing = { lineId: string; month: string; value: string } | null;
 type LineDraft = {
   id: string | null; name: string; owner_id: string; kind: LineKind;
   category_ids: string[]; amount: string; active: boolean;
+  // Goal and pocket fields travel with the line, so saving it never drops them.
+  pocket_id: string; target_amount: string; target_date: string; is_wishlist: boolean;
 };
 
 export default function PlanPage() {
@@ -63,6 +65,7 @@ export default function PlanPage() {
           <div className="row">
             <button className="btn primary" onClick={() => setDraft({
               id: null, name: "", owner_id: "", kind: "valtozo", category_ids: [], amount: "", active: true,
+              pocket_id: "", target_amount: "", target_date: "", is_wishlist: false,
             })}>
               + Új sor
             </button>
@@ -96,6 +99,8 @@ export default function PlanPage() {
                 setDraft({
                   id: line.id, name: line.name, owner_id: line.owner_id ?? "", kind: line.kind,
                   category_ids: line.category_ids, amount: "", active: line.active,
+                  pocket_id: line.pocket_id ?? "", target_amount: plain(line.target_amount),
+                  target_date: line.target_date ?? "", is_wishlist: line.is_wishlist,
                 });
                 window.scrollTo(0, 0);
               }}
@@ -237,6 +242,10 @@ function OwnerGroup({ title, rows, data, columns, editing, setEditing, save, onE
             )}
             <span className="tag">{KIND_LABELS[row.kind]}</span>
             {row.yearly && <span className="tag">1/12</span>}
+            {row.pocket_id && <span className="tag">zsebbe</span>}
+            {row.suggestion !== null && Number(row.suggestion) !== Number(row.cells[0]?.amount) && (
+              <div className="muted small">javasolt: {ft(row.suggestion)}/hó</div>
+            )}
           </td>
           {row.cells.map((cell, i) => {
             const month = data.months[i];
@@ -300,6 +309,7 @@ function LineForm({ draft, setDraft, plan, lines, categories, firstMonth, onDone
   const groups = useMemo(() => groupCategories(categories), [categories]);
   const set = (patch: Partial<LineDraft>) => setDraft({ ...draft, ...patch });
   const users = plan?.users ?? [];
+  const pockets = useAsync(() => api.pockets(), []).data ?? [];
 
   // A category already in another active line of the same owner cannot be chosen again.
   const taken = new Map<string, string>();
@@ -319,9 +329,14 @@ function LineForm({ draft, setDraft, plan, lines, categories, firstMonth, onDone
     if (!draft.name.trim()) return setError("Adj nevet a sornak.");
     const amount = draft.amount.trim() ? amountOf(draft.amount) : null;
     if (draft.amount.trim() && (amount === null || amount < 0)) return setError("Nem értelmezhető összeg.");
+    const aside = draft.kind === "celalap" || draft.kind === "megtakaritas";
+    if (aside && !draft.pocket_id) return setError("A félretett pénz egy zsebben van: válaszd ki, melyikben.");
     const body = {
       name: draft.name.trim(), owner_id: draft.owner_id || null, kind: draft.kind,
       category_ids: draft.category_ids, active: draft.active,
+      pocket_id: draft.pocket_id || null, is_wishlist: draft.is_wishlist,
+      target_amount: draft.kind === "celalap" && draft.target_amount.trim() ? amountOf(draft.target_amount) : null,
+      target_date: draft.kind === "celalap" && draft.target_date ? draft.target_date : null,
     };
     setBusy(true);
     try {
@@ -367,6 +382,28 @@ function LineForm({ draft, setDraft, plan, lines, categories, firstMonth, onDone
             {KINDS.map((kind) => <option key={kind} value={kind}>{KIND_LABELS[kind]}</option>)}
           </select>
         </label>
+        <label>
+          Zsebből
+          <select value={draft.pocket_id} onChange={(e) => set({ pocket_id: e.target.value })}>
+            <option value="">– nem, a havi költésből –</option>
+            {pockets.filter((p) => p.active || p.id === draft.pocket_id).map((p) => (
+              <option key={p.id} value={p.id}>{pocketLabel(p, users)}</option>
+            ))}
+          </select>
+        </label>
+        {draft.kind === "celalap" && !draft.is_wishlist && (
+          <>
+            <label>
+              Célösszeg (Ft)
+              <input inputMode="decimal" value={draft.target_amount}
+                     onChange={(e) => set({ target_amount: e.target.value })} />
+            </label>
+            <label>
+              Céldátum
+              <input type="date" value={draft.target_date} onChange={(e) => set({ target_date: e.target.value })} />
+            </label>
+          </>
+        )}
         {!draft.id && (
           <label>
             Havi összeg{firstMonth ? ` ${monthLabel(firstMonth).toLowerCase()}-tól` : ""}

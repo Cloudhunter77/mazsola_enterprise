@@ -76,6 +76,13 @@ class Receipt(Base, TimestampMixin):
         ForeignKey("merchants.id", ondelete="SET NULL"), nullable=True, index=True
     )
     merchant_raw_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    # Paid from a Revolut pocket rather than the main account. Only stored once a person
+    # chose (`pocket_source` = "manual", with NULL here meaning "the main account"); until
+    # then the pocket is guessed from the categories each time it is needed (D29).
+    pocket_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("pockets.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    pocket_source: Mapped[str | None] = mapped_column(String(10), nullable=True)
     # Who paid, and who put it into the app. Usually the same person; not always - the
     # one with the phone scans what the other paid for. Null on receipts from before there
     # were several people, and on subscriptions, which nobody uploads.
@@ -196,6 +203,14 @@ class ReceiptItem(Base, TimestampMixin):
     # a better rule overwrite a weaker one later without ever touching what you set yourself.
     category_source: Mapped[str | None] = mapped_column(String(12), nullable=True, index=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # This line was the thing a goal saved for - the sofa - so it is paid from the goal's
+    # pocket, not from the month (D30).
+    earmark_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("budget_lines.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    wishlist_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("wishlist_items.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     receipt: Mapped[Receipt] = relationship(back_populates="items")
     product: Mapped[Product | None] = relationship()  # noqa: F821

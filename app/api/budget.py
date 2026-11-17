@@ -10,10 +10,12 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func, select
 
 from app.api.deps import AuthDep, SessionDep
+from app.api.pockets import pocket_view_out, transfers_out
 from app.models import BudgetLine, BudgetLineKind, Direction
 from app.models.budget import SPENDING_KINDS
 from app.schemas.budget import (
     BudgetStatus,
+    GoalBoughtIn,
     IncomeOut,
     LateReceipt,
     LineCreate,
@@ -39,6 +41,7 @@ from app.schemas.budget import (
     PlanTotalsOut,
 )
 from app.services import budget
+from app.services import pockets as pk
 from app.services.recurring import Occurrence
 
 router = APIRouter(prefix="/api/budget", tags=["budget"])
@@ -124,6 +127,11 @@ async def open_period(principal: AuthDep, session: SessionDep, body: PeriodOpenI
             month=body.month,
             user_id=principal.user_id,
             today=today,
+            transfers=[
+                budget.TransferIn(t.line_id, t.from_user_id, t.amount, t.done)
+                for t in body.transfers
+            ],
+            checks=[(c.pocket_id, c.balance) for c in body.checks],
         )
     except budget.BudgetError as exc:
         raise _bad(exc) from exc
@@ -203,9 +211,12 @@ async def month(
         (r.plan for r in view.rows if r.type == "recurring" or r.kind in SPENDING_KINDS),
         ZERO,
     )
+    # Money moved into pockets this month, plus any set-aside line from before pockets.
     planned_aside = sum(
         (r.plan for r in view.rows if r.type == "line" and r.kind not in SPENDING_KINDS),
         ZERO,
+    ) + sum(
+        (b.plan for p in view.pockets for b in p.buckets if b.line is not None), ZERO
     )
     spent = sum((r.actual for r in view.rows if r.actual is not None), ZERO)
     income_arrived = sum((i.arrived for i in income.values()), ZERO)
@@ -241,7 +252,10 @@ async def month(
                 )
                 for receipt, period in view.late
             ],
+            maybe_pocket=[_piece(p) for p in view.spending.maybe_pocket.values()],
+            transfers=await transfers_out(session, view.pending),
         ),
+        pockets=[pocket_view_out(p) for p in view.pockets],
         totals=MonthTotals(
             planned_spending=planned_spending,
             planned_aside=planned_aside,
@@ -286,6 +300,8 @@ async def plan(
                 kind=row.kind, active=row.active, category_ids=row.category_ids,
                 yearly=row.yearly,
                 cells=[PlanCell(amount=a, explicit=e) for a, e in row.amounts],
+                pocket_id=row.pocket_id, target_amount=row.target_amount,
+                target_date=row.target_date, suggestion=row.suggestion,
             )
             for row in grid.rows
         ],
@@ -325,8 +341,16 @@ def line_out(line: BudgetLine) -> LineOut:
     return LineOut(
         id=line.id, name=line.name, owner_id=line.owner_id, kind=line.kind,
         category_ids=line.category_ids, active=line.active, sort_order=line.sort_order,
-        notes=line.notes,
+        notes=line.notes, pocket_id=line.pocket_id, target_amount=line.target_amount,
+        target_date=line.target_date, is_wishlist=line.is_wishlist, bought_on=line.bought_on,
     )
+
+
+def _goal_fields(line: BudgetLine, body: LineIn) -> None:
+    line.pocket_id = body.pocket_id
+    line.target_amount = body.target_amount
+    line.target_date = body.target_date
+    line.is_wishlist = body.is_wishlist
 
 
 @router.get("/lines", response_model=list[LineOut])
@@ -339,7 +363,8 @@ async def create_line(_: AuthDep, session: SessionDep, body: LineCreate) -> Line
     try:
         await budget.check_line(
             session, line_id=None, owner_id=body.owner_id, kind=body.kind,
-            category_ids=body.category_ids,
+            category_ids=body.category_ids, pocket_id=body.pocket_id,
+            is_wishlist=body.is_wishlist,
         )
     except budget.BudgetError as exc:
         raise _bad(exc) from exc
@@ -349,19 +374,30 @@ async def create_line(_: AuthDep, session: SessionDep, body: LineCreate) -> Line
         name=body.name.strip(), owner_id=body.owner_id, kind=body.kind,
         notes=(body.notes or "").strip() or None, sort_order=order + 1, active=True,
     )
+    _goal_fields(line, body)
     session.add(line)
     await session.flush()
     await budget.set_line_categories(session, line, body.category_ids)
 
-    if body.amount is not None:
-        from_month = body.from_month
-        if from_month is None:
-            spans = await budget.periods(session)
-            from_month = (
-                spans[-1].period.month if spans else budget.first_of(budget.today_local())
-            )
+    today = budget.today_local()
+    if body.saved_amount:
+        # Already in the pocket for this: claimed from the pocket's unassigned money.
+        await budget.move_money(
+            session, pocket_id=line.pocket_id, from_line=None, to_line=line.id,
+            amount=body.saved_amount, on=today, note="Már félretéve",
+        )
+
+    from_month = body.from_month
+    if from_month is None:
+        spans = await budget.periods(session)
+        from_month = spans[-1].period.month if spans else budget.first_of(today)
+    amount = body.amount
+    if amount is None and line.target_amount is not None:
+        # A goal starts at what it needs per month to make its date (D26).
+        amount = pk.suggestion(line, body.saved_amount or ZERO, budget.first_of(from_month))
+    if amount is not None:
         try:
-            await budget.set_amount(session, line, from_month, body.amount)
+            await budget.set_amount(session, line, from_month, amount)
         except budget.BudgetError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -381,7 +417,8 @@ async def update_line(
         try:
             await budget.check_line(
                 session, line_id=line.id, owner_id=body.owner_id, kind=body.kind,
-                category_ids=body.category_ids,
+                category_ids=body.category_ids, pocket_id=body.pocket_id,
+                is_wishlist=body.is_wishlist,
             )
         except budget.BudgetError as exc:
             raise _bad(exc) from exc
@@ -393,6 +430,7 @@ async def update_line(
     line.kind = body.kind
     line.active = body.active
     line.notes = (body.notes or "").strip() or None
+    _goal_fields(line, body)
     await budget.set_line_categories(session, line, body.category_ids)
     await session.commit()
     await session.refresh(line)
@@ -409,3 +447,22 @@ async def remove_line(_: AuthDep, session: SessionDep, line_id: uuid.UUID) -> Li
     await session.commit()
     return LineRemoved(deleted=deleted)
 
+
+@router.post("/lines/{line_id}/bought", response_model=LineOut)
+async def goal_bought(
+    _: AuthDep, session: SessionDep, line_id: uuid.UUID, body: GoalBoughtIn
+) -> LineOut:
+    """The goal's thing was bought. It plans nothing more, and its leftover is dealt with."""
+    line = await session.get(BudgetLine, line_id)
+    if line is None:
+        raise HTTPException(status_code=404, detail="Nincs ilyen sor.")
+    try:
+        await budget.settle_goal(
+            session, line, today=budget.today_local(), move_to=body.move_to_line_id,
+            release=body.release,
+        )
+    except budget.BudgetError as exc:
+        raise _bad(exc) from exc
+    await session.commit()
+    await session.refresh(line)
+    return line_out(line)

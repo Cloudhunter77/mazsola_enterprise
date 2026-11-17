@@ -79,3 +79,14 @@ export function amountOf(raw: string): number | null {
 /** An amount for an input field: whole forints, no separators to fight with. */
 export const plain = (value: string | number | null | undefined): string =>
   value == null ? "" : String(Math.round(Number(value)));
+
+/** The five priorities the spreadsheet's wishlist used, 1 (lowest) to 5. */
+export const PRIORITIES: Record<number, string> = {
+  1: "Alacsony", 2: "Alacsony-közepes", 3: "Közepes", 4: "Közép-magas", 5: "Magas",
+};
+
+/** "Savings (Balázs)": a pocket by name and whose account it is in. */
+export function pocketLabel(pocket: { name: string; holder_id: string | null }, users: Person[]): string {
+  const holder = users.find((u) => u.id === pocket.holder_id)?.display_name;
+  return holder ? `${pocket.name} (${holder})` : pocket.name;
+}

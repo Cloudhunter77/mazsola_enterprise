@@ -23,6 +23,7 @@ from app.models import (
     AmountMode,
     Category,
     Direction,
+    Pocket,
     RecurringCharge,
     RecurringPayment,
     User,
@@ -99,6 +100,8 @@ async def _validated(session: SessionDep, body: RecurringIn) -> dict:
             raise HTTPException(status_code=422, detail="Nincs ilyen felhasználó.")
     if body.category_id is not None and await session.get(Category, body.category_id) is None:
         raise HTTPException(status_code=422, detail="Nincs ilyen kategória.")
+    if body.pocket_id is not None and await session.get(Pocket, body.pocket_id) is None:
+        raise HTTPException(status_code=422, detail="Nincs ilyen zseb.")
 
     values = body.model_dump(exclude={"merchant_name", "default_shares"})
     income = body.direction == Direction.INCOME.value
@@ -118,7 +121,7 @@ async def _validated(session: SessionDep, body: RecurringIn) -> dict:
     )
     if income:
         # Income is nobody's bill: no payer, no split, no spending category.
-        values.update(payer_id=None, category_id=None)
+        values.update(payer_id=None, category_id=None, pocket_id=None)
     values["merchant_name"] = ((body.merchant_name or "").strip() or body.name.strip())[:300]
     return values
 

@@ -539,8 +539,18 @@ class TestLines:
         with pytest.raises(budget.BudgetError):
             await budget.check_line(session, line_id=None, owner_id=None, kind="valtozo",
                                     category_ids=[])
+
+    async def test_savings_live_in_a_pocket(self, session):
+        from app.models import Pocket
+
+        with pytest.raises(budget.BudgetError):
+            await budget.check_line(session, line_id=None, owner_id=None, kind="megtakaritas",
+                                    category_ids=[])
+        pocket = Pocket(name="Savings", opening_balance=Decimal("0"), opened_on=TODAY)
+        session.add(pocket)
+        await session.flush()
         await budget.check_line(session, line_id=None, owner_id=None, kind="megtakaritas",
-                                category_ids=[])
+                                category_ids=[], pocket_id=pocket.id)
 
     async def test_a_line_a_closed_month_planned_with_is_archived_not_deleted(self, session):
         food = await category(session, "Élelmiszer")

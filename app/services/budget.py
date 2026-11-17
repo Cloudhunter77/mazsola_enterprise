@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -49,6 +49,9 @@ from app.models import (
     IncomeEntry,
     LineKind,
     Merchant,
+    Pocket,
+    PocketCheck,
+    PocketTransfer,
     Receipt,
     ReceiptShare,
     RecurringCharge,
@@ -56,6 +59,7 @@ from app.models import (
     User,
 )
 from app.models.budget import SPENDING_KINDS
+from app.services import pockets as pk
 from app.services import recurring as rec
 from app.services.stats import COUNTED_STATUSES, LOCAL_TZ, local_day_start
 
@@ -188,8 +192,14 @@ async def open_period(
     month: date | None,
     user_id: uuid.UUID | None,
     today: date,
+    transfers: list[TransferIn] | None = None,
+    checks: list[tuple[uuid.UUID, Decimal]] | None = None,
 ) -> BudgetPeriod:
-    """The end of a meeting: close the period that was running and start the next one."""
+    """The end of a meeting: close the period that was running and start the next one.
+
+    The meeting's transfer checklist (D28) and the pocket balances read off Revolut are
+    recorded with it, dated the day the new period starts.
+    """
     spans = await periods(session)
     latest = spans[-1].period if spans else None
     if starts_on > today:
@@ -210,7 +220,170 @@ async def open_period(
     period = BudgetPeriod(month=month, starts_on=starts_on, opened_by_id=user_id)
     session.add(period)
     await session.flush()
+    for transfer in transfers or []:
+        await _plan_transfer(session, period, transfer, user_id)
+    for pocket_id, balance in checks or []:
+        await record_check(session, pocket_id, balance, starts_on, user_id, period.id)
     return period
+
+
+@dataclass(slots=True)
+class ProposedTransfer:
+    """One line of the meeting's checklist: who sends how much into which pocket."""
+
+    line: BudgetLine
+    pocket: Pocket
+    from_user_id: uuid.UUID | None
+    amount: Decimal
+    done: bool = True
+
+
+async def proposed_transfers(
+    session: AsyncSession, month: date, people: list[uuid.UUID]
+) -> list[ProposedTransfer]:
+    """What each person sends into which pocket for `month` (D28).
+
+    Every pocket line's planned amount, divided the way the per-person view divides it: a
+    person's own line is theirs to fund, a Közös one is split equally (D19).
+    """
+    locked = await locked_months(session)
+    history = await _amount_rows(session)
+    pockets = {p.id: p for p in (await session.scalars(select(Pocket))).all()}
+    out: list[ProposedTransfer] = []
+    for line in await all_lines(session):
+        if line.pocket_id is None or not line.active or line.pocket_id not in pockets:
+            continue
+        amount, _ = line_plan(line, history.get(line.id, []), month, locked)
+        if amount <= 0:
+            continue
+        shares = owner_shares(line.owner_id, people)
+        parts = [(person, _q(amount * share)) for person, share in shares.items()]
+        if parts:
+            # The rounding goes to the last person, so the parts add up to the plan.
+            parts[-1] = (parts[-1][0], amount - sum((a for _, a in parts[:-1]), ZERO))
+        for person, part in parts:
+            if part > 0:
+                out.append(ProposedTransfer(line, pockets[line.pocket_id], person, part))
+    return out
+
+
+@dataclass(slots=True)
+class TransferIn:
+    line_id: uuid.UUID
+    from_user_id: uuid.UUID | None
+    amount: Decimal
+    done: bool
+
+
+async def _plan_transfer(
+    session: AsyncSession, period: BudgetPeriod, transfer: TransferIn, user_id
+) -> None:
+    line = await session.get(BudgetLine, transfer.line_id)
+    if line is None or line.pocket_id is None:
+        raise BudgetError("Egy átutalás olyan sorra mutat, ami nincs zsebben.")
+    if transfer.amount <= 0:
+        return
+    session.add(PocketTransfer(
+        pocket_id=line.pocket_id, line_id=line.id, amount=_q(transfer.amount),
+        on=period.starts_on, kind="plan", done=transfer.done,
+        done_at=datetime.now(UTC) if transfer.done else None,
+        from_user_id=transfer.from_user_id, period_id=period.id,
+    ))
+    await session.flush()
+
+
+async def record_check(
+    session: AsyncSession,
+    pocket_id: uuid.UUID,
+    balance: Decimal,
+    on: date,
+    user_id,
+    period_id: uuid.UUID | None = None,
+) -> PocketCheck:
+    """What Revolut showed in a pocket on a day (D28). At a meeting it is read before that
+    meeting's transfers are sent, which `period_id` records."""
+    if await session.get(Pocket, pocket_id) is None:
+        raise BudgetError("Nincs ilyen zseb.")
+    check = PocketCheck(
+        pocket_id=pocket_id, balance=_q(balance), checked_on=on, created_by_id=user_id,
+        period_id=period_id,
+    )
+    session.add(check)
+    await session.flush()
+    return check
+
+
+async def mark_transfer_done(
+    session: AsyncSession, transfer: PocketTransfer, on: date
+) -> None:
+    """A planned transfer was actually sent. It counts from the day it was sent."""
+    transfer.done = True
+    transfer.done_at = datetime.now(UTC)
+    transfer.on = max(transfer.on, on) if transfer.kind == "plan" else transfer.on
+    await session.flush()
+
+
+async def move_money(
+    session: AsyncSession,
+    *,
+    pocket_id: uuid.UUID,
+    from_line: uuid.UUID | None,
+    to_line: uuid.UUID | None,
+    amount: Decimal,
+    on: date,
+    kind: str = "move",
+    note: str | None = None,
+) -> None:
+    """Move money between two buckets of the same pocket, or between earmarks of two."""
+    if amount <= 0:
+        raise BudgetError("Az összegnek nullánál nagyobbnak kell lennie.")
+    group = uuid.uuid4()
+    target_pocket = pocket_id
+    if to_line is not None:
+        target = await session.get(BudgetLine, to_line)
+        if target is None or target.pocket_id is None:
+            raise BudgetError("A cél nincs zsebben.")
+        target_pocket = target.pocket_id
+    session.add(PocketTransfer(pocket_id=pocket_id, line_id=from_line, amount=-_q(amount),
+                               on=on, kind=kind, group_id=group, note=note))
+    session.add(PocketTransfer(pocket_id=target_pocket, line_id=to_line, amount=_q(amount),
+                               on=on, kind=kind, group_id=group, note=note))
+    await session.flush()
+
+
+async def settle_goal(
+    session: AsyncSession,
+    line: BudgetLine,
+    *,
+    today: date,
+    move_to: uuid.UUID | None = None,
+    release: bool = False,
+) -> Decimal:
+    """Mark a goal's thing as bought, and deal with what is left in it (D26).
+
+    The leftover moves to another earmark, or is released back to the main account, or -
+    with neither - stays in the pocket as unassigned money, so it is never silently lost.
+    Returns the leftover that was dealt with.
+    """
+    if line.pocket_id is None:
+        raise BudgetError("Ez nem zsebes cél.")
+    led = await pk.ledger(session)
+    leftover = led.balance((line.pocket_id, line.id))
+    if leftover > 0:
+        if release:
+            session.add(PocketTransfer(
+                pocket_id=line.pocket_id, line_id=line.id, amount=-leftover, on=today,
+                kind="release", note=f"{line.name}: maradék visszautalva",
+            ))
+        else:
+            await move_money(
+                session, pocket_id=line.pocket_id, from_line=line.id, to_line=move_to,
+                amount=leftover, on=today, note=f"{line.name}: maradék",
+            )
+    line.bought_on = today
+    line.active = False
+    await session.flush()
+    return leftover if leftover > 0 else ZERO
 
 
 async def close_period(
@@ -325,14 +498,37 @@ async def check_line(
     owner_id: uuid.UUID | None,
     kind: str,
     category_ids: list[uuid.UUID],
+    pocket_id: uuid.UUID | None = None,
+    is_wishlist: bool = False,
 ) -> None:
-    """A category may be in only one active line per owner, or spending would be ambiguous."""
+    """A category may be in only one active line per owner, or spending would be ambiguous.
+
+    Money set aside - a goal, savings, the wishlist's pot - always lives in a pocket (D25).
+    Each owner has at most one wishlist pot, so a wishlist purchase knows where to draw from.
+    """
     if kind not in {k.value for k in BudgetLineKind}:
         raise BudgetError("Ismeretlen csoport.")
     if owner_id is not None and await session.get(User, owner_id) is None:
         raise BudgetError("Nincs ilyen felhasználó.")
-    if kind in SPENDING_KINDS and not category_ids:
+    if pocket_id is not None and await session.get(Pocket, pocket_id) is None:
+        raise BudgetError("Nincs ilyen zseb.")
+    if (kind not in SPENDING_KINDS or is_wishlist) and pocket_id is None:
+        raise BudgetError("A félretett pénz egy zsebben van: válaszd ki, melyikben.")
+    if kind in SPENDING_KINDS and not category_ids and pocket_id is None:
         raise BudgetError("Egy fix vagy változó keretnek legalább egy kategória kell.")
+    if is_wishlist:
+        clash = await session.scalar(
+            select(BudgetLine.name)
+            .where(BudgetLine.is_wishlist.is_(True))
+            .where(BudgetLine.active.is_(True))
+            .where(
+                BudgetLine.owner_id == owner_id if owner_id is not None
+                else BudgetLine.owner_id.is_(None)
+            )
+            .where(BudgetLine.id != line_id if line_id is not None else true())
+        )
+        if clash is not None:
+            raise BudgetError(f"Ennek a gazdának már van kívánságlista-gyűjtése: {clash}.")
     if not category_ids:
         return
     known = {
@@ -441,6 +637,11 @@ class Spending:
     # Unsplit receipts whose spending found no line of the payer, though a Közös line covers
     # it: most likely a shared bill nobody split.
     maybe_shared: dict[uuid.UUID, Piece] = field(default_factory=dict)
+    # Spending in a pocket line's categories paid from the main account: probably meant to
+    # come out of the pocket, and worth a look before the money is counted twice.
+    maybe_pocket: dict[uuid.UUID, Piece] = field(default_factory=dict)
+    # What each pocket bucket paid for in this period.
+    by_bucket: dict[pk.Bucket, list[Piece]] = field(default_factory=lambda: defaultdict(list))
     receipt_count: int = 0
 
 
@@ -479,15 +680,23 @@ def allocate(total: Decimal | None, lines: list[tuple[Decimal, uuid.UUID | None]
 
 
 async def spending(
-    session: AsyncSession, start: date, end: date | None, lines: list[BudgetLine]
+    session: AsyncSession,
+    start: date,
+    end: date | None,
+    lines: list[BudgetLine],
+    led: pk.Ledger | None = None,
 ) -> Spending:
-    categories = (await session.scalars(select(Category))).all()
-    parent = {c.id: c.parent_id for c in categories}
-    blank = {c.id for c in categories if c.slug == UNCATEGORISED_SLUG}
+    """Where the money of [start, end) went: lines, recurring rows, pockets, unplanned."""
+    led = led or await pk.ledger(session)
+    ctx = led.ctx
+    parent, blank = ctx.parent, ctx.blank
 
+    # Pocket lines are not matched here: their money was moved into a pocket, and what is
+    # paid from the pocket is the pocket's business (D25, D29).
+    everyday = [line for line in lines if line.pocket_id is None]
     index: dict[tuple[uuid.UUID | None, uuid.UUID], BudgetLine] = {}
     kozos_categories: set[uuid.UUID] = set()
-    for line in lines:
+    for line in everyday:
         for category_id in line.category_ids:
             index[(line.owner_id, category_id)] = line
             if line.owner_id is None:
@@ -540,44 +749,59 @@ async def spending(
     for receipt, merchant_name in receipts:
         day = receipt.purchased_at.astimezone(LOCAL_TZ).date()
         merchant = merchant_name or receipt.merchant_raw_name
+        parts = pk.receipt_parts(receipt, blank)
+        drawn = {
+            i: led.draws[(receipt.id, i)] for i in range(len(parts))
+            if (receipt.id, i) in led.draws
+        }
+        pocket_paid = bool(drawn)
 
-        if receipt.id in generated_by:
+        if receipt.id in generated_by and not pocket_paid:
             out.by_recurring[generated_by[receipt.id]].append(
                 Piece(receipt.id, day, merchant, _q(receipt.total_gross))
             )
             continue
 
         owner = None if receipt.id in split_ids else receipt.paid_by_id
-        paid_lines = [
-            (
-                Decimal(item.gross_amount or 0),
-                None if item.category_id in blank else item.category_id,
-            )
-            for item in receipt.items
-            if item.kind in PAID_LINE_KINDS
-        ]
-        if any(category is None for _, category in paid_lines) or not paid_lines:
+        if any(p.category_id is None and p.earmark_id is None for p in parts):
             out.uncategorised[receipt.id] = Piece(
                 receipt.id, day, merchant, _q(receipt.total_gross)
             )
 
         # One piece per (row, category) per receipt, so a long grocery receipt reads as
         # one entry under Kaja, not thirty.
-        parts: dict[tuple[str, uuid.UUID | None, uuid.UUID | None], Decimal] = defaultdict(
+        grouped: dict[tuple[str, uuid.UUID | None, uuid.UUID | None], Decimal] = defaultdict(
             lambda: ZERO
         )
-        for amount, category in allocate(receipt.total_gross, paid_lines):
-            line = match(owner, category)
+        for i, part in enumerate(parts):
+            amount = part.amount
+            if i in drawn:
+                taken, overflow = drawn[i]
+                for bucket, part_taken in taken:
+                    if part_taken:
+                        out.by_bucket[bucket].append(
+                            Piece(receipt.id, day, merchant, part_taken)
+                        )
+                # What the pocket could not cover is spending of this month (D27).
+                amount = overflow
+                if not amount:
+                    continue
+            line = match(owner, part.category_id)
             if line is not None:
-                parts[("line", line.id, None)] += amount
-            else:
-                parts[("unplanned", owner, category)] += amount
-                if owner is not None and covered_by_kozos(category):
-                    flagged = out.maybe_shared.setdefault(
-                        receipt.id, Piece(receipt.id, day, merchant, ZERO)
-                    )
-                    flagged.amount += amount
-        for (kind, key, category), amount in parts.items():
+                grouped[("line", line.id, None)] += amount
+                continue
+            grouped[("unplanned", owner, part.category_id)] += amount
+            if owner is not None and covered_by_kozos(part.category_id):
+                flagged = out.maybe_shared.setdefault(
+                    receipt.id, Piece(receipt.id, day, merchant, ZERO)
+                )
+                flagged.amount += amount
+            if not pocket_paid and ctx.pocket_line_for(owner, part.category_id) is not None:
+                flagged = out.maybe_pocket.setdefault(
+                    receipt.id, Piece(receipt.id, day, merchant, ZERO)
+                )
+                flagged.amount += amount
+        for (kind, key, category), amount in grouped.items():
             if kind == "line":
                 out.by_line[key].append(Piece(receipt.id, day, merchant, amount))
             else:
@@ -599,8 +823,12 @@ def _active_in(payment: RecurringPayment, month: date) -> bool:
 def recurring_plan(
     payment: RecurringPayment, month: date, last: dict[uuid.UUID, Decimal]
 ) -> Decimal:
-    """What a recurring item puts into one month's plan. A yearly one: a twelfth of it."""
-    if not _active_in(payment, month):
+    """What a recurring item puts into one month's plan. A yearly one: a twelfth of it.
+
+    One paid from a pocket plans nothing here: its money is planned as that pocket's line,
+    and planning it twice would count it twice.
+    """
+    if not _active_in(payment, month) or payment.pocket_id is not None:
         return ZERO
     amount = rec.expected_amount(payment, last)
     if payment.cadence == Cadence.YEARLY.value:
@@ -657,6 +885,114 @@ class MonthView:
     occurrences: list[rec.Occurrence]
     spending: Spending
     late: list[tuple[Receipt, BudgetPeriod]]
+    pockets: list[PocketView] = field(default_factory=list)
+    pending: list[PocketTransfer] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class BucketView:
+    """One earmark of a pocket (or its unassigned money) over a stretch of time."""
+
+    line: BudgetLine | None
+    plan: Decimal
+    opening: Decimal
+    money_in: Decimal
+    money_out: Decimal
+    pieces: list[Piece]
+    suggestion: Decimal | None = None
+
+    @property
+    def closing(self) -> Decimal:
+        return self.opening + self.money_in - self.money_out
+
+
+@dataclass(slots=True)
+class PocketView:
+    pocket: Pocket
+    buckets: list[BucketView]
+    check: PocketCheck | None = None
+    # What the app expected on the day of that check, to compare against it.
+    expected_at_check: Decimal | None = None
+
+    @property
+    def opening(self) -> Decimal:
+        return sum((b.opening for b in self.buckets), ZERO)
+
+    @property
+    def closing(self) -> Decimal:
+        return sum((b.closing for b in self.buckets), ZERO)
+
+
+async def pocket_views(
+    session: AsyncSession,
+    led: pk.Ledger,
+    start: date,
+    end: date | None,
+    month: date,
+) -> list[PocketView]:
+    """Every pocket, earmark by earmark: what it held at `start`, what went in and out."""
+    locked = await locked_months(session)
+    history = await _amount_rows(session)
+    checks: dict[uuid.UUID, PocketCheck] = {}
+    for check in (
+        await session.scalars(
+            select(PocketCheck).order_by(PocketCheck.checked_on, PocketCheck.created_at)
+        )
+    ).all():
+        checks[check.pocket_id] = check
+
+    views: list[PocketView] = []
+    pockets = sorted(led.ctx.pockets.values(), key=lambda p: (p.sort_order, p.name))
+    for pocket in pockets:
+        lines = sorted(
+            (line for line in led.ctx.earmarks.values() if line.pocket_id == pocket.id),
+            key=lambda line: (line.sort_order, line.name),
+        )
+        buckets: list[BucketView] = []
+        for line in [*lines, None]:
+            bucket = (pocket.id, line.id if line is not None else None)
+            opening, money_in, money_out, draws = led.movement(bucket, start, end)
+            plan = (
+                line_plan(line, history.get(line.id, []), month, locked)[0]
+                if line is not None else ZERO
+            )
+            if line is not None and line.bought_on is not None and not (
+                opening or money_in or money_out
+            ):
+                continue  # a goal bought and settled earlier: history, not this period
+            buckets.append(BucketView(
+                line=line, plan=plan, opening=opening, money_in=money_in,
+                money_out=money_out,
+                pieces=[Piece(e.receipt_id, e.day, e.merchant, -e.amount) for e in draws],
+                suggestion=(
+                    pk.suggestion(line, led.balance(bucket), month)
+                    if line is not None and line.bought_on is None else None
+                ),
+            ))
+        if not pocket.active and not any(b.opening or b.money_in or b.money_out for b in buckets):
+            continue
+        check = checks.get(pocket.id)
+        views.append(PocketView(
+            pocket=pocket, buckets=buckets, check=check,
+            expected_at_check=(
+                led.pocket_balance(pocket.id, check.checked_on, check.period_id)
+                if check is not None else None
+            ),
+        ))
+    return views
+
+
+async def pending_transfers(session: AsyncSession) -> list[PocketTransfer]:
+    """Transfers the meeting planned that nobody has ticked as sent yet (D28)."""
+    return list(
+        (
+            await session.scalars(
+                select(PocketTransfer)
+                .where(PocketTransfer.done.is_(False))
+                .order_by(PocketTransfer.on, PocketTransfer.created_at)
+            )
+        ).all()
+    )
 
 
 async def month_view(session: AsyncSession, span: PeriodSpan, today: date) -> MonthView:
@@ -664,11 +1000,16 @@ async def month_view(session: AsyncSession, span: PeriodSpan, today: date) -> Mo
     locked = await locked_months(session)
     lines = await all_lines(session)
     history = await _amount_rows(session)
-    spent = await spending(session, span.start, span.end, [line for line in lines if line.active])
+    led = await pk.ledger(session)
+    spent = await spending(
+        session, span.start, span.end, [line for line in lines if line.active], led
+    )
     last = await rec.last_amounts(session)
 
     rows: list[Row] = []
     for line in lines:
+        if line.pocket_id is not None:
+            continue  # shown with its pocket, not as spending
         plan, _ = line_plan(line, history.get(line.id, []), month, locked)
         pieces = spent.by_line.get(line.id, [])
         if not line.active and not plan and not pieces:
@@ -725,6 +1066,8 @@ async def month_view(session: AsyncSession, span: PeriodSpan, today: date) -> Mo
     return MonthView(
         span=span, rows=rows, income_entries=income_entries, occurrences=occurrences,
         spending=spent, late=await late_receipts(session, span),
+        pockets=await pocket_views(session, led, span.start, span.end, month),
+        pending=await pending_transfers(session),
     )
 
 
@@ -771,6 +1114,11 @@ class PlanRow:
     amounts: list[tuple[Decimal, bool]]  # per month: amount, set in that very month
     yearly: bool = False
     default_shares: list | None = None
+    pocket_id: uuid.UUID | None = None
+    # A goal's target and what it needs per month from the first month shown (D26).
+    target_amount: Decimal | None = None
+    target_date: date | None = None
+    suggestion: Decimal | None = None
 
 
 @dataclass(slots=True)
@@ -795,13 +1143,22 @@ async def plan_grid(session: AsyncSession, start: date, count: int) -> PlanGrid:
     history = await _amount_rows(session)
     last = await rec.last_amounts(session)
 
+    led = await pk.ledger(session)
     rows: list[PlanRow] = []
     for line in await all_lines(session):
+        if line.bought_on is not None and not line.active:
+            continue  # a goal already bought plans nothing any more
+        balance = (
+            led.balance((line.pocket_id, line.id)) if line.pocket_id is not None else ZERO
+        )
         rows.append(PlanRow(
             key=f"line:{line.id}", type="line", id=line.id, name=line.name,
             owner_id=line.owner_id, kind=line.kind, active=line.active,
             category_ids=line.category_ids,
             amounts=[line_plan(line, history.get(line.id, []), m, locked) for m in months],
+            pocket_id=line.pocket_id, target_amount=line.target_amount,
+            target_date=line.target_date,
+            suggestion=pk.suggestion(line, balance, months[0]),
         ))
     for payment in (
         await session.scalars(select(RecurringPayment).order_by(RecurringPayment.name))

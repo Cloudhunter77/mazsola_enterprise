@@ -99,6 +99,20 @@ class BudgetLine(Base, TimestampMixin):
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Set: the line lives in a Revolut pocket. Its monthly amount is a transfer into the
+    # pocket rather than spending, purchases paid from the pocket draw it down, and what is
+    # left carries over (D25). Goals and the wishlist's savings are always pocket lines.
+    pocket_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("pockets.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # A goal: saving towards one thing, by a date (D26).
+    target_amount: Mapped[Decimal | None] = money()
+    target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # The owner's wishlist savings: a goal without a target, that wishlist purchases use.
+    is_wishlist: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # When the thing a goal was for was bought.
+    bought_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+
     categories: Mapped[list[BudgetLineCategory]] = relationship(
         back_populates="line", cascade="all, delete-orphan", lazy="selectin"
     )
