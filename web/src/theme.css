@@ -441,3 +441,10 @@ input[type="range"] {
   justify-content: center; background: var(--series-1); color: #fff; font-size: 0.85rem;
   font-weight: 700; margin-right: 8px; flex: none;
 }
+
+/* Pénz has five sub-pages; at a phone's width their labels need tighter spacing to all fit
+   on one line, rather than leaving the last one clipped where nobody thinks to scroll. */
+@media (max-width: 560px) {
+  .subnav { gap: 2px; padding: 3px; }
+  .subnav a { padding: 10px 6px; font-size: 0.84rem; }
+}
