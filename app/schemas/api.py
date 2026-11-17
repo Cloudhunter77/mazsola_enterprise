@@ -320,6 +320,29 @@ class CategorySpend(BaseModel):
     item_count: int
 
 
+class CategoryLine(BaseModel):
+    """One receipt line behind a bar of the category chart."""
+
+    item_id: uuid.UUID
+    raw_name: str
+    quantity: Decimal | None
+    unit: str | None
+    gross_amount: Decimal
+    receipt_id: uuid.UUID
+    purchased_at: datetime | None
+    status: str
+    merchant_name: str | None
+
+
+class MerchantReceipt(BaseModel):
+    """One receipt behind a bar of the shop chart."""
+
+    receipt_id: uuid.UUID
+    purchased_at: datetime | None
+    total_gross: Decimal
+    status: str
+
+
 class MerchantSpend(BaseModel):
     merchant_id: uuid.UUID | None
     merchant_name: str

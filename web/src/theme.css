@@ -448,3 +448,13 @@ input[type="range"] {
   .subnav { gap: 2px; padding: 3px; }
   .subnav a { padding: 10px 6px; font-size: 0.84rem; }
 }
+
+/* The list under a chart that says what a tapped bar is made of. */
+.drill {
+  margin-top: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface-raised);
+}
+.link-button {
+  background: none; border: 0; padding: 0; font: inherit; color: var(--series-1);
+  cursor: pointer; text-align: left;
+}

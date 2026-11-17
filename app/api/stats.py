@@ -10,8 +10,10 @@ from fastapi import APIRouter, HTTPException, Query
 from app.api.deps import AuthDep, SessionDep
 from app.schemas.api import (
     BasketComparison,
+    CategoryLine,
     CategorySpend,
     InflationPoint,
+    MerchantReceipt,
     MerchantSpend,
     MonthlySpend,
     ProductPriceHistory,
@@ -41,6 +43,41 @@ async def category_spend(
     _: AuthDep, session: SessionDep, start: date | None = None, end: date | None = None
 ) -> list[CategorySpend]:
     return await stats.by_category(session, start, end)
+
+
+@router.get("/category-lines", response_model=list[CategoryLine])
+async def category_lines(
+    _: AuthDep,
+    session: SessionDep,
+    category_id: str = Query(..., description='A category id, or "none" for Besorolatlan.'),
+    start: date | None = None,
+    end: date | None = None,
+    limit: int = Query(100, ge=1, le=500),
+) -> list[CategoryLine]:
+    """Where one bar of the category chart came from: its lines, largest first."""
+    return await stats.category_lines(session, _uuid_or_none(category_id), start, end, limit)
+
+
+@router.get("/merchant-receipts", response_model=list[MerchantReceipt])
+async def merchant_receipts(
+    _: AuthDep,
+    session: SessionDep,
+    merchant_id: str = Query(..., description='A shop id, or "none" for Ismeretlen.'),
+    start: date | None = None,
+    end: date | None = None,
+    limit: int = Query(100, ge=1, le=500),
+) -> list[MerchantReceipt]:
+    """Where one bar of the shop chart came from: its receipts, largest first."""
+    return await stats.merchant_receipts(session, _uuid_or_none(merchant_id), start, end, limit)
+
+
+def _uuid_or_none(value: str) -> uuid.UUID | None:
+    if value == "none":
+        return None
+    try:
+        return uuid.UUID(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Érvénytelen azonosító.") from exc
 
 
 @router.get("/by-merchant", response_model=list[MerchantSpend])

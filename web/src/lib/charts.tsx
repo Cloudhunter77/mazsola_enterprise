@@ -142,8 +142,13 @@ export function MonthlySpendChart({ data }: { data: MonthlyDatum[] }) {
 export interface RankedDatum { label: string; value: number; highlight?: boolean; note?: string }
 
 export function RankingChart({
-  data, height, valueLabel = "Összeg",
-}: { data: RankedDatum[]; height?: number; valueLabel?: string }) {
+  data, height, valueLabel = "Összeg", onSelect, selected,
+}: {
+  data: RankedDatum[]; height?: number; valueLabel?: string;
+  /** Makes each bar a button: tapping one asks where its number came from. */
+  onSelect?: (index: number) => void;
+  selected?: number | null;
+}) {
   const tokens = useChartTokens();
   const chartHeight = height ?? Math.max(150, data.length * 34 + 30);
 
@@ -178,9 +183,16 @@ export function RankingChart({
             deliberate status accent and is always paired with a written label. */}
         <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={24}
              label={{ position: "right", formatter: (v: number) => ft(v),
-                      fill: tokens.inkSecondary, fontSize: 12 }}>
+                      fill: tokens.inkSecondary, fontSize: 12 }}
+             onClick={onSelect ? (_: unknown, index: number) => onSelect(index) : undefined}
+             style={onSelect ? { cursor: "pointer" } : undefined}>
           {data.map((row, index) => (
-            <Cell key={index} fill={row.highlight ? tokens.good : tokens.sequential} />
+            <Cell
+              key={index}
+              fill={row.highlight ? tokens.good : tokens.sequential}
+              // The chosen bar stays full strength; the others step back so it reads as chosen.
+              fillOpacity={selected == null || selected === index ? 1 : 0.45}
+            />
           ))}
         </Bar>
       </BarChart>

@@ -32,9 +32,11 @@ from app.models import (
 )
 from app.schemas.api import (
     BasketComparison,
+    CategoryLine,
     CategorySpend,
     InflationPoint,
     MerchantBasketPrice,
+    MerchantReceipt,
     MerchantSpend,
     MonthlySpend,
     PricePoint,
@@ -176,6 +178,85 @@ async def by_category(
         for cat_id, name, total, count in rows
     ]
     return sorted(result, key=lambda c: c.total, reverse=True)
+
+
+async def category_lines(
+    session: AsyncSession,
+    category_id: uuid.UUID | None,
+    start: date | None = None,
+    end: date | None = None,
+    limit: int = 100,
+) -> list[CategoryLine]:
+    """The receipt lines behind one bar of the category chart, largest first.
+
+    Exactly what `by_category` added up for that bar - the same receipts, the same kind of
+    line - so the list explains the number rather than a slightly different one. Largest
+    first, because the question is nearly always "where did this huge number come from",
+    and a misread line (a lost thousands separator, a quantity read as a price) sits at the
+    top.
+    """
+    stmt = _in_range(
+        select(
+            ReceiptItem.id,
+            ReceiptItem.raw_name,
+            ReceiptItem.quantity,
+            ReceiptItem.unit,
+            ReceiptItem.gross_amount,
+            Receipt.id,
+            Receipt.purchased_at,
+            Receipt.status,
+            func.coalesce(Merchant.name, Receipt.merchant_raw_name),
+        )
+        .join(Receipt, ReceiptItem.receipt_id == Receipt.id)
+        .outerjoin(Merchant, Receipt.merchant_id == Merchant.id),
+        start,
+        end,
+    ).where(ReceiptItem.kind == LineKind.ITEM.value)
+    stmt = stmt.where(
+        ReceiptItem.category_id == category_id
+        if category_id is not None
+        else ReceiptItem.category_id.is_(None)
+    )
+    rows = (
+        await session.execute(
+            stmt.order_by(ReceiptItem.gross_amount.desc().nulls_last()).limit(limit)
+        )
+    ).all()
+    return [
+        CategoryLine(
+            item_id=item_id, raw_name=name, quantity=qty, unit=unit, gross_amount=_q(gross),
+            receipt_id=receipt_id, purchased_at=at, status=status, merchant_name=merchant,
+        )
+        for item_id, name, qty, unit, gross, receipt_id, at, status, merchant in rows
+    ]
+
+
+async def merchant_receipts(
+    session: AsyncSession,
+    merchant_id: uuid.UUID | None,
+    start: date | None = None,
+    end: date | None = None,
+    limit: int = 100,
+) -> list[MerchantReceipt]:
+    """The receipts behind one bar of the shop chart, largest first."""
+    stmt = _in_range(
+        select(Receipt.id, Receipt.purchased_at, Receipt.total_gross, Receipt.status),
+        start,
+        end,
+    ).where(
+        Receipt.merchant_id == merchant_id
+        if merchant_id is not None
+        else Receipt.merchant_id.is_(None)
+    )
+    rows = (
+        await session.execute(
+            stmt.order_by(Receipt.total_gross.desc().nulls_last()).limit(limit)
+        )
+    ).all()
+    return [
+        MerchantReceipt(receipt_id=rid, purchased_at=at, total_gross=_q(total), status=status)
+        for rid, at, total, status in rows
+    ]
 
 
 async def by_merchant(

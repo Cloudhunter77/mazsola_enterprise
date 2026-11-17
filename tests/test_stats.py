@@ -327,3 +327,46 @@ class TestInflationIndex:
         await add_receipt(session, merchant=None, when=datetime.now(UTC),
                           lines=[(products["Tej"], 400, 1)])
         assert await stats.inflation(session) == []
+
+
+class TestWhereABarComesFrom:
+    """Tapping a bar lists what it is made of - and the same things the bar added up."""
+
+    async def test_a_category_lists_its_lines_largest_first(self, session):
+        from app.models import Category
+
+        diy = Category(name="Barkács", slug="barkacs-t")
+        session.add(diy)
+        await session.flush()
+        obi = await resolve_merchant(session, "OBI")
+        when = datetime(2026, 10, 5, 12, tzinfo=UTC)
+        receipt = await add_receipt(session, merchant=obi, when=when, lines=[(None, 1990, 1)])
+        misread = await add_receipt(session, merchant=obi, when=when,
+                                    lines=[(None, 19_000_000, 1)])
+        for stored in (receipt, misread):
+            item = (await session.get(Receipt, stored.id, populate_existing=True))
+            await session.refresh(item, ["items"])
+            item.items[0].category_id = diy.id
+        await session.commit()
+
+        lines = await stats.category_lines(session, diy.id)
+        assert [line.gross_amount for line in lines] == [Decimal("19000000.00"),
+                                                         Decimal("1990.00")]
+        assert lines[0].receipt_id == misread.id and lines[0].merchant_name == "OBI"
+        bar = next(c for c in await stats.by_category(session) if c.category_id == diy.id)
+        assert bar.total == sum(line.gross_amount for line in lines), "explains the bar exactly"
+
+    async def test_uncategorised_lines_are_asked_for_as_none(self, auth_client):
+        response = await auth_client.get("/api/stats/category-lines",
+                                         params={"category_id": "none"})
+        assert response.status_code == 200 and response.json() == []
+        assert (await auth_client.get("/api/stats/category-lines",
+                                      params={"category_id": "nonsense"})).status_code == 422
+
+    async def test_a_shop_lists_its_receipts_largest_first(self, session):
+        lidl = await resolve_merchant(session, "Lidl")
+        when = datetime(2026, 10, 5, 12, tzinfo=UTC)
+        await add_receipt(session, merchant=lidl, when=when, lines=[(None, 500, 1)])
+        await add_receipt(session, merchant=lidl, when=when, lines=[(None, 9000, 1)])
+        found = await stats.merchant_receipts(session, lidl.id)
+        assert [r.total_gross for r in found] == [Decimal("9000.00"), Decimal("500.00")]

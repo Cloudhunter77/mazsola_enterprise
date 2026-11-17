@@ -298,6 +298,15 @@ export interface Wish {
   receipt_ids: string[]; earmark_id: string | null;
 }
 
+export interface CategoryLine {
+  item_id: string; raw_name: string; quantity: Money | null; unit: string | null;
+  gross_amount: Money; receipt_id: string; purchased_at: string | null; status: string;
+  merchant_name: string | null;
+}
+export interface MerchantReceipt {
+  receipt_id: string; purchased_at: string | null; total_gross: Money; status: string;
+}
+
 // --- endpoints -------------------------------------------------------------
 export type LabelUploadResponse = { id: string; status: string; duplicate: boolean };
 
@@ -538,6 +547,10 @@ export const api = {
   monthly: () => request<MonthlySpend[]>("/api/stats/monthly"),
   byCategory: () => request<CategorySpend[]>("/api/stats/by-category"),
   byMerchant: () => request<MerchantSpend[]>("/api/stats/by-merchant"),
+  categoryLines: (categoryId: string | null) =>
+    request<CategoryLine[]>(`/api/stats/category-lines?category_id=${categoryId ?? "none"}`),
+  merchantReceipts: (merchantId: string | null) =>
+    request<MerchantReceipt[]>(`/api/stats/merchant-receipts?merchant_id=${merchantId ?? "none"}`),
   priceHistory: (productId: string) => request<PriceHistory>(`/api/stats/price-history/${productId}`),
   basket: () => request<BasketComparison>("/api/stats/basket-comparison"),
   inflation: () => request<InflationPoint[]>("/api/stats/inflation"),
