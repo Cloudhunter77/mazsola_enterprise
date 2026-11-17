@@ -272,19 +272,6 @@ class ProductCreate(BaseModel):
     package_unit: str | None = None
 
 
-class BudgetIn(BaseModel):
-    category_id: uuid.UUID | None = None
-    month: date
-    amount: Decimal
-
-
-class BudgetOut(ORMModel):
-    id: uuid.UUID
-    category_id: uuid.UUID | None
-    month: date
-    amount: Decimal | None
-
-
 # --- statistics --------------------------------------------------------------
 class SpendSummary(BaseModel):
     total: Decimal
@@ -488,7 +475,8 @@ class ManualReceiptIn(BaseModel):
 # --- recurring payments ------------------------------------------------------
 class RecurringIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
-    merchant_name: str = Field(min_length=1, max_length=300)
+    # Who the bill is from. Defaults to the name ("Spotify" is both); unused for income.
+    merchant_name: str = Field(default="", max_length=300)
     amount: Decimal = Field(gt=0)
     currency: str = "HUF"
     cadence: str = "monthly"
@@ -500,6 +488,15 @@ class RecurringIn(BaseModel):
     active: bool = True
     category_id: uuid.UUID | None = None
     notes: str | None = None
+    direction: Literal["expense", "income"] = "expense"
+    # Fixed books itself on its day; variable waits for the actual amount. Income always
+    # waits for you to confirm it arrived, whichever this is.
+    amount_mode: Literal["fixed", "variable"] = "fixed"
+    # Whose it is in the plan; null is Közös.
+    owner_id: uuid.UUID | None = None
+    # Who pays a bill, and how each one it generates is split. Unused for income.
+    payer_id: uuid.UUID | None = None
+    default_shares: list[ShareIn] | None = Field(default=None, max_length=20)
 
 
 class RecurringOut(ORMModel):
@@ -517,6 +514,11 @@ class RecurringOut(ORMModel):
     active: bool
     category_id: uuid.UUID | None
     notes: str | None
+    direction: str
+    amount_mode: str
+    owner_id: uuid.UUID | None
+    payer_id: uuid.UUID | None
+    default_shares: list[dict] | None
     # Filled by the API: how many receipts this rule has generated, and when it next will.
     # Deliberately not called `charges`: that is the ORM relationship, and a field of the
     # same name makes pydantic lazy-load it, which in an async session is an error rather

@@ -1,17 +1,23 @@
-/** Typing in a receipt you no longer have.
+/** Typing in a receipt you no longer have - or money that came in.
  *
  *  The form is deliberately forgiving about the parts you have forgotten: the total defaults
  *  to the sum of the lines, and one line with the shop's name on it is a perfectly valid
  *  entry when all you remember is "Lidl, 4 200 Ft". Everything beyond that is optional detail
  *  you can add if you have it.
+ *
+ *  Income lives here too, behind the Bevétel switch, because a bonus or a refund is the same
+ *  kind of thing: one amount you want written down now. A salary is better set up once under
+ *  Rendszeres, where it is expected every month and confirmed when it arrives.
  */
 
 import { useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { api } from "../lib/api";
+import { amountOf as parseAmount, owners, todayIso } from "../lib/budget";
 import { ft } from "../lib/format";
-import { Card } from "../components/ui";
+import { useSession } from "../lib/session";
+import { Card, useAsync } from "../components/ui";
 
 type Line = { name: string; amount: string; quantity: string; kind: string };
 
@@ -40,6 +46,115 @@ function amountOf(raw: string): number | null {
 }
 
 export default function Manual() {
+  const [params, setParams] = useSearchParams();
+  const income = params.has("bevetel");
+
+  return (
+    <>
+      <h1 style={{ marginBottom: 14 }}>Kézi rögzítés</h1>
+      <div className="segmented" role="group" aria-label="Mit rögzítesz?">
+        <button
+          className="btn" aria-pressed={!income}
+          onClick={() => setParams({}, { replace: true })}
+        >
+          Kiadás
+        </button>
+        <button
+          className="btn" aria-pressed={income}
+          onClick={() => setParams({ bevetel: "" }, { replace: true })}
+        >
+          Bevétel
+        </button>
+      </div>
+      {income ? <IncomeForm /> : <ExpenseForm />}
+    </>
+  );
+}
+
+function IncomeForm() {
+  const navigate = useNavigate();
+  const session = useSession();
+  const users = useAsync(() => api.users(), []);
+  const [owner, setOwner] = useState<string>(session?.user_id ?? "");
+  const [name, setName] = useState("");
+  const [amount, setAmount] = useState("");
+  const [day, setDay] = useState(todayIso());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setError(null);
+    const value = parseAmount(amount);
+    if (!name.trim()) return setError("Mi volt ez? Pl. bónusz, visszatérítés.");
+    if (value === null || value <= 0) return setError("Adj meg egy nullánál nagyobb összeget.");
+    setBusy(true);
+    try {
+      await api.addIncome({
+        user_id: owner || null, name: name.trim(), amount: value, received_on: day,
+      });
+      navigate("/penz");
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <Card>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Bónusz, visszatérítés, ajándékba kapott pénz – ami egyszer jön. A fizetést elég egyszer
+          beállítani a <Link to="/rendszeres">Rendszeres</Link> alatt; ott minden hónapban
+          várja, és egy gombnyomással jelölöd, hogy megérkezett.
+        </p>
+        <div className="grid cols-2" style={{ gap: 10 }}>
+          <label>
+            Kié
+            <select value={owner} onChange={(event) => setOwner(event.target.value)}>
+              {owners(users.data ?? []).map((o) => (
+                <option key={o.id ?? "kozos"} value={o.id ?? ""}>{o.name}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Mi volt ez
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="pl. Bónusz"
+              autoFocus
+            />
+          </label>
+          <label>
+            Összeg (Ft)
+            <input
+              inputMode="decimal"
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              placeholder="50 000"
+            />
+          </label>
+          <label>
+            Mikor érkezett
+            <input type="date" value={day} max={todayIso()}
+                   onChange={(event) => setDay(event.target.value)} />
+          </label>
+        </div>
+        {error && <p className="error">{error}</p>}
+        <button
+          className="btn primary big"
+          style={{ width: "100%", marginTop: 12 }}
+          onClick={save}
+          disabled={busy}
+        >
+          {busy ? "Mentés…" : "Bevétel mentése"}
+        </button>
+      </Card>
+    </>
+  );
+}
+
+function ExpenseForm() {
   const navigate = useNavigate();
   const [merchant, setMerchant] = useState("");
   const [when, setWhen] = useState(nowLocal());
@@ -96,8 +211,6 @@ export default function Manual() {
 
   return (
     <>
-      <h1 style={{ marginBottom: 14 }}>Kézi rögzítés</h1>
-
       <Card>
         <p className="muted" style={{ marginTop: 0 }}>
           Elveszett a blokk, de tudod mit vettél? Írd be. Ugyanúgy beleszámít a
@@ -222,9 +335,9 @@ export default function Manual() {
 
       <Card title="Ismétlődő kiadás?">
         <p className="muted" style={{ margin: 0 }}>
-          A Spotify és a többi előfizetés nem ide való – azt elég egyszer beállítani, utána
-          magától rögzül minden hónapban.{" "}
-          <Link to="/elofizetesek">Előfizetések →</Link>
+          A Spotify, a rezsi és a többi rendszeres tétel nem ide való – azt elég egyszer
+          beállítani, utána minden hónapban számol vele a terv.{" "}
+          <Link to="/rendszeres">Rendszeres →</Link>
         </p>
       </Card>
     </>

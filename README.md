@@ -59,13 +59,36 @@ statistics wrong.
 - **Kézi rögzítés** — type in a receipt you lost. Shop, date, lines; the total defaults to
   the sum, so "Lidl, 4 200 Ft" as a single line is a valid entry. It is stored `confirmed`
   rather than queued for review: you entered the numbers, so there is nothing to check.
-- **Előfizetések** — Spotify, YouTube, the gym. Set the amount and the day once and each
-  month's charge appears by itself, as an ordinary receipt. A start date in the past
-  backfills. Pausing stops future charges and keeps everything already recorded, because a
-  cancelled subscription is still part of last year's spending.
+- **Rendszeres** — rent, Spotify, the electricity bill. Set the amount and the day once.
+  A fixed bill appears by itself each month as an ordinary receipt, with its payer and its
+  split, so it also reaches Elszámolás. A variable one (electricity) waits for you to enter
+  what it came to. A start date in the past backfills. Pausing stops future charges and keeps
+  everything already recorded, because a cancelled subscription is still part of last year's
+  spending.
 
 Both become ordinary `receipts` rows, so every statistic counts them without knowing they
 were never photographed.
+
+## Planning ahead (Pénz)
+
+The household budget lives under the Pénz tab, replacing a spreadsheet. The full design is in
+[`docs/budgeting-plan.md`](docs/budgeting-plan.md); the decisions behind it are in
+[`DECISIONS.md`](DECISIONS.md).
+
+- **Periods follow the monthly meeting, not the calendar.** A period runs from one meeting
+  to the next and is named after the month it plans. Receipts and income belong to it by
+  date. From the 1st of a month until that month has been planned, a banner says so.
+- **Terv** is a grid of budget lines by month. An amount carries forward until changed. A
+  line belongs to Közös or to one person and covers one or more categories, subcategories
+  included. Recurring bills and salaries fill their own rows. The bottom rows show what is
+  left free, for the household and for each person.
+- **Hónap** shows a period's plan against what was spent. A split receipt counts against the
+  Közös lines, an unsplit one against its payer's. Spending that matches no line is shown as
+  *tervezetlen* rather than dropped.
+- **Income** is never a receipt. A salary set up under Rendszeres is expected every month and
+  confirmed when it arrives; a bonus is added on the Kézzel page.
+- **Havi megbeszélés** walks through the meeting: what is still open, plan against actual,
+  settling up, next month's amounts, and closing the period, which freezes its plan.
 
 ## Getting started
 

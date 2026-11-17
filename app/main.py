@@ -1,7 +1,7 @@
 """Receipt Tracker - a receipt scanner and expense database for a home NAS.
 
 One process serves the API, the built single-page app, and the extraction worker. On start
-it brings the schema up to date and seeds the category tree, so deploying is 'pull the image
+it brings the schema up to date and tops up the category tree, so deploying is 'pull the image
 and set the environment variables' with no migration step to remember.
 """
 
@@ -19,10 +19,12 @@ from sqlalchemy import text
 
 from app.api import (
     auth,
+    budget,
     catalog,
     categorising,
     costs,
     fixes,
+    income,
     labels,
     receipts,
     recurring,
@@ -35,7 +37,7 @@ from app.api import (
 from app.config import get_settings
 from app.db import SessionLocal, engine
 from app.security import check_configuration
-from app.services.seed import seed_if_empty
+from app.services.seed import seed_categories
 from app.services.users import ensure_owner
 from app.version import app_version, build_info
 from app.worker import ExtractionWorker
@@ -77,7 +79,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await _run_migrations()
 
     async with SessionLocal() as session:
-        await seed_if_empty(session)
+        # Every start, not only the first: a category added to the tree later must reach a
+        # database that already has the others. Matching by slug makes this a no-op otherwise.
+        await seed_categories(session)
         # The first login, from APP_PASSWORD_HASH, so the Felhasználók page has an admin.
         await ensure_owner(session, settings)
 
@@ -117,6 +121,8 @@ def create_app() -> FastAPI:
     app.include_router(costs.router)
     app.include_router(fixes.router)
     app.include_router(recurring.router)
+    app.include_router(budget.router)
+    app.include_router(income.router)
     app.include_router(system.router)
     app.include_router(users.router)
 

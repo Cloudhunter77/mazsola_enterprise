@@ -1,16 +1,15 @@
-"""Operational tables: what each extraction cost, what you corrected, what you budgeted."""
+"""Operational tables: what each extraction cost and what you corrected."""
 
 from __future__ import annotations
 
 import enum
 import uuid
-from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import JSON, Date, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import JSON, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, TimestampMixin, money, pk
+from app.models.base import Base, TimestampMixin, pk
 
 
 class AttemptKind(enum.StrEnum):
@@ -82,17 +81,3 @@ class Correction(Base, TimestampMixin):
     field: Mapped[str] = mapped_column(String(60), nullable=False)
     old_value: Mapped[str | None] = mapped_column(Text, nullable=True)
     new_value: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-
-class Budget(Base, TimestampMixin):
-    """Monthly cap. NULL category means the whole month's spend."""
-
-    __tablename__ = "budgets"
-    __table_args__ = (UniqueConstraint("category_id", "month", name="uq_budget_category_month"),)
-
-    id: Mapped[uuid.UUID] = pk()
-    category_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("categories.id", ondelete="CASCADE"), nullable=True, index=True
-    )
-    month: Mapped[date] = mapped_column(Date, nullable=False, index=True)  # first day of month
-    amount: Mapped[Decimal | None] = money(nullable=False)

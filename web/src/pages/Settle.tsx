@@ -91,7 +91,7 @@ export default function Settle() {
   );
 }
 
-function Debt({ transfer, me, onSettled }: {
+export function Debt({ transfer, me, onSettled }: {
   transfer: Transfer;
   me: string | null;
   onSettled: () => void;

@@ -1,0 +1,110 @@
+# Decisions
+
+Numbered, never rewritten. A later decision supersedes an earlier one by saying so.
+
+D1–D14 were agreed while planning budgeting ("Pénz") in the claude.ai/code session
+`session_015xmbBxtqJyQqJEscyjETrG`, and recorded here on 2026-11-06. The full plan is
+[`docs/budgeting-plan.md`](docs/budgeting-plan.md).
+
+## D1 — Retire the budget spreadsheet instead of syncing with it (2026-11-06)
+The app takes over planning, and the spreadsheet is retired once the app can do this. There is no
+two-way sync. Only its categories, the two goal names (Kanapé, Fényképezőgép) and its six wishlist
+items get imported.
+
+## D2 — Shared money is per-receipt splits only (2026-11-06)
+There is no joint pot. Settling up stays in Elszámolás.
+
+## D3 — Everything is visible to both of us (2026-11-06)
+
+## D4 — Expenses without a receipt: manual entry and recurring items first (2026-11-06)
+Manual entry and recurring items come now. Bank statement import comes later (stage 3).
+
+## D5 — Budget lines belong to Közös, Balázs or Petra (2026-11-06)
+A split receipt counts in full against the shared (Közös) lines. An unsplit one counts against
+its payer's lines.
+
+## D6 — One category tree, budget at any level (2026-11-06)
+A parent's budget covers its children. Each line is tagged Fix / Változó / Célalap /
+Megtakarítás.
+
+## D7 — Income is an expected salary per person, confirmed when it arrives (2026-11-06)
+Bonuses are added by hand.
+
+## D8 — Recurring items are planned ahead (2026-11-06)
+Fixed amounts are booked automatically. Variable ones wait for the actual amount to be entered.
+Yearly ones are spread over 12 months in the plan.
+
+## D9 — Goals are a virtual pot (2026-11-06)
+Setting money aside for a goal is a transfer, not spending. A purchase linked to a goal draws
+down the saved money instead of counting against that month's budget, because the goal paid for
+it. It still shows as real spending in Statisztika.
+
+## D10 — No carry-over (2026-11-06)
+Unspent budget does not roll into the next month.
+
+## D11 — The wishlist and the shopping list are two lists, linked (2026-11-06)
+One tap moves a wishlist item to the shopping list or turns it into a goal.
+
+## D12 — A budget period runs from one monthly meeting to the next (2026-11-06)
+It does not follow the calendar month. It is named after the month planned at the meeting. From
+the 1st of each month, until that month's meeting has happened, the app shows a warning banner.
+Why: "we sit down each month to discuss the previous and next month finances, that should be the
+start and end point." Since the meeting defines the period, whose salary arrives first doesn't
+matter.
+
+## D13 — The Statisztika tab becomes "Pénz" (2026-11-06)
+The app keeps five tabs plus ⚙, and a few pages move to where they belong (see the plan's
+Screens table). Why: five tabs fit a phone.
+
+## D14 — Build budgeting in three stages, plan first (2026-11-06)
+Stage 1 is the planning core, stage 2 goals and wishlist, stage 3 bank statement import. Each
+stage is usable on its own. Nothing is implemented until the plan for a stage is agreed.
+
+## D15 — The five open questions take their proposed defaults (2026-11-06)
+1. A receipt dated before a meeting but entered after it belongs to its own (closed) period by
+   date, and is flagged "zárás után rögzítve" for the next meeting.
+2. Either of us can reopen a closed period.
+3. Statisztika stays on calendar months; Pénz uses meeting-to-meeting periods.
+4. A variable bill is planned at its last confirmed amount until changed.
+5. The "no meeting yet" banner shows on both Rögzítés and Pénz.
+
+Also: implementation of stage 1 starts now, without a separate stage-1 plan review (supersedes
+the "plan agreed first" part of D14 for stage 1).
+
+## D16 — A budget line covers one or more categories (2026-11-06)
+A line has a name, an owner (Közös / a person), a tag (D6) and a set of categories; each
+category brings its subcategories with it. A category can be in at most one active line per
+owner. Why: the spreadsheet's lines don't map one-to-one onto the app's categories -
+"Kaja – bevásárlás" is Élelmiszer and Ital together.
+
+## D17 — A bill from Rendszeres counts against its own row, not a category line (2026-11-06)
+Every recurring bill is its own row in Terv and Hónap, so a receipt it generated is matched to
+that row and never also to the line of its category. Why: otherwise the same rent would be
+planned twice (its row and the category line) and spent twice.
+
+## D18 — What books itself (2026-11-06)
+A fixed recurring bill is booked on its due day, as before. A variable bill and every income
+wait to be confirmed with the actual amount ("Kifizetve" / "Megérkezett"), and either can be
+marked "Kihagyva" for a month it didn't happen. Why: D7 and D8; a salary that has not arrived
+must not show up as money you have.
+
+## D19 — The per-person view splits shared plans equally (2026-11-06)
+"Szabad" per person = own income − own lines − an equal share of the Közös lines. A Közös
+recurring item uses its default split when it has one. Why: it matches the spreadsheet's
+"Hozzájárulás módja: Egyenlő" (50-50). An income-proportional split can be added later.
+
+## D20 — Spending is counted at what was actually paid (2026-11-06)
+Discounts and cash rounding are spread over a receipt's lines in proportion, so the lines of a
+receipt add up to its total. Yearly recurring items are planned at 1/12 per month and are not
+flagged as overspent in the month they are paid.
+
+## D21 — Categories from the sheet (2026-11-06)
+New: Rezsi (top-level), Programok, Utazás and Hobbi (under Szabadidő), Váratlan kiadások (under
+Egyéb). The sheet's "Ajándékok" uses the existing "Ajándék" category instead of a near-duplicate.
+New categories now reach existing installs because the idempotent category seed runs at every
+start (nothing in the app deletes or renames a category).
+
+## D22 — Closing a period freezes its plan (2026-11-06)
+Closing writes each line's amount for that month explicitly, and plan edits to a closed month
+are refused until it is reopened. Why: amounts carry forward, so without the snapshot an edit to
+an earlier month could silently change a month already discussed.

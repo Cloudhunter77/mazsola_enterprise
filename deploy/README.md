@@ -196,18 +196,20 @@ that person. Anyone else uploading through it can change who paid on the receipt
 
 ## 6. Things that never printed a receipt
 
-Two extra ways into the same database, both reachable from the **Tábla** tab:
+Two extra ways into the same database:
 
-- **Kézi** — a receipt you lost but remember. Shop, date, one or more lines. It is saved
-  as already confirmed and counts in every statistic.
-- **Előfizetések** — Spotify, YouTube and the like. Amount, day of the month, start date;
-  each month's charge then appears on its own. The app generates anything already due when
-  you save the rule, and checks hourly after that. Running it twice never charges twice —
-  the periods are keyed so a repeat is a no-op.
+- **Rögzítés → Kézzel** — a receipt you lost but remember. Shop, date, one or more lines.
+  It is saved as already confirmed and counts in every statistic. The Bevétel switch on the
+  same page records income instead: a bonus, a refund.
+- **Pénz → Rendszeres** — rent, Spotify, the electricity bill, and salaries. Amount, day of
+  the month, start date. A fixed bill's charge then appears on its own each month. The app
+  generates anything already due when you save the rule, and checks hourly after that.
+  Running it twice never charges twice: the periods are keyed so a repeat is a no-op. A
+  variable bill and a salary wait for you to confirm them with the actual amount.
 
-A subscription set to the 31st charges on the last day of a short month rather than
-skipping it. Pausing a rule keeps its history; deleting the rule also keeps the receipts it
-generated.
+A bill set to the 31st charges on the last day of a short month rather than skipping it.
+Pausing a rule keeps its history; deleting the rule also keeps the receipts it generated.
+The old `/elofizetesek` address still works and leads to Rendszeres.
 
 ## 7. Backups
 

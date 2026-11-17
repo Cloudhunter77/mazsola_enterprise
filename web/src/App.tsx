@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import { api, type SessionInfo } from "./lib/api";
 import { SessionContext } from "./lib/session";
-import { SECTIONS, sectionFor } from "./lib/nav";
+import { SECTIONS, SETTINGS, sectionFor } from "./lib/nav";
 import { Loading } from "./components/ui";
+import FixNotes from "./components/FixNotes";
+import MeetingBanner from "./components/MeetingBanner";
+import Users from "./components/Users";
 import Capture from "./pages/Capture";
 import Categorise from "./pages/Categorise";
 import Costs from "./pages/Costs";
@@ -15,6 +18,9 @@ import ShelfPrices from "./pages/ShelfPrices";
 import Shopping from "./pages/Shopping";
 import Login from "./pages/Login";
 import Manual from "./pages/Manual";
+import Meeting from "./pages/Meeting";
+import Month from "./pages/Month";
+import PlanPage from "./pages/Plan";
 import Prices from "./pages/Prices";
 import Receipts from "./pages/Receipts";
 import RecurringPage from "./pages/Recurring";
@@ -83,13 +89,13 @@ export default function App() {
       <header className="topbar">
         <span className="brand">🧾 Receipt Tracker</span>
         <span className="spacer" />
-        {/* Version, database and worker state: looked at rarely, so it is not a tab. */}
+        {/* Logins, fix notes, API cost and version: looked at rarely, so not a tab. */}
         <Link
           className="btn"
-          to="/rendszer"
-          title="Rendszer: verzió és állapot"
-          aria-label="Rendszer"
-          aria-current={location.pathname === "/rendszer" ? "page" : undefined}
+          to={SETTINGS.pages[0].to}
+          title="Beállítások: felhasználók, javítani való, API költség, rendszer"
+          aria-label="Beállítások"
+          aria-current={section === SETTINGS ? "page" : undefined}
         >
           ⚙
         </Link>
@@ -114,6 +120,10 @@ export default function App() {
             ))}
           </nav>
         )}
+        {/* On Rögzítés, where the app is opened most, and on Pénz; not on the meeting
+            screen itself, which is where it points. */}
+        {(section?.label === "Rögzítés" || section?.label === "Pénz") &&
+          location.pathname !== "/megbeszeles" && <MeetingBanner pathname={location.pathname} />}
         <Routes>
           <Route path="/" element={<Capture />} />
           <Route path="/blokkok" element={<Receipts />} />
@@ -121,7 +131,14 @@ export default function App() {
           <Route path="/tabla" element={<TableView />} />
           <Route path="/kezi" element={<Manual />} />
           <Route path="/rendszer" element={<System />} />
-          <Route path="/elofizetesek" element={<RecurringPage />} />
+          <Route path="/rendszeres" element={<RecurringPage />} />
+          {/* The old name, kept so a saved link still lands somewhere sensible. */}
+          <Route path="/elofizetesek" element={<Navigate to="/rendszeres" replace />} />
+          <Route path="/penz" element={<Month />} />
+          <Route path="/terv" element={<PlanPage />} />
+          <Route path="/megbeszeles" element={<Meeting />} />
+          <Route path="/felhasznalok" element={<SettingsPage title="Felhasználók"><Users /></SettingsPage>} />
+          <Route path="/javitani" element={<SettingsPage title="Javítani való"><FixNotes /></SettingsPage>} />
           <Route path="/elszamolas" element={<Settle />} />
           <Route path="/statisztika" element={<Dashboard />} />
           <Route path="/arak" element={<Prices />} />
@@ -152,5 +169,14 @@ export default function App() {
       </nav>
     </div>
     </SessionContext.Provider>
+  );
+}
+
+function SettingsPage({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <>
+      <h1 style={{ marginBottom: 14 }}>{title}</h1>
+      {children}
+    </>
   );
 }

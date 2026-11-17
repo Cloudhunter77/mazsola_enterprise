@@ -1,16 +1,15 @@
-"""Categories, merchants, products and budgets."""
+"""Categories, merchants and products."""
 
 from __future__ import annotations
 
 import uuid
 from decimal import Decimal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 from sqlalchemy import func, select, update
 
 from app.api.deps import AuthDep, SessionDep
 from app.models import (
-    Budget,
     Category,
     LineKind,
     Merchant,
@@ -21,8 +20,6 @@ from app.models import (
 )
 from app.schemas.api import (
     ApplySuggestionIn,
-    BudgetIn,
-    BudgetOut,
     CategoryOut,
     MerchantOut,
     ProductCreate,
@@ -113,42 +110,6 @@ async def create_product(
     await session.refresh(product)
     return ProductOut.model_validate(product)
 
-
-@router.get("/budgets", response_model=list[BudgetOut])
-async def list_budgets(_: AuthDep, session: SessionDep) -> list[BudgetOut]:
-    rows = await session.scalars(select(Budget).order_by(Budget.month.desc()))
-    return [BudgetOut.model_validate(b) for b in rows]
-
-
-@router.put("/budgets", response_model=BudgetOut)
-async def upsert_budget(_: AuthDep, session: SessionDep, body: BudgetIn) -> BudgetOut:
-    month = body.month.replace(day=1)
-    stmt = select(Budget).where(Budget.month == month)
-    stmt = stmt.where(
-        Budget.category_id == body.category_id
-        if body.category_id
-        else Budget.category_id.is_(None)
-    )
-    budget = await session.scalar(stmt)
-
-    if budget is None:
-        budget = Budget(category_id=body.category_id, month=month, amount=body.amount)
-        session.add(budget)
-    else:
-        budget.amount = body.amount
-
-    await session.commit()
-    await session.refresh(budget)
-    return BudgetOut.model_validate(budget)
-
-
-@router.delete("/budgets/{budget_id}", status_code=204)
-async def delete_budget(_: AuthDep, session: SessionDep, budget_id: uuid.UUID) -> None:
-    budget = await session.get(Budget, budget_id)
-    if budget is None:
-        raise HTTPException(status_code=404, detail="No such budget.")
-    await session.delete(budget)
-    await session.commit()
 
 @router.get("/suggestions", response_model=SuggestionsOut)
 async def product_suggestions(

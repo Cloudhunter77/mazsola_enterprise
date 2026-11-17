@@ -132,7 +132,6 @@ export type AttemptKind = "receipt" | "price_label" | "product_photo";
 export interface CostByMonth { month: string; kind: AttemptKind; model: string | null; calls: number; total_usd: Money; avg_usd: Money; avg_input_tokens: number | null; avg_output_tokens: number | null }
 export interface CostByKind { kind: AttemptKind; calls: number; total_usd: Money; avg_usd: Money; avg_input_tokens: number | null; avg_output_tokens: number | null; failures: number }
 export interface CostSummary { total_usd: Money; calls: number; average_usd: Money; projected_yearly_usd: Money; by_kind: CostByKind[]; by_month: CostByMonth[]; failures: number }
-export interface Budget { id: string; category_id: string | null; month: string; amount: Money | null }
 
 // Request bodies, not responses: money goes out as a plain number and pydantic converts it.
 // `Money` is a string because that is how Decimal comes back, which is the wrong type here.
@@ -176,7 +175,77 @@ export interface Recurring {
   cadence: string; day_of_month: number; month_of_year: number | null;
   payment_method: string; starts_on: string; ends_on: string | null; active: boolean;
   category_id: string | null; notes: string | null;
+  direction: "expense" | "income"; amount_mode: "fixed" | "variable";
+  // null is Közös.
+  owner_id: string | null; payer_id: string | null;
+  default_shares: { user_id: string; percent: Money }[] | null;
   charge_count: number; next_charge: string | null;
+}
+
+// --- budgeting (mirroring app/schemas/budget.py) ------------------------------
+/** Fix / Változó / Célalap / Megtakarítás - the spreadsheet's "Csoport". */
+export type LineKind = "fix" | "valtozo" | "celalap" | "megtakaritas";
+export interface Person { id: string; display_name: string; active: boolean }
+export interface Period {
+  id: string; month: string; starts_on: string;
+  /** Exclusive: the day the next period began. Null for the current one. */
+  ends_on: string | null;
+  closed_at: string | null; is_current: boolean;
+}
+export interface BudgetStatus {
+  meeting_due: boolean; current: Period | null; today: string;
+  suggested_starts_on: string; suggested_month: string;
+}
+export interface BudgetLine {
+  id: string; name: string; owner_id: string | null; kind: LineKind;
+  category_ids: string[]; active: boolean; sort_order: number; notes: string | null;
+}
+export interface PlanCell { amount: Money; explicit: boolean }
+export interface PlanRow {
+  key: string; type: "line" | "recurring" | "income"; id: string; name: string;
+  owner_id: string | null; kind: LineKind; active: boolean; category_ids: string[];
+  yearly: boolean; cells: PlanCell[];
+}
+export interface PlanMonth { month: string; period_id: string | null; locked: boolean }
+export interface PersonTotals { user_id: string; income: Money; planned: Money; free: Money }
+export interface PlanTotals { income: Money; planned: Money; free: Money; people: PersonTotals[] }
+export interface Plan { months: PlanMonth[]; rows: PlanRow[]; totals: PlanTotals[]; users: Person[] }
+export interface Income {
+  id: string; user_id: string | null; name: string; amount: Money; received_on: string;
+  recurring_id: string | null; notes: string | null; created_at: string;
+}
+export type OccurrenceStatus = "expected" | "due" | "done" | "skipped";
+export interface Occurrence {
+  recurring_id: string; name: string; direction: "expense" | "income";
+  amount_mode: "fixed" | "variable"; owner_id: string | null;
+  month: string; due: string; status: OccurrenceStatus;
+  expected_amount: Money; amount: Money | null; booked_on: string | null;
+  receipt_id: string | null; income_id: string | null;
+}
+export interface Piece {
+  receipt_id: string; day: string; merchant: string | null; amount: Money;
+  category_id?: string | null;
+}
+export interface MonthRow {
+  key: string; type: "line" | "recurring" | "unplanned"; id: string | null; name: string;
+  owner_id: string | null; kind: LineKind; plan: Money;
+  /** Null for money set aside, which no receipt shows. */
+  actual: Money | null;
+  yearly: boolean; active: boolean; category_ids: string[]; receipts: Piece[];
+}
+export interface MonthView {
+  period: Period; periods: Period[]; users: Person[]; rows: MonthRow[];
+  income: { owner_id: string | null; arrived: Money; expected: Money }[];
+  income_entries: Income[]; occurrences: Occurrence[];
+  issues: {
+    due: Occurrence[]; uncategorised: Piece[]; maybe_shared: Piece[];
+    late: (Piece & { period_month: string })[];
+  };
+  totals: {
+    planned_spending: Money; planned_aside: Money; spent: Money;
+    income_arrived: Money; income_expected: Money; free: Money;
+  };
+  meeting_due: boolean; receipt_count: number;
 }
 
 // --- endpoints -------------------------------------------------------------
@@ -458,7 +527,39 @@ export const api = {
     request<Recurring>(`/api/recurring/${id}`, json("PATCH", body)),
   deleteRecurring: (id: string) => request<void>(`/api/recurring/${id}`, { method: "DELETE" }),
   runRecurring: () => request<Recurring[]>("/api/recurring/run", { method: "POST" }),
+  occurrences: (periodId?: string) =>
+    request<Occurrence[]>(`/api/recurring/occurrences${periodId ? `?period_id=${periodId}` : ""}`),
+  confirmOccurrence: (id: string, body: { month: string; amount: number; on?: string }) =>
+    request<void>(`/api/recurring/${id}/occurrences`, json("POST", body)),
+  skipOccurrence: (id: string, month: string) =>
+    request<void>(`/api/recurring/${id}/occurrences/skip`, json("POST", { month })),
+  undoOccurrence: (id: string, month: string) =>
+    request<void>(`/api/recurring/${id}/occurrences/${month}`, { method: "DELETE" }),
 
-  budgets: () => request<Budget[]>("/api/budgets"),
-  putBudget: (body: Record<string, unknown>) => request<Budget>("/api/budgets", json("PUT", body)),
+  budgetStatus: () => request<BudgetStatus>("/api/budget/status"),
+  periods: () => request<Period[]>("/api/budget/periods"),
+  openPeriod: (body: { starts_on?: string; month?: string }) =>
+    request<Period>("/api/budget/periods", json("POST", body)),
+  reopenPeriod: (id: string) =>
+    request<Period>(`/api/budget/periods/${id}/reopen`, { method: "POST" }),
+  closePeriod: (id: string) =>
+    request<Period>(`/api/budget/periods/${id}/close`, { method: "POST" }),
+  budgetMonth: (periodId?: string) =>
+    request<MonthView>(`/api/budget/month${periodId ? `?period_id=${periodId}` : ""}`),
+  plan: (start?: string, months = 6) =>
+    request<Plan>(`/api/budget/plan?months=${months}${start ? `&start=${start}` : ""}`),
+  setPlanAmount: (line_id: string, month: string, amount: number | null) =>
+    request<void>("/api/budget/plan", json("PUT", { line_id, month, amount })),
+  budgetLines: () => request<BudgetLine[]>("/api/budget/lines"),
+  createLine: (body: Record<string, unknown>) =>
+    request<BudgetLine>("/api/budget/lines", json("POST", body)),
+  updateLine: (id: string, body: Record<string, unknown>) =>
+    request<BudgetLine>(`/api/budget/lines/${id}`, json("PATCH", body)),
+  removeLine: (id: string) =>
+    request<{ deleted: boolean }>(`/api/budget/lines/${id}`, { method: "DELETE" }),
+
+  income: () => request<Income[]>("/api/income"),
+  addIncome: (body: { user_id: string | null; name: string; amount: number; received_on: string; notes?: string }) =>
+    request<Income>("/api/income", json("POST", body)),
+  deleteIncome: (id: string) => request<void>(`/api/income/${id}`, { method: "DELETE" }),
 };

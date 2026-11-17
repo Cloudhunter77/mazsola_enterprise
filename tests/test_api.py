@@ -301,19 +301,3 @@ class TestCatalogEndpoints:
 
         found = await auth_client.get("/api/products", params={"q": "sajt"})
         assert [p["canonical_name"] for p in found.json()] == ["Trappista sajt"]
-
-    async def test_budget_upsert_replaces_rather_than_duplicates(self, auth_client):
-        first = await auth_client.put(
-            "/api/budgets", json={"month": "2026-09-01", "amount": "150000.00"}
-        )
-        assert first.status_code == 200
-
-        second = await auth_client.put(
-            "/api/budgets", json={"month": "2026-09-15", "amount": "180000.00"}
-        )
-        # The same month, normalised to the first of the month: one budget, updated.
-        assert second.json()["id"] == first.json()["id"]
-        assert Decimal(second.json()["amount"]) == Decimal("180000.00")
-        assert second.json()["month"] == "2026-09-01"
-
-        assert len((await auth_client.get("/api/budgets")).json()) == 1

@@ -1,13 +1,19 @@
-"""Subscriptions and other charges that repeat without ever printing a receipt.
+"""Money that comes and goes on a schedule: bills, subscriptions and salaries.
 
-Spotify, YouTube Premium, the gym. They are real spending, so they belong in the same
-statistics as everything else - which means they have to become ordinary `Receipt` rows
-rather than a parallel world the dashboard would have to learn about.
+Spotify, the rent, the electricity bill, a salary. A bill is real spending, so it belongs in
+the same statistics as everything else - which means it has to become an ordinary `Receipt`
+row rather than a parallel world the dashboard would have to learn about. A salary is the
+opposite: it becomes an `IncomeEntry`, never a receipt.
 
-A `RecurringPayment` is the *rule*; a `RecurringCharge` records that the rule was applied
-for one particular month. The charge row is what makes materialising idempotent: without
-it, a restart, a clock change or two workers racing would each mint another Spotify charge
-and quietly inflate the month.
+A `RecurringPayment` is the *rule*; a `RecurringCharge` records what happened to it in one
+particular month. The charge row is what makes materialising idempotent: without it, a
+restart, a clock change or two workers racing would each mint another Spotify charge and
+quietly inflate the month.
+
+Only a fixed bill books itself. A variable one (electricity) waits for you to enter what it
+actually came to, and a salary waits for you to say it arrived - money that has not arrived
+must not look like money you have. Either can be marked as skipped for a month it did not
+happen, which is a charge row pointing at nothing.
 """
 
 from __future__ import annotations
@@ -17,7 +23,7 @@ import uuid
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import Date, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Date, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, money, pk
@@ -28,8 +34,18 @@ class Cadence(enum.StrEnum):
     YEARLY = "yearly"
 
 
+class Direction(enum.StrEnum):
+    EXPENSE = "expense"
+    INCOME = "income"
+
+
+class AmountMode(enum.StrEnum):
+    FIXED = "fixed"        # the same every time; a bill of this kind books itself
+    VARIABLE = "variable"  # different every time; waits for the actual amount
+
+
 class RecurringPayment(Base, TimestampMixin):
-    """One subscription, and the rule for when it charges."""
+    """One recurring bill or income, and the rule for when it falls due."""
 
     __tablename__ = "recurring_payments"
 
@@ -63,13 +79,34 @@ class RecurringPayment(Base, TimestampMixin):
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    direction: Mapped[str] = mapped_column(
+        String(10), default=Direction.EXPENSE.value, nullable=False
+    )
+    amount_mode: Mapped[str] = mapped_column(
+        String(10), default=AmountMode.FIXED.value, nullable=False
+    )
+    # Whose bill or income this is in the plan. NULL is Közös.
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # Who actually pays a bill. It becomes the payer of every receipt the rule generates.
+    payer_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # How every generated receipt is split: [{"user_id": "...", "percent": "50"}, ...].
+    # NULL means not split.
+    default_shares: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
     charges: Mapped[list[RecurringCharge]] = relationship(
         back_populates="payment", cascade="all, delete-orphan", order_by="RecurringCharge.period"
     )
 
 
 class RecurringCharge(Base, TimestampMixin):
-    """The record that one period of one subscription has already been charged.
+    """The record that one month of one rule has been dealt with.
+
+    It points at the receipt a bill generated, or the income entry a salary was confirmed
+    as - or at neither, which means the month was skipped.
 
     `receipt_id` is SET NULL rather than CASCADE on purpose: deleting the generated receipt
     must not make the period look unbilled, or the next pass would recreate the very row you
@@ -87,6 +124,9 @@ class RecurringCharge(Base, TimestampMixin):
     period: Mapped[date] = mapped_column(Date, nullable=False)
     receipt_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("receipts.id", ondelete="SET NULL"), nullable=True
+    )
+    income_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("income_entries.id", ondelete="SET NULL"), nullable=True
     )
 
     payment: Mapped[RecurringPayment] = relationship(back_populates="charges")

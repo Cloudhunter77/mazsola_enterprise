@@ -331,3 +331,113 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 input[type="range"] {
   width: 100%; height: 44px; margin: 0; accent-color: var(--series-1); cursor: pointer;
 }
+
+/* --- Pénz ------------------------------------------------------------------------
+   The budgeting screens. Amounts that went over are the one thing coloured red; a
+   carried-forward amount in the plan is shown muted, one set in that month in full ink -
+   the spreadsheet's "blue = entered" in a form that works in both themes. */
+
+/* "Még nem volt havi megbeszélés": a whole-width link, because the only thing to do about
+   it is to go to the meeting. */
+.banner {
+  display: flex; justify-content: space-between; align-items: center; gap: 6px 12px;
+  flex-wrap: wrap; padding: 12px 14px; margin-bottom: 14px; border-radius: 12px;
+  border: 1px solid var(--warning); color: var(--ink); text-decoration: none;
+  background: color-mix(in srgb, var(--warning) 12%, var(--surface));
+}
+.banner-note { color: var(--ink-secondary); }
+.banner-action { font-weight: 650; color: var(--series-1); white-space: nowrap; }
+
+/* Two or three choices side by side: Kiadás / Bevétel, Fix / Változó. */
+.segmented { display: flex; gap: 6px; margin-bottom: 14px; }
+.segmented .btn { flex: 1; }
+
+.tag {
+  display: inline-block; font-size: 0.7rem; font-weight: 600; padding: 1px 7px;
+  border-radius: 99px; border: 1px solid var(--border); color: var(--ink-secondary);
+  margin-left: 6px; vertical-align: 1px; white-space: nowrap;
+}
+.neg { color: var(--critical); }
+.small { font-size: 0.82rem; }
+
+/* How much of a line is used: a bar, full red once it is over. */
+.meter { height: 6px; border-radius: 3px; background: var(--grid); overflow: hidden; margin-top: 6px; }
+.meter > span { display: block; height: 100%; background: var(--series-1); }
+.meter.over > span { background: var(--critical); }
+
+.budget-row { padding: 10px 0; border-top: 1px solid var(--grid); }
+.budget-row:first-child { border-top: 0; padding-top: 0; }
+.budget-row > .head {
+  display: flex; justify-content: space-between; gap: 10px; align-items: baseline;
+  width: 100%; background: none; border: 0; padding: 0; text-align: left; cursor: pointer;
+  font: inherit; color: inherit; min-height: 32px;
+}
+.budget-row .figures { font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 0.9rem; }
+.pieces { margin: 8px 0 0; padding: 0; list-style: none; font-size: 0.85rem; }
+.pieces li { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; }
+
+/* Read by a screen reader, not shown: a label the layout has no room for. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+/* The plan grid scrolls sideways; its first column - which line - stays put. */
+.plan-grid { font-size: 0.88rem; }
+.plan-grid th:first-child, .plan-grid td:first-child {
+  position: sticky; left: 0; z-index: 1; background: var(--surface);
+  min-width: 132px; max-width: 190px;
+}
+/* On a phone the table scrolls inside a strip padded 13px each side, and a sticky cell
+   respects that padding - leaving a gap at the left edge where the numbers scrolling under
+   the pinned column show through. Pinning it into the padding closes the gap. */
+@media (max-width: 560px) {
+  .plan-grid th:first-child, .plan-grid td:first-child { left: -13px; }
+}
+.plan-grid th.month { text-align: right; }
+.plan-grid td.cell { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.plan-grid td.cell.inherited { color: var(--ink-muted); }
+.plan-grid button.cell-btn {
+  background: none; border: 0; padding: 6px 4px; margin: -6px -4px; font: inherit; color: inherit;
+  cursor: pointer; min-height: 36px; min-width: 64px; text-align: right;
+}
+.plan-grid input { width: 7.5em; text-align: right; padding: 6px 8px; font-size: 16px;
+                   border: 1px solid var(--series-1); border-radius: 6px; background: var(--surface-raised); }
+.plan-grid tr.group td { font-weight: 650; padding-top: 16px; color: var(--ink-secondary);
+                         border-bottom: 1px solid var(--border); }
+.plan-grid tr.sum td { font-weight: 650; }
+.plan-grid .line-name {
+  background: none; border: 0; padding: 0; font: inherit; color: var(--series-1);
+  cursor: pointer; text-align: left;
+}
+
+/* One month of one recurring item: what it is on the left, what to do about it on the right. */
+.occ-row {
+  display: flex; gap: 8px 12px; justify-content: space-between; align-items: center;
+  flex-wrap: wrap; padding: 10px 0; border-top: 1px solid var(--grid);
+}
+.occ-row:first-child { border-top: 0; padding-top: 0; }
+.occ-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.occ-actions input {
+  width: 8.5em; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface-raised); font-size: 16px; min-height: 44px; text-align: right;
+}
+
+/* Choosing several categories for one line. */
+.cat-picker {
+  max-height: 280px; overflow: auto; border: 1px solid var(--border); border-radius: 8px;
+  padding: 6px 10px; background: var(--surface-raised);
+}
+.cat-picker label {
+  display: flex; flex-direction: row; align-items: center; gap: 8px; padding: 6px 0;
+  font-size: 0.92rem; color: var(--ink);
+}
+.cat-picker label > input { width: auto; min-height: 0; margin: 0; }
+.cat-picker label.child { padding-left: 22px; }
+.cat-picker label.taken { color: var(--ink-muted); }
+
+.step-number {
+  display: inline-flex; width: 26px; height: 26px; border-radius: 50%; align-items: center;
+  justify-content: center; background: var(--series-1); color: #fff; font-size: 0.85rem;
+  font-weight: 700; margin-right: 8px; flex: none;
+}

@@ -1,14 +1,16 @@
 """Seed data: the Hungarian category tree.
 
-Seeded once on an empty database. Categories are matched by slug, so re-running is safe and
-adding a category here later will create it without disturbing your existing data.
+Run at every start. Categories are matched by slug, so re-running is safe, and a category
+added here later reaches a database that already has the rest without disturbing anything
+in it. Nothing in the app deletes or renames a category, so a seeded one can never come back
+against your wishes.
 """
 
 from __future__ import annotations
 
 import logging
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Category
@@ -39,8 +41,18 @@ CATEGORY_TREE: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Elektronika", ("Műszaki cikk", "Számítástechnika")),
     ("Lakás és otthon", ("Bútor", "Barkács", "Kert", "Dekoráció")),
     ("Közlekedés", ("Üzemanyag", "Tömegközlekedés", "Parkolás", "Autó szerviz")),
-    ("Szabadidő", ("Vendéglátás", "Kultúra", "Sport", "Könyv és újság")),
-    ("Egyéb", ("Betétdíj", "Szolgáltatás", "Ajándék", "Besorolatlan")),
+    (
+        "Szabadidő",
+        ("Vendéglátás", "Kultúra", "Sport", "Könyv és újság", "Programok", "Utazás", "Hobbi"),
+    ),
+    # Bills of the home: electricity, gas, water, internet. One category rather than a
+    # subtree on purpose - each bill is its own Rendszeres item, which already tells them
+    # apart; the category only has to say which line of the budget they belong to.
+    ("Rezsi", ()),
+    (
+        "Egyéb",
+        ("Betétdíj", "Szolgáltatás", "Ajándék", "Besorolatlan", "Váratlan kiadások"),
+    ),
 )
 
 
@@ -81,9 +93,3 @@ async def seed_categories(session: AsyncSession) -> int:
         await session.commit()
         log.info("seeded %d categories", added)
     return added
-
-
-async def seed_if_empty(session: AsyncSession) -> None:
-    count = await session.scalar(select(func.count(Category.id)))
-    if not count:
-        await seed_categories(session)

@@ -8,8 +8,11 @@
  *
  *  Five sections, because a phone's bottom bar holds five comfortably. Everything that is a
  *  variation of one of them - another way to record, another view of the same receipts -
- *  is a sub-page of that section rather than a sixth tab. The URLs are the ones that
- *  already existed, so nothing bookmarked or saved to the home screen breaks.
+ *  is a sub-page of that section rather than a sixth tab. Money - the plan, the month, what
+ *  comes and goes every month, and the spending statistics - is one of them; the pages you
+ *  open rarely (who can log in, what to fix, what the API costs, which version runs) sit
+ *  behind the ⚙ instead of a tab. The URLs are the ones that already existed, so nothing
+ *  bookmarked or saved to the home screen breaks.
  */
 
 export interface Page { to: string; label: string }
@@ -34,7 +37,7 @@ export const SECTIONS: Section[] = [
   {
     glyph: "🛒",
     label: "Lista",
-    pages: [{ to: "/lista", label: "Bevásárlólista" }],
+    pages: [{ to: "/lista", label: "Bevásárlás" }],
   },
   {
     glyph: "🧾",
@@ -42,8 +45,8 @@ export const SECTIONS: Section[] = [
     pages: [
       { to: "/blokkok", label: "Lista" },
       { to: "/tabla", label: "Tábla" },
-      { to: "/elofizetesek", label: "Előfizetések" },
       { to: "/elszamolas", label: "Elszámolás" },
+      { to: "/kategorizalas", label: "Kategorizálás" },
     ],
     also: /^\/blokkok\//,
   },
@@ -56,21 +59,35 @@ export const SECTIONS: Section[] = [
     ],
   },
   {
-    glyph: "📊",
-    label: "Statisztika",
+    glyph: "💰",
+    label: "Pénz",
     pages: [
-      { to: "/statisztika", label: "Költés" },
-      { to: "/kategorizalas", label: "Kategorizálás" },
-      { to: "/koltseg", label: "API költség" },
+      { to: "/penz", label: "Hónap" },
+      { to: "/terv", label: "Terv" },
+      { to: "/rendszeres", label: "Rendszeres" },
+      { to: "/statisztika", label: "Statisztika" },
     ],
+    also: /^\/megbeszeles$/,
   },
 ];
 
-/** The section a path belongs to, or null for pages outside the tabs (the system page). */
+/** Behind the ⚙ in the top bar: looked at rarely, so not a tab. */
+export const SETTINGS: Section = {
+  glyph: "⚙",
+  label: "Beállítások",
+  pages: [
+    { to: "/felhasznalok", label: "Felhasználók" },
+    { to: "/javitani", label: "Javítani való" },
+    { to: "/koltseg", label: "API költség" },
+    { to: "/rendszer", label: "Rendszer" },
+  ],
+};
+
+/** The section a path belongs to, or null for a path no section claims. */
 export function sectionFor(pathname: string): Section | null {
   const path = pathname.replace(/\/+$/, "") || "/";
   return (
-    SECTIONS.find(
+    [...SECTIONS, SETTINGS].find(
       (section) =>
         section.pages.some((page) => page.to === path) || section.also?.test(path),
     ) ?? null
