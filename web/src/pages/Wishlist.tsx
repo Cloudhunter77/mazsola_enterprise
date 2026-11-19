@@ -115,33 +115,37 @@ export default function Wishlist() {
 
 function WishRow({ wish, onChange, onEdit }: { wish: Wish; onChange: () => void; onEdit: () => void }) {
   const [busy, setBusy] = useState(false);
+  // What it is, with ✎ beside the name; what to do about it on one row under that - rather
+  // than three buttons wrapping onto a line each.
   return (
-    <div className="occ-row">
-      <div style={{ flex: "1 1 180px", minWidth: 0 }}>
-        <div>
-          {wish.name}
-          <span className="tag">{wish.priority_label}</span>
-          {wish.on_list && <span className="tag">listán</span>}
+    <div className="occ-row" style={{ display: "block" }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div>
+            {wish.name}
+            <span className="tag">{wish.priority_label}</span>
+            {wish.on_list && <span className="tag">listán</span>}
+          </div>
+          <div className="muted small">
+            {wish.estimated_price ? `kb. ${ft(wish.estimated_price)}` : "ár nélkül"}
+            {wish.link && (
+              <> · {/^https?:\/\//.test(wish.link)
+                ? <a href={wish.link} target="_blank" rel="noreferrer">link</a>
+                : wish.link}</>
+            )}
+            {wish.note && ` · ${wish.note}`}
+          </div>
         </div>
-        <div className="muted small">
-          {wish.estimated_price ? `kb. ${ft(wish.estimated_price)}` : "ár nélkül"}
-          {wish.link && (
-            <> · {/^https?:\/\//.test(wish.link)
-              ? <a href={wish.link} target="_blank" rel="noreferrer">link</a>
-              : wish.link}</>
-          )}
-          {wish.note && ` · ${wish.note}`}
-        </div>
+        <button className="btn icon" aria-label="Szerkesztés" onClick={onEdit}>✎</button>
       </div>
-      <div className="occ-actions">
+      <div className="row" style={{ gap: 8, marginTop: 8 }}>
         {!wish.on_list && (
           <button className="btn" disabled={busy}
                   onClick={async () => { setBusy(true); try { await api.wishToList(wish.id); onChange(); } finally { setBusy(false); } }}>
-            Listára
+            🛒 Listára
           </button>
         )}
         <PurchaseButton wishId={wish.id} name={wish.name} onDone={onChange} />
-        <button className="btn" aria-label="Szerkesztés" onClick={onEdit}>✎</button>
       </div>
     </div>
   );

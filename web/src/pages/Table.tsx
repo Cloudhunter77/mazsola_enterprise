@@ -10,7 +10,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, type ReceiptSummary } from "../lib/api";
-import { ft, date as fmtDate } from "../lib/format";
+import { ft, shortDate } from "../lib/format";
 import { AsyncBlock, Card, Tile, useAsync } from "../components/ui";
 
 type SortKey = "date" | "shop" | "amount";
@@ -20,7 +20,8 @@ const SOURCES: Record<string, string> = {
   shortcut: "Parancs",
   folder: "Mappa",
   manual: "Kézi",
-  recurring: "Előfizetés",
+  // Named after the page that makes them, which used to be called Előfizetések.
+  recurring: "Rendszeres",
 };
 
 /** Receipts with no trustworthy total have no business in a spending table. */
@@ -94,7 +95,7 @@ export default function TableView() {
                         <tr key={row.id}>
                           <td style={{ whiteSpace: "nowrap" }}>
                             <Link to={`/blokkok/${row.id}`}>
-                              {row.purchased_at ? fmtDate(row.purchased_at) : "–"}
+                              {shortDate(row.purchased_at)}
                             </Link>
                           </td>
                           <td>

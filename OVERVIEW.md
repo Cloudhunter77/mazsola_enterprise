@@ -21,7 +21,10 @@ wishlist. Two users: Balázs and Petra. See `README.md` for the app itself and
   suggested monthly amounts, pocket lines like Hobbi, a wishlist pot), "Zsebből" on receipts,
   the meeting's transfer checklist and Revolut balance check, Kívánságlista under Lista.
 - **Statisztika** (`e1b08e0`): tapping a category or shop bar lists what makes it up.
-- 689 tests pass locally and in CI.
+- **UX/UI pass** (2026-11-19): phone-first rows instead of clipped tables, a receipt page
+  that leads with the summary, product matching on its own page (Árak → Termékek), every
+  form control styled, Kilépés under ⚙ → Felhasználók.
+- 690 tests pass locally and in CI.
 - **On the NAS** since 2026-11-19, budgeting migrations applied. No real budgeting data entered
   yet (#2, #5, #7).
 - Decisions D1–D35 are in `DECISIONS.md` (D23–D35 are stage 2).

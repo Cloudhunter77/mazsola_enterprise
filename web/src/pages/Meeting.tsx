@@ -147,28 +147,35 @@ function PlanVsActual({ data }: { data: MonthView }) {
       {rows.length === 0 ? (
         <p className="muted" style={{ margin: 0 }}>Ebben az időszakban nem volt se terv, se költés.</p>
       ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr><th>Sor</th><th className="num">Terv</th><th className="num">Tény</th><th className="num">Eltérés</th></tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.key}>
-                  <td>
+        // Rows rather than a four-column table, which a phone cut off at the one column that
+        // mattered: how far off each line was.
+        <ul className="rows">
+          {rows.map((row) => {
+            const plan = Number(row.plan);
+            const actual = Number(row.actual);
+            const over = row.diff > 0;
+            const used = plan > 0 ? Math.min(100, (actual / plan) * 100) : 100;
+            return (
+              <li key={row.key}>
+                <div className="list-row" style={{ minHeight: 0 }}>
+                  <span className="title" style={{ fontWeight: 550 }}>
                     {row.name}
-                    <div className="muted small">{ownerName(data.users, row.owner_id)}</div>
-                  </td>
-                  <td className="num">{ft(row.plan)}</td>
-                  <td className="num">{ft(row.actual)}</td>
-                  <td className={`num ${row.diff > 0 ? "neg" : ""}`}>
-                    {row.diff > 0 ? "+" : ""}{ft(row.diff)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                    <span className="muted small"> · {ownerName(data.users, row.owner_id)}</span>
+                  </span>
+                  <span className={`amount ${over ? "neg" : "muted"}`}>
+                    {over ? "+" : ""}{ft(row.diff)}
+                  </span>
+                  <span className="meta" style={{ gridColumn: "1 / -1" }}>
+                    {ft(actual)} / {ft(plan)}
+                  </span>
+                  <div className={`meter${over ? " over" : ""}`} style={{ gridColumn: "1 / -1", marginTop: 4 }}>
+                    <span style={{ width: `${used}%` }} />
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       )}
       <p className="muted small" style={{ marginBottom: 0 }}>
         Összesen {ft(data.totals.spent)} a tervezett {ft(data.totals.planned_spending)}-ból. Ami nem
@@ -389,8 +396,8 @@ function CloseStep({ status, next, setNext }: {
             const set = (patch: Partial<typeof state>) => setSent({ ...sent, [keyOf(t)]: { ...state, ...patch } });
             return (
               <div key={keyOf(t)} className="occ-row">
-                <label className="row" style={{ flex: "1 1 180px", display: "flex", gap: 8, color: "var(--ink)", fontSize: "0.95rem" }}>
-                  <input type="checkbox" checked={state.done} style={{ width: "auto", minHeight: 0 }}
+                <label className="check" style={{ flex: "1 1 180px" }}>
+                  <input type="checkbox" checked={state.done}
                          onChange={(e) => set({ done: e.target.checked })} />
                   <span>
                     {ownerName(users, t.from_user_id)} → {pocketLabel({ name: t.pocket_name, holder_id: t.holder_id }, users)}

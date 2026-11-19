@@ -204,19 +204,18 @@ Step 0 backup and I would rather restore than keep going.
 
 ## Step 3 — The product recognition
 
-This is the main new thing. Open **Árak**; the "Termékek felismerése" card is at the top.
+Open **Árak → Termékek**. It lists only the name groups that need a decision ("Döntésre
+vár"); the letter-for-letter certain ones are counted in the "Magától megy" card underneath.
 
-1. Tell me how many unmapped lines it found, and roughly how many groups.
-2. Press **Régiek összekapcsolása**. That pass links only lines that normalise
-   letter-for-letter to a product I have already mapped — it fills in blanks and never
-   overwrites anything. Tell me how many it linked.
-3. Look at the groups themselves and tell me whether the colours make sense:
-   - Does anything **green** group two things that are actually different products? That is
-     the one failure that would matter, because green links itself.
+1. Tell me how many groups wait for a decision, and what "Magától megy" says.
+2. Press **Rendezés most**. That pass links only lines that normalise letter-for-letter to a
+   product I already have, and turns names with a single spelling into products — it fills in
+   blanks and never overwrites anything. Tell me what it reports.
+3. Look at the groups that are left and tell me whether they make sense:
    - Do the **yellow** ones look like genuine "same thing, different spelling" pairs?
    - Are two sizes of the same drink ever in one group? They must never be.
 4. Confirm a couple of the obvious yellow ones with **Összekapcsolás** and check that the
-   count of unmapped lines drops, and that the product then appears under **Árak** with its
+   group disappears, and that the product then appears under **Árak → Ártörténet** with its
    price history — including purchases from *before* I mapped it. That backfill is the point
    of the feature; if the history starts today, something is wrong and I want to know.
 

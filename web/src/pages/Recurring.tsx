@@ -12,7 +12,7 @@ import { useMemo, useState } from "react";
 import { api, type Category, type Person, type Recurring as Rule } from "../lib/api";
 import { amountOf, owners, ownerName, plain, todayIso } from "../lib/budget";
 import { groupCategories } from "../lib/categories";
-import { ft, date as fmtDate } from "../lib/format";
+import { ft, shortDate } from "../lib/format";
 import { useSession } from "../lib/session";
 import Occurrences from "../components/Occurrences";
 import { AsyncBlock, Card, Empty, useAsync } from "../components/ui";
@@ -88,6 +88,7 @@ export default function RecurringPage() {
         <RuleForm
           draft={draft} setDraft={setDraft} editing={editing} people={people}
           categories={categories.data ?? []}
+          rule={rules.data?.find((r) => r.id === editing) ?? null}
           onCancel={close}
           onSaved={() => { close(); refresh(); }}
         />
@@ -113,13 +114,13 @@ export default function RecurringPage() {
           <>
             <RuleList
               title="Bevételek" rules={data.filter((r) => r.direction === "income")}
-              people={people} onChange={refresh}
+              people={people}
               onEdit={(rule) => { setEditing(rule.id); setDraft(fromRule(rule)); window.scrollTo(0, 0); }}
               empty="Még nincs bevétel beállítva – a fizetéseteket érdemes ide felvenni."
             />
             <RuleList
               title="Kiadások" rules={data.filter((r) => r.direction === "expense")}
-              people={people} onChange={refresh}
+              people={people}
               onEdit={(rule) => { setEditing(rule.id); setDraft(fromRule(rule)); window.scrollTo(0, 0); }}
               empty="Még nincs rendszeres kiadás."
             />
@@ -130,79 +131,59 @@ export default function RecurringPage() {
   );
 }
 
-function RuleList({ title, rules, people, onChange, onEdit, empty }: {
+function RuleList({ title, rules, people, onEdit, empty }: {
   title: string; rules: Rule[]; people: Person[];
-  onChange: () => void; onEdit: (rule: Rule) => void; empty: string;
+  onEdit: (rule: Rule) => void; empty: string;
 }) {
-  async function toggle(rule: Rule) {
-    await api.updateRecurring(rule.id, { ...rule, active: !rule.active });
-    onChange();
-  }
-
-  async function remove(rule: Rule) {
-    if (!window.confirm(`Töröljem a(z) "${rule.name}" tételt? A már rögzítettek megmaradnak.`)) return;
-    await api.deleteRecurring(rule.id);
-    onChange();
-  }
-
   return (
     <Card title={title}>
       {rules.length === 0 ? <Empty>{empty}</Empty> : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Név</th>
-                <th className="num">Összeg</th>
-                <th>Mikor</th>
-                <th>Következő</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {rules.map((rule) => (
-                <tr key={rule.id} style={{ opacity: rule.active ? 1 : 0.55 }}>
-                  <td>
+        <ul className="rows">
+          {rules.map((rule) => {
+            const when = rule.cadence === "yearly"
+              ? `évente, ${MONTHS[(rule.month_of_year ?? 1) - 1]} ${rule.day_of_month}.`
+              : `havonta ${rule.day_of_month}.`;
+            const who = [
+              ownerName(people, rule.owner_id),
+              rule.payer_id && rule.direction === "expense" ? `fizeti: ${ownerName(people, rule.payer_id)}` : null,
+              rule.default_shares?.length ? "megosztva" : null,
+            ].filter(Boolean).join(" · ");
+            return (
+              <li key={rule.id} style={{ opacity: rule.active ? 1 : 0.55 }}>
+                {/* The whole row opens it: pausing and deleting are in there too, rather than
+                    three small buttons on every row. */}
+                <button className="list-row" onClick={() => onEdit(rule)}>
+                  <span className="title">
                     {rule.name}
-                    <span className="tag">{rule.amount_mode === "variable" ? "Változó" : "Fix"}</span>
-                    {!rule.active && <span className="muted"> · szünetel</span>}
-                    <div className="muted small">
-                      {ownerName(people, rule.owner_id)}
-                      {rule.payer_id && rule.direction === "expense" && ` · fizeti: ${ownerName(people, rule.payer_id)}`}
-                      {rule.default_shares?.length ? " · megosztva" : ""}
-                    </div>
-                  </td>
-                  <td className="num">
+                    {!rule.active && <span className="muted small"> · szünetel</span>}
+                  </span>
+                  <span className="amount">
                     {rule.amount_mode === "variable" && <span className="muted">~</span>}
                     {ft(rule.amount)}
-                  </td>
-                  <td style={{ whiteSpace: "nowrap" }}>
-                    {rule.cadence === "yearly"
-                      ? `évente, ${MONTHS[(rule.month_of_year ?? 1) - 1]} ${rule.day_of_month}.`
-                      : `havonta ${rule.day_of_month}.`}
-                  </td>
-                  <td>{rule.next_charge ? fmtDate(rule.next_charge) : "–"}</td>
-                  <td className="num" style={{ whiteSpace: "nowrap" }}>
-                    <button className="btn" aria-label="Szerkesztés" onClick={() => onEdit(rule)}>✎</button>{" "}
-                    <button className="btn" aria-label={rule.active ? "Szüneteltetés" : "Folytatás"}
-                            onClick={() => toggle(rule)}>
-                      {rule.active ? "⏸" : "▶"}
-                    </button>{" "}
-                    <button className="btn" aria-label="Törlés" onClick={() => remove(rule)}>🗑</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </span>
+                  <span className="meta">
+                    {when}
+                    {rule.active && rule.next_charge && ` · köv. ${shortDate(rule.next_charge)}`}
+                    {rule.amount_mode === "variable" && " · változó"}
+                    <br />
+                    {who}
+                  </span>
+                  <span className="side muted" aria-hidden>✎</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
       )}
     </Card>
   );
 }
 
-function RuleForm({ draft, setDraft, editing, people, categories, onCancel, onSaved }: {
+function RuleForm({ draft, setDraft, editing, people, categories, rule, onCancel, onSaved }: {
   draft: Draft; setDraft: (draft: Draft) => void; editing: string | null;
   people: Person[]; categories: Category[];
+  // The item being edited, for pausing and deleting it; null for a new one.
+  rule: Rule | null;
   onCancel: () => void; onSaved: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
@@ -392,9 +373,29 @@ function RuleForm({ draft, setDraft, editing, people, categories, onCancel, onSa
       </p>
 
       {error && <p className="error">{error}</p>}
-      <button className="btn primary" onClick={save} disabled={busy}>
-        {busy ? "Mentés…" : "Mentés"}
-      </button>
+      <div className="row">
+        <button className="btn primary" onClick={save} disabled={busy}>
+          {busy ? "Mentés…" : "Mentés"}
+        </button>
+        {rule && (
+          <>
+            {/* Pausing stops the future and keeps everything already recorded. */}
+            <button className="btn" disabled={busy} onClick={async () => {
+              await api.updateRecurring(rule.id, { ...rule, active: !rule.active });
+              onSaved();
+            }}>
+              {rule.active ? "⏸ Szüneteltetés" : "▶ Folytatás"}
+            </button>
+            <button className="btn danger" disabled={busy} onClick={async () => {
+              if (!window.confirm(`Töröljem a(z) "${rule.name}" tételt? A már rögzítettek megmaradnak.`)) return;
+              await api.deleteRecurring(rule.id);
+              onSaved();
+            }}>
+              Törlés
+            </button>
+          </>
+        )}
+      </div>
     </Card>
   );
 }

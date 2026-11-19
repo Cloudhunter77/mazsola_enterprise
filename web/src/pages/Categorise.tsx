@@ -15,7 +15,7 @@ import { Link } from "react-router-dom";
 
 import { api, type Category, type ReceiptFiling, type ReceiptToFile } from "../lib/api";
 import { groupCategories } from "../lib/categories";
-import { date, ft } from "../lib/format";
+import { ft, shortDate } from "../lib/format";
 import { AsyncBlock, Card, useAsync } from "../components/ui";
 
 type Done = { filing: ReceiptFiling; categoryName: string };
@@ -137,7 +137,7 @@ function Row({ row, done, busy, categories, onFile, onUndo }: {
       <div className="row" style={{ gap: 8, alignItems: "baseline", opacity: done ? 0.6 : 1 }}>
         <Link to={`/blokkok/${row.receipt_id}`} style={{ flex: 1, fontWeight: 600 }}>
           {shop}
-          <span className="muted" style={{ fontWeight: 400 }}> · {date(row.purchased_at)}</span>
+          <span className="muted" style={{ fontWeight: 400 }}> · {shortDate(row.purchased_at)}</span>
         </Link>
         <span className="num" style={{ whiteSpace: "nowrap" }}>{ft(row.total_gross)}</span>
       </div>
@@ -170,18 +170,12 @@ function Row({ row, done, busy, categories, onFile, onUndo }: {
       ) : (
         <>
           {row.merchant_id && (
-            <label
-              style={{
-                display: "flex", alignItems: "center", gap: 10, minHeight: 40,
-                fontSize: "0.88rem", cursor: "pointer",
-              }}
-            >
+            <label className="check">
               <input
                 type="checkbox"
                 checked={rememberShop}
                 onChange={(event) => setRememberShop(event.target.checked)}
                 disabled={busy}
-                style={{ width: 22, height: 22, flex: "0 0 auto" }}
               />
               <span>{shop} mindig ez legyen – a többi blokkja is</span>
             </label>
@@ -189,7 +183,7 @@ function Row({ row, done, busy, categories, onFile, onUndo }: {
           <select
             value=""
             disabled={busy || categories.length === 0}
-            aria-label={`${shop} ${date(row.purchased_at)} kategóriája`}
+            aria-label={`${shop} ${shortDate(row.purchased_at)} kategóriája`}
             style={{ width: "100%" }}
             onChange={(event) => {
               const category = categories.find((c) => c.id === event.target.value);

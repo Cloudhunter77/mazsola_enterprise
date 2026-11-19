@@ -2,6 +2,8 @@
 
 import { type DependencyList, type ReactNode, useCallback, useEffect, useState } from "react";
 
+import { ft } from "../lib/format";
+
 export interface AsyncState<T> {
   data: T | null;
   loading: boolean;
@@ -79,6 +81,18 @@ export function Card({ title, note, action, children }: {
       )}
       {children}
     </section>
+  );
+}
+
+/** A month's heading in a list of receipts: which month, how many, how much. */
+export function MonthHeading({ count, total, children }: {
+  count: number; total: number; children: string;
+}) {
+  return (
+    <h2 className="list-group">
+      <span>{children}</span>
+      <span className="total">{count} blokk{total > 0 && ` · ${ft(total)}`}</span>
+    </h2>
   );
 }
 

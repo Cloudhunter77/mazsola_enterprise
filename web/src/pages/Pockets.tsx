@@ -168,7 +168,7 @@ function PocketCard({ view, overview, onChange, onNewGoal }: {
     <Card
       title={pocketLabel(pocket, overview.users)}
       note={pocket.active ? undefined : "archivált"}
-      action={<button className="btn" aria-label="Zseb szerkesztése" onClick={() => setEditing(true)}>✎</button>}
+      action={<button className="btn icon" aria-label="Zseb szerkesztése" onClick={() => setEditing(true)}>✎</button>}
     >
       <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
         <span className="muted small">Az app szerint most</span>
@@ -201,16 +201,21 @@ function PocketCard({ view, overview, onChange, onNewGoal }: {
         <button className="btn" onClick={() => onNewGoal(true)}>+ Kívánságlista-gyűjtés</button>
       </div>
 
-      <div className="row" style={{ marginTop: 10, gap: 6 }}>
-        <input
-          style={{ flex: "1 1 120px", padding: "9px 10px", border: "1px solid var(--border)", borderRadius: 8,
-                   background: "var(--surface-raised)", fontSize: 16, minHeight: 44 }}
-          inputMode="decimal" placeholder="Revolut szerint most"
-          aria-label={`${pocket.name}: mennyi van most a Revolutban`}
-          value={check} onChange={(e) => setCheck(e.target.value)}
-        />
-        <button className="btn" onClick={saveCheck}>Egyeztetés</button>
-      </div>
+      {/* Done now and then, not every visit: folded, so it is not a box on every pocket. */}
+      <details style={{ marginTop: 10 }} open={error !== null}>
+        <summary className="small" style={{ cursor: "pointer", color: "var(--series-1)", padding: "6px 0" }}>
+          Egyeztetés a Revoluttal…
+        </summary>
+        <div className="row" style={{ marginTop: 6, gap: 6, flexWrap: "nowrap" }}>
+          <input
+            style={{ flex: 1, minWidth: 0 }}
+            inputMode="decimal" placeholder="Mennyi van benne most?"
+            aria-label={`${pocket.name}: mennyi van most a Revolutban`}
+            value={check} onChange={(e) => setCheck(e.target.value)}
+          />
+          <button className="btn" style={{ flex: "none" }} onClick={saveCheck}>Mentés</button>
+        </div>
+      </details>
       {error && <p className="error">{error}</p>}
     </Card>
   );
@@ -365,9 +370,20 @@ export function PurchaseButton({ earmarkId, wishId, name, onDone }: {
     }
   }
 
-  if (!open) return <button className="btn" onClick={() => setOpen(true)}>Megvettük – nincs blokk</button>;
+  if (!open) {
+    return (
+      <button className="btn" onClick={() => setOpen(true)} title="Megvettétek, és nincs róla blokk">
+        ✓ Megvettük…
+      </button>
+    );
+  }
   return (
     <div className="grid cols-2" style={{ gap: 8, width: "100%", marginTop: 8 }}>
+      {/* With a receipt it is better linked from there: the price is then the real one. */}
+      <p className="muted small" style={{ margin: 0, gridColumn: "1 / -1" }}>
+        Blokk nélkül: add meg, mennyibe került. Ha van blokk, annak az oldalán a „Zseb és cél”
+        résznél kösd hozzá.
+      </p>
       <label>Ár (Ft)<input inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} autoFocus /></label>
       <label>Mikor<input type="date" value={day} max={todayIso()} onChange={(e) => setDay(e.target.value)} /></label>
       <label>Hol (nem kötelező)<input value={shop} onChange={(e) => setShop(e.target.value)} /></label>

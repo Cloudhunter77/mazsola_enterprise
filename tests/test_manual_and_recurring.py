@@ -282,7 +282,7 @@ class TestTheApi:
         body = response.json()
         assert body["status"] == "confirmed"
         assert body["source"] == "manual"
-        assert body["pages"] == 1
+        assert body["pages"] == 0, "no photo to show - the receipt page must not draw a broken one"
 
     async def test_a_typed_receipt_has_no_image_to_serve(self, auth_client):
         created = (await auth_client.post("/api/receipts/manual", json={

@@ -59,6 +59,7 @@ export const SECTIONS: Section[] = [
     pages: [
       { to: "/arak", label: "Ártörténet" },
       { to: "/polcarak", label: "Polcárak" },
+      { to: "/termekek", label: "Termékek" },
     ],
   },
   {

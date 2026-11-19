@@ -10,10 +10,11 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
-import { api, type SplitSummary, type Transfer } from "../lib/api";
-import { date, ft } from "../lib/format";
+import { api, type Share, type SplitSummary, type Transfer } from "../lib/api";
+import { ft, shortDate } from "../lib/format";
+import { groupByMonth } from "../lib/group";
 import { useSession } from "../lib/session";
-import { AsyncBlock, Card, useAsync } from "../components/ui";
+import { AsyncBlock, Card, MonthHeading, useAsync } from "../components/ui";
 
 export default function Settle() {
   const [reload, setReload] = useState(0);
@@ -54,23 +55,28 @@ export default function Settle() {
               {data.receipts.length === 0 ? (
                 <p className="muted" style={{ margin: 0 }}>Még nincs megosztott blokk.</p>
               ) : (
-                <SharedBills data={data} name={name} />
+                <SharedBills data={data} name={name} me={me} />
               )}
             </Card>
 
             {data.settlements.length > 0 && (
               <Card title="Kiegyenlítések">
-                {data.settlements.map((settlement) => (
+                {data.settlements.map((settlement, index) => (
                   <div key={settlement.id} className="row"
-                       style={{ gap: 8, alignItems: "center", borderTop: "1px solid var(--grid)", paddingTop: 8, marginTop: 8 }}>
-                    <span style={{ flex: 1 }}>
-                      {date(settlement.settled_at)} · {name(settlement.from_user_id)} →{" "}
-                      {name(settlement.to_user_id)}
-                      {settlement.note && <span className="muted"> · {settlement.note}</span>}
+                       style={{
+                         gap: 8, flexWrap: "nowrap",
+                         ...(index > 0 && { borderTop: "1px solid var(--grid)", paddingTop: 8, marginTop: 8 }),
+                       }}>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      {name(settlement.from_user_id)} → {name(settlement.to_user_id)}
+                      <span className="muted small">
+                        {" "}· {shortDate(settlement.settled_at)}
+                        {settlement.note && ` · ${settlement.note}`}
+                      </span>
                     </span>
-                    <span className="num">{ft(settlement.amount)}</span>
+                    <span className="mono" style={{ whiteSpace: "nowrap" }}>{ft(settlement.amount)}</span>
                     <button
-                      className="btn"
+                      className="btn icon"
                       aria-label="Kiegyenlítés törlése"
                       onClick={async () => {
                         if (!window.confirm("Törlöd ezt a kiegyenlítést? A tartozás visszaáll.")) return;
@@ -154,37 +160,42 @@ export function Debt({ transfer, me, onSettled }: {
   );
 }
 
-function SharedBills({ data, name }: { data: SplitSummary; name: (id: string | null) => string }) {
+/** The shared bills, newest month first: who paid, how it was split, and how much. */
+function SharedBills({ data, name, me }: {
+  data: SplitSummary; name: (id: string | null) => string; me: string | null;
+}) {
   return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Dátum</th>
-            <th>Bolt</th>
-            <th>Fizette</th>
-            <th>Megosztás</th>
-            <th className="num">Összeg</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.receipts.map((receipt) => (
-            <tr key={receipt.receipt_id}>
-              <td className="mono">
-                <Link to={`/blokkok/${receipt.receipt_id}`}>{date(receipt.purchased_at)}</Link>
-              </td>
-              <td>{receipt.merchant_name ?? "–"}</td>
-              <td>{name(receipt.paid_by_id)}</td>
-              <td style={{ whiteSpace: "nowrap" }}>
-                {receipt.shares
-                  .map((share) => `${name(share.user_id)} ${Math.round(Number(share.percent))}%`)
-                  .join(" · ")}
-              </td>
-              <td className="num">{ft(receipt.total_gross)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <>
+      {groupByMonth(data.receipts, (r) => r.purchased_at).map((group) => (
+        <section key={group.key} className="list-section">
+          <MonthHeading count={group.items.length}
+                        total={group.items.reduce((sum, r) => sum + Number(r.total_gross ?? 0), 0)}>
+            {group.label}
+          </MonthHeading>
+          <ul className="rows">
+            {group.items.map((receipt) => (
+              <li key={receipt.receipt_id}>
+                <Link className="list-row" to={`/blokkok/${receipt.receipt_id}`}>
+                  <span className="title">{receipt.merchant_name ?? "Ismeretlen bolt"}</span>
+                  <span className="amount">{ft(receipt.total_gross)}</span>
+                  <span className="meta">
+                    {shortDate(receipt.purchased_at)} ·{" "}
+                    {receipt.paid_by_id === me ? "te fizetted" : `${name(receipt.paid_by_id)} fizette`}
+                  </span>
+                  <span className="side muted">{splitLabel(receipt.shares, name)}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </>
   );
+}
+
+/** "50–50" for the usual case, "Én 70% · Petra 30%" otherwise. */
+function splitLabel(shares: Share[], name: (id: string | null) => string): string {
+  const percents = shares.map((share) => Math.round(Number(share.percent)));
+  if (percents.length === 2 && percents[0] === 50 && percents[1] === 50) return "50–50";
+  return shares.map((share, i) => `${name(share.user_id)} ${percents[i]}%`).join(" · ");
 }

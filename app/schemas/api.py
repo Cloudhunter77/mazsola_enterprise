@@ -209,6 +209,7 @@ class ReceiptDetail(ReceiptSummary):
     items: list[ItemOut] = []
     # How many photographs make up this receipt. 1 for everything captured in one frame,
     # which is nearly all of them; the review screen only shows a page switcher above that.
+    # 0 for a receipt typed in or made by a recurring item: there is no photo to show.
     pages: int = 1
     uploaded_by_id: uuid.UUID | None = None
     # Empty when the bill is not split.
@@ -607,6 +608,9 @@ class SuggestionOut(BaseModel):
 
 class SuggestionsOut(BaseModel):
     unmapped_lines: int
+    # How many groups are letter-for-letter certain - every spelling normalises the same -
+    # and so become products by themselves, whether or not they are in `groups`.
+    exact_groups: int = 0
     groups: list[SuggestionOut]
 
 

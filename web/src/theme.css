@@ -138,7 +138,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
-.topbar .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.topbar .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; white-space: nowrap; }
 .topbar .spacer { flex: 1; }
 
 .content { flex: 1; padding: 16px; max-width: 1100px; width: 100%; margin: 0 auto; }
@@ -174,10 +174,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .card-header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
 .card-header h2 { flex: 1; min-width: 12ch; }
 
-/* On a phone a title and a control fight for the same line; give each its own. */
+/* On a phone a title and a control fight for the same line; give each its own. A one-glyph
+   button (✎) is the exception: it fits beside the title, and on a line of its own it became
+   a full-width bar with a pencil in the middle. */
 @media (max-width: 560px) {
   .card-header { flex-direction: column; align-items: stretch; gap: 8px; }
   .card-header h2 { flex: none; }
+  .card-header:has(> .btn.icon) { flex-direction: row; align-items: center; }
+  .card-header:has(> .btn.icon) h2 { flex: 1; }
 }
 .card-note { color: var(--ink-muted); font-size: 0.8rem; }
 
@@ -208,21 +212,44 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn.primary { background: var(--series-1); border-color: var(--series-1); color: #fff; }
 .btn.danger { color: var(--critical); }
 .btn.big { padding: 16px 20px; font-size: 1.05rem; border-radius: 12px; min-height: 56px; }
+/* A one-glyph button (✎, ×): square, still a full thumb target. Specific enough to beat
+   the phone rule that stretches every button in a row. */
+.btn.icon, .row > .btn.icon { padding: 10px; min-width: 44px; flex: none; }
 /* A row of buttons on a phone should stack to full width rather than shrink to fit. */
 .btn.block { width: 100%; }
 
 .field { display: grid; gap: 5px; margin-bottom: 12px; }
 .field label { font-size: 0.78rem; color: var(--ink-secondary); }
-.field input, .field select, .field textarea,
-label > input, label > select, label > textarea {
+
+/* Every text box and dropdown, wherever it sits on the page.
+   These used to be styled only inside a .field or straight inside a <label>; anything placed
+   elsewhere - the shopping list's box, the category dropdowns, the product names - fell back
+   to the browser's own 13px controls, too small to hit and unlike everything around them.
+   :where() keeps this at zero specificity, so a screen that sizes its own inputs (the plan
+   grid, the occurrence rows) still wins without having to fight it. */
+:where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="hidden"], [type="color"]),
+       select, textarea) {
   padding: 11px 12px; border: 1px solid var(--border); border-radius: 8px;
-  background: var(--surface-raised); width: 100%;
-  min-height: 44px;
+  background: var(--surface-raised); min-height: 44px; max-width: 100%;
   /* 16px exactly: iOS Safari zooms the whole page in on focus for anything smaller, and
      the zoom does not come back out. This is the single most common mobile web annoyance. */
   font-size: 16px;
 }
+:where(.field) :where(input:not([type="checkbox"], [type="radio"]), select, textarea),
+:where(label) > :where(input:not([type="checkbox"], [type="radio"]), select, textarea) {
+  width: 100%;
+}
 label { display: grid; gap: 5px; font-size: 0.82rem; color: var(--ink-secondary); }
+
+/* Checkboxes a thumb can hit; the browser's own is 13px. */
+:where(input[type="checkbox"], input[type="radio"]) {
+  width: 22px; height: 22px; margin: 0; flex: none; accent-color: var(--series-1); cursor: pointer;
+}
+/* A checkbox and what it means, side by side and one target. */
+label.check {
+  display: flex; flex-direction: row; align-items: center; gap: 10px;
+  min-height: 44px; font-size: 0.92rem; color: var(--ink); cursor: pointer;
+}
 .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 
 /* --- tables ------------------------------------------------------------- */
@@ -232,6 +259,37 @@ th { text-align: left; font-weight: 600; color: var(--ink-secondary);
      border-bottom: 1px solid var(--border); padding: 8px 8px; white-space: nowrap; }
 td { padding: 8px; border-bottom: 1px solid var(--grid); vertical-align: middle; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* --- lists --------------------------------------------------------------
+   A phone is too narrow for a five-column table: the dates wrapped onto three lines and the
+   last column was cut off. A list row says the same in two lines - what it is and its amount,
+   then the details under it - and the whole row is the thing to tap. */
+.rows { margin: 0; padding: 0; list-style: none; }
+.rows > li + li { border-top: 1px solid var(--grid); }
+.list-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 2px;
+  align-items: baseline; min-height: 56px; margin: 0 -8px; padding: 10px 8px; border-radius: 8px;
+  color: inherit; text-decoration: none; -webkit-tap-highlight-color: transparent;
+}
+button.list-row {
+  width: calc(100% + 16px); background: none; border: 0; font: inherit; text-align: left;
+  cursor: pointer;
+}
+a.list-row:active, button.list-row:active { background: var(--surface-raised); }
+.list-row .title { font-weight: 600; overflow-wrap: anywhere; }
+.list-row .amount {
+  font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right;
+}
+.list-row .meta { color: var(--ink-muted); font-size: 0.82rem; }
+.list-row .side { text-align: right; font-size: 0.82rem; white-space: nowrap; }
+/* A month's heading inside a list: which month, and how many and how much. */
+.list-group {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+  padding: 16px 0 6px; font-size: 0.8rem; font-weight: 650; color: var(--ink-secondary);
+  border-bottom: 1px solid var(--border);
+}
+.list-section:first-child .list-group { padding-top: 0; }
+.list-group .total { font-weight: 550; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* --- status ------------------------------------------------------------- */
 .badge {
@@ -369,9 +427,13 @@ input[type="range"] {
 .budget-row:first-child { border-top: 0; padding-top: 0; }
 .budget-row > .head {
   display: flex; justify-content: space-between; gap: 10px; align-items: baseline;
-  width: 100%; background: none; border: 0; padding: 0; text-align: left; cursor: pointer;
-  font: inherit; color: inherit; min-height: 32px;
+  width: 100%; background: none; border: 0; text-align: left; cursor: pointer;
+  font: inherit; color: inherit;
+  /* 44px to a thumb, 32px to the layout: the padding widens what can be tapped and the
+     negative margin gives the room back, so nothing moves. */
+  min-height: 44px; padding: 6px 0; margin: -6px 0;
 }
+.budget-row > .head:disabled { cursor: default; }
 .budget-row .figures { font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 0.9rem; }
 .pieces { margin: 8px 0 0; padding: 0; list-style: none; font-size: 0.85rem; }
 .pieces li { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; }
@@ -419,7 +481,7 @@ input[type="range"] {
 .occ-row:first-child { border-top: 0; padding-top: 0; }
 .occ-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .occ-actions input {
-  width: 8.5em; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px;
+  width: 7.5em; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px;
   background: var(--surface-raised); font-size: 16px; min-height: 44px; text-align: right;
 }
 
@@ -432,7 +494,6 @@ input[type="range"] {
   display: flex; flex-direction: row; align-items: center; gap: 8px; padding: 6px 0;
   font-size: 0.92rem; color: var(--ink);
 }
-.cat-picker label > input { width: auto; min-height: 0; margin: 0; }
 .cat-picker label.child { padding-left: 22px; }
 .cat-picker label.taken { color: var(--ink-muted); }
 

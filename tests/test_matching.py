@@ -203,6 +203,19 @@ class TestTheApi:
         names = {g["suggested_name"] for g in body["groups"]}
         assert "KENYER" in names
 
+    async def test_the_ones_that_need_you_can_be_asked_for_alone(self, auth_client, session):
+        """The groups that sort themselves out must not crowd out the ones that do not."""
+        await _receipt_with(session, ["PEPSI 1,5L", "Pepsi Cola 1.5 l", "KENYER", "TEJ 1L"])
+
+        everything = (await auth_client.get("/api/suggestions")).json()
+        assert everything["exact_groups"] == 2, "KENYER and TEJ 1L each have one spelling"
+
+        body = (await auth_client.get("/api/suggestions?exact=false&limit=1")).json()
+        assert [g["band"] for g in body["groups"]] == ["yellow"]
+        assert set(body["groups"][0]["members"]) == {"PEPSI 1,5L", "Pepsi Cola 1.5 l"}
+        assert body["exact_groups"] == 2, "still counted, so the screen can say they exist"
+        assert body["unmapped_lines"] == 4
+
     async def test_confirming_a_group_backfills_what_is_already_stored(
         self, auth_client, session
     ):

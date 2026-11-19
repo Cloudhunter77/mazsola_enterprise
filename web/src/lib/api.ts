@@ -164,7 +164,12 @@ export interface ReceiptFiling {
   category_id: string; item_ids: string[]; lines: number; spread: number;
   merchant_id: string | null; previous_default: string | null;
 }
-export interface Suggestions { unmapped_lines: number; groups: Suggestion[] }
+export interface Suggestions {
+  unmapped_lines: number;
+  // Letter-for-letter certain groups: they become products by themselves every hour.
+  exact_groups: number;
+  groups: Suggestion[];
+}
 
 export interface ManualItem {
   raw_name: string; gross_amount: number;
@@ -562,7 +567,9 @@ export const api = {
 
   system: () => request<SystemInfo>("/api/system"),
 
-  suggestions: () => request<Suggestions>("/api/suggestions"),
+  /** `exact: false` leaves out the groups that sort themselves out - only what needs you. */
+  suggestions: (exact = true) =>
+    request<Suggestions>(exact ? "/api/suggestions" : "/api/suggestions?exact=false&limit=100"),
   receiptsToFile: () => request<ReceiptToFile[]>("/api/categorise/receipts"),
   fileReceipt: (receipt_id: string, category_id: string, remember_shop: boolean, replace_guesses = false) =>
     request<ReceiptFiling>("/api/categorise/receipt", json("POST", {

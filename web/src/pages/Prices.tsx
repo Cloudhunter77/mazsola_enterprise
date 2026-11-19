@@ -5,9 +5,8 @@ import { Link } from "react-router-dom";
 
 import { api, type PricePoint } from "../lib/api";
 import { IndexChart, MAX_SERIES, PriceHistoryChart, RankingChart } from "../lib/charts";
-import { date, ft, month, pct } from "../lib/format";
+import { ft, month, pct, shortDate } from "../lib/format";
 import { AsyncBlock, Card, Empty, useAsync } from "../components/ui";
-import Suggestions from "../components/Suggestions";
 
 /** Put the product you are looking at onto the shopping list.
  *
@@ -49,6 +48,7 @@ export default function Prices() {
   const tracked = useAsync(() => api.trackedProducts(), []);
   const basket = useAsync(() => api.basket(), []);
   const inflation = useAsync(() => api.inflation(), []);
+  const waiting = useAsync(() => api.suggestions(false), []);
   const [productId, setProductId] = useState<string>("");
 
   const selected = productId || tracked.data?.[0]?.id || "";
@@ -61,9 +61,16 @@ export default function Prices() {
     <>
       <h1 style={{ marginBottom: 14 }}>Árak</h1>
 
-      {/* Above the charts on purpose: the charts are empty until lines are mapped to
-          products, so this is the thing to do first. */}
-      <Suggestions />
+      {/* The matching itself has its own page; here only whether it needs you. Above the
+          charts on purpose: they stay empty until lines are mapped to products. */}
+      {waiting.data && waiting.data.groups.length > 0 && (
+        <Link className="banner" to="/termekek">
+          <span>
+            <strong>{waiting.data.groups.length} termék</strong> vár összekapcsolásra
+          </span>
+          <span className="banner-action">Termékek →</span>
+        </Link>
+      )}
 
       <Card
         title="Egy termék ára az időben"
@@ -74,8 +81,7 @@ export default function Prices() {
                 <select
                   value={selected}
                   onChange={(event) => setProductId(event.target.value)}
-                  style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid var(--border)",
-                           background: "var(--surface-raised)", maxWidth: 220 }}
+                  style={{ maxWidth: 320 }}
                   aria-label="Termék választása"
                 >
                   {products.map((product) => (
@@ -90,7 +96,8 @@ export default function Prices() {
         {selected && <AddToList productId={selected} />}
         {!selected ? (
           <Empty>
-            Társíts termékeket a blokkok tételeihez – onnantól itt látszik, hogyan változik az áruk.
+            Társíts termékeket a blokkok tételeihez a <Link to="/termekek">Termékek</Link> oldalon –
+            onnantól itt látszik, hogyan változik az áruk.
           </Empty>
         ) : (
           <AsyncBlock state={history}>
@@ -250,7 +257,7 @@ function Origin({ point }: { point: PricePoint }) {
   if (point.receipt_id) {
     return (
       <Link to={`/blokkok/${point.receipt_id}`} title="A blokk megnyitása">
-        {date(point.purchased_at)}
+        {shortDate(point.purchased_at)}
       </Link>
     );
   }
@@ -262,11 +269,11 @@ function Origin({ point }: { point: PricePoint }) {
         rel="noreferrer"
         title="A polccímke fotója"
       >
-        {date(point.purchased_at)}
+        {shortDate(point.purchased_at)}
       </a>
     );
   }
-  return <>{date(point.purchased_at)}</>;
+  return <>{shortDate(point.purchased_at)}</>;
 }
 
 function toSeries(points: { purchased_at: string; merchant_name: string; unit_price: string }[]) {

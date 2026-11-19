@@ -1,4 +1,4 @@
-/** Turning receipt line text into products, without typing each one.
+/** Termékek: turning receipt line text into products, without typing each one.
  *
  *  Every till spells things differently: `PEPSI 1,5L`, `Pepsi Cola 1.5 l`, `PEPSI COLA
  *  1500ML`. Until those are one product they are three price histories and the
@@ -9,6 +9,10 @@
  *  Red is a starting point and no more. The split exists because a wrong link is silent:
  *  it quietly corrupts a price history and nobody notices for months, so anything short of
  *  certain asks first.
+ *
+ *  Only yellow and red are listed here. Green needs nothing from you - the worker turns it
+ *  into products every hour - so it is one line at the bottom, not forty cards above the
+ *  four that matter.
  */
 
 import { useEffect, useState } from "react";
@@ -47,17 +51,18 @@ const BANDS: Record<string, { label: string; className: string; hint: string }> 
   },
 };
 
-export default function Suggestions() {
+export default function Matching() {
   const [reload, setReload] = useState(0);
-  const suggestions = useAsync(() => api.suggestions(), [reload]);
+  // Only the groups that need you: the certain ones become products by themselves.
+  const suggestions = useAsync(() => api.suggestions(false), [reload]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<
     { linked: number; created: number; categorised: number } | null
   >(null);
 
-  // What is already in the database, brought up to date with what you have mapped since.
-  // Only letter-for-letter matches, so there is nothing to check afterwards.
+  // What the worker does every hour, now: link lines to the products they letter-for-letter
+  // match, and turn the names with a single spelling into products of their own.
   async function autolink() {
     setBusy("__autolink");
     setError(null);
@@ -95,75 +100,76 @@ export default function Suggestions() {
   }
 
   return (
-    <AsyncBlock state={suggestions} empty="Minden tétel be van sorolva.">
-      {(data) => (
-        <Card
-          title="Termékek felismerése"
-          note={`${data.unmapped_lines} besorolatlan sor`}
-          action={
-            <>
-              <button
-                className="btn"
-                onClick={autolink}
-                disabled={busy === "__autolink"}
-                title="A már eltárolt sorokat összekapcsolja a betűre egyező termékekkel"
-              >
-                {busy === "__autolink" ? "Keresés…" : "Régiek összekapcsolása"}
-              </button>{" "}
-              <button className="btn" onClick={() => setReload((n) => n + 1)}>Frissítés</button>
-            </>
-          }
-        >
-          <p className="muted" style={{ marginTop: 0 }}>
-            Ugyanaz a termék máshogy van kiírva minden boltban. Ha összekapcsolod őket, egy
-            ártörténetté válnak – és összehasonlíthatóvá, melyik boltban olcsóbb.
-            Az <strong>egyértelmű</strong> eseteket magától elintézi; ide csak az kerül,
-            amihez tényleg te kellesz.
-          </p>
+    <>
+      <h1 style={{ marginBottom: 4 }}>Termékek</h1>
+      <p className="muted small" style={{ marginTop: 0, marginBottom: 14 }}>
+        Ugyanaz a termék boltonként máshogy van kiírva. Amit összekapcsolsz, egy ártörténet
+        lesz – és összevethető, hol olcsóbb.
+      </p>
 
-          {done !== null && (
-            <p
-              className="muted"
-              style={{
-                fontSize: "0.86rem",
-                color:
-                  done.linked || done.created || done.categorised
-                    ? "var(--good-text)"
-                    : undefined,
-              }}
+      <AsyncBlock state={suggestions}>
+        {(data) => (
+          <>
+            <Card
+              title="Döntésre vár"
+              note={data.groups.length ? `${data.groups.length} csoport` : undefined}
             >
-              {done.linked || done.created || done.categorised ? (
-                <>
-                  {done.created > 0 && `${done.created} új termék. `}
-                  {done.linked > 0 && `${done.linked} sor kapott terméket. `}
-                  {done.categorised > 0 && `${done.categorised} sor kapott kategóriát.`}
-                </>
+              {error && <p className="error">{error}</p>}
+              {data.groups.length === 0 ? (
+                <p className="muted" style={{ margin: 0 }}>
+                  Nincs eldöntendő: minden hasonló nevet összekapcsoltál.
+                </p>
               ) : (
-                "Nem maradt egyértelmű eset – ami lent van, ahhoz te kellesz."
+                data.groups.map((group, index) => (
+                  <Group
+                    key={group.suggested_name}
+                    group={group}
+                    first={index === 0}
+                    // What to do with a band is said once, at its first group - not four
+                    // times in a row.
+                    hint={data.groups.findIndex((g) => g.band === group.band) === index}
+                    busy={busy === group.suggested_name}
+                    onConfirm={confirm}
+                  />
+                ))
               )}
-            </p>
-          )}
-          {error && <p className="error">{error}</p>}
-          {data.groups.length === 0 && (
-            <p className="muted" style={{ marginBottom: 0 }}>Nincs több javaslat.</p>
-          )}
+            </Card>
 
-          {data.groups.map((group) => (
-            <Group
-              key={group.suggested_name}
-              group={group}
-              busy={busy === group.suggested_name}
-              onConfirm={confirm}
-            />
-          ))}
-        </Card>
-      )}
-    </AsyncBlock>
+            <Card title="Magától megy">
+              <p className="muted small" style={{ marginTop: 0 }}>
+                {data.exact_groups > 0
+                  ? `${data.exact_groups} név betűre egyezik egy másikkal, vagy csak egyféleképp ` +
+                    "fordul elő: ezekből óránként magától lesz termék, nincs vele dolgod."
+                  : "Ami egyértelmű, az már mind termék."}
+              </p>
+              <button className="btn" onClick={autolink} disabled={busy === "__autolink"}>
+                {busy === "__autolink" ? "Rendezés…" : "Rendezés most"}
+              </button>
+              {done !== null && (
+                <p className="small" style={{ marginBottom: 0, color: "var(--good-text)" }}>
+                  {done.linked || done.created || done.categorised ? (
+                    <>
+                      {done.created > 0 && `${done.created} új termék. `}
+                      {done.linked > 0 && `${done.linked} sor kapott terméket. `}
+                      {done.categorised > 0 && `${done.categorised} sor kapott kategóriát.`}
+                    </>
+                  ) : (
+                    "Nem volt mit rendezni."
+                  )}
+                </p>
+              )}
+            </Card>
+          </>
+        )}
+      </AsyncBlock>
+    </>
   );
 }
 
-function Group({ group, busy, onConfirm }: {
+function Group({ group, first, hint, busy, onConfirm }: {
   group: Suggestion;
+  first: boolean;
+  hint: boolean;
   busy: boolean;
   onConfirm: (
     group: Suggestion, members: string[], canonicalName: string, productId: string | null,
@@ -213,13 +219,7 @@ function Group({ group, busy, onConfirm }: {
   }
 
   return (
-    <div
-      style={{
-        borderTop: "1px solid var(--grid)",
-        paddingTop: 12,
-        marginTop: 12,
-      }}
-    >
+    <div style={first ? undefined : { borderTop: "1px solid var(--grid)", paddingTop: 12, marginTop: 12 }}>
       <div className="row" style={{ gap: 8, marginBottom: 8 }}>
         <span className={`badge ${band.className}`}>
           {band.label} · {Math.round(group.score * 100)}%
@@ -234,9 +234,8 @@ function Group({ group, busy, onConfirm }: {
           {group.members.map((member) => (
             <label
               key={member}
+              className="check"
               style={{
-                display: "flex", alignItems: "center", gap: 10,
-                minHeight: 40, fontSize: "0.9rem", cursor: "pointer",
                 color: picked.has(member) ? undefined : "var(--ink-muted)",
                 textDecoration: picked.has(member) ? undefined : "line-through",
               }}
@@ -246,7 +245,6 @@ function Group({ group, busy, onConfirm }: {
                 checked={picked.has(member)}
                 onChange={() => toggle(member)}
                 disabled={busy}
-                style={{ width: 22, height: 22, flex: "0 0 auto" }}
               />
               <span style={{ flex: 1, minWidth: 0 }}>{member}</span>
               <PriceTag
@@ -271,9 +269,11 @@ function Group({ group, busy, onConfirm }: {
         </p>
       )}
 
-      <p className="muted" style={{ fontSize: "0.8rem", marginTop: 0 }}>
-        {band.hint}
-      </p>
+      {hint && (
+        <p className="muted" style={{ fontSize: "0.8rem", marginTop: 0 }}>
+          {band.hint}
+        </p>
+      )}
 
       <div className="row" style={{ gap: 8 }}>
         <input

@@ -69,8 +69,8 @@ export default function PlanPage() {
             })}>
               + Új sor
             </button>
-            <label className="row" style={{ gap: 6, fontSize: "0.88rem", display: "flex" }}>
-              <input type="checkbox" checked={showArchived} style={{ width: "auto", minHeight: 0 }}
+            <label className="check">
+              <input type="checkbox" checked={showArchived}
                      onChange={(e) => setShowArchived(e.target.checked)} />
               archivált sorok is
             </label>

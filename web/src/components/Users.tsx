@@ -1,4 +1,5 @@
-/** The household's logins, on the Rendszer page.
+/** The household's logins, behind the ⚙ - and logging out, which is rare enough on a phone
+ *  of your own that it does not need a button on every screen.
  *
  *  Everyone sees who is in the household and can change their own name and password.
  *  Adding someone, resetting a forgotten password and switching a login off are for
@@ -12,7 +13,7 @@ import { api, type User } from "../lib/api";
 import { useSession } from "../lib/session";
 import { AsyncBlock, Card, useAsync } from "./ui";
 
-export default function Users() {
+export default function Users({ onLogout }: { onLogout: () => void }) {
   const session = useSession();
   const [reload, setReload] = useState(0);
   const users = useAsync(() => api.users(), [reload]);
@@ -20,18 +21,29 @@ export default function Users() {
   const admin = session?.is_admin ?? false;
 
   return (
-    <Card title="Felhasználók" note={session?.display_name ? `Bejelentkezve: ${session.display_name}` : undefined}>
-      <AsyncBlock state={users}>
-        {(rows) => (
-          <>
-            {rows.map((user) => (
-              <UserRow key={user.id} user={user} admin={admin} onChange={refresh} />
-            ))}
-            {admin && <AddUser onAdded={refresh} />}
-          </>
-        )}
-      </AsyncBlock>
-    </Card>
+    <>
+      <Card>
+        <div className="row" style={{ justifyContent: "space-between" }}>
+          <span>
+            Bejelentkezve: <strong>{session?.display_name ?? session?.subject ?? "?"}</strong>
+          </span>
+          <button className="btn" onClick={onLogout}>Kilépés</button>
+        </div>
+      </Card>
+
+      <Card title="A háztartás">
+        <AsyncBlock state={users}>
+          {(rows) => (
+            <>
+              {rows.map((user) => (
+                <UserRow key={user.id} user={user} admin={admin} onChange={refresh} />
+              ))}
+              {admin && <AddUser onAdded={refresh} />}
+            </>
+          )}
+        </AsyncBlock>
+      </Card>
+    </>
   );
 }
 
@@ -195,9 +207,8 @@ function AddUser({ onAdded }: { onAdded: () => void }) {
         <input type="password" autoComplete="new-password" value={password}
                onChange={(event) => setPassword(event.target.value)} />
       </div>
-      <label style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12 }}>
-        <input type="checkbox" checked={isAdmin} onChange={(event) => setIsAdmin(event.target.checked)}
-               style={{ width: 22, height: 22 }} />
+      <label className="check" style={{ marginBottom: 12 }}>
+        <input type="checkbox" checked={isAdmin} onChange={(event) => setIsAdmin(event.target.checked)} />
         Admin (ő is felvehet és kezelhet felhasználókat)
       </label>
       {error && <p className="error">{error}</p>}

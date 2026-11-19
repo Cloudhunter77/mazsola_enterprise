@@ -72,13 +72,12 @@ export default function ReceiptCategory({ receipt, categories, onSaved }: {
       <p style={{ marginTop: 0, fontSize: "0.9rem" }}>{now}</p>
 
       {receipt.merchant_id && (
-        <label style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 40, fontSize: "0.88rem" }}>
+        <label className="check">
           <input
             type="checkbox"
             checked={rememberShop}
             onChange={(event) => setRememberShop(event.target.checked)}
             disabled={busy}
-            style={{ width: 22, height: 22, flex: "0 0 auto" }}
           />
           <span>{shop} mindig ez legyen – a többi blokkja is</span>
         </label>
@@ -109,7 +108,7 @@ export default function ReceiptCategory({ receipt, categories, onSaved }: {
         {mine > 0
           ? `A kézzel besorolt ${mine} tétel marad, ahogy van. `
           : ""}
-        Egy-egy tételt lent, a tétel sorára koppintva sorolhatsz be másképp.
+        Egy-egy tételt a Tételek között, a sorára koppintva sorolhatsz be másképp.
       </p>
       {message && <p style={{ color: "var(--good-text)", fontSize: "0.88rem", marginBottom: 0 }}>{message}</p>}
       {error && <p className="error">{error}</p>}

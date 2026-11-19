@@ -16,6 +16,12 @@ const DATETIME = new Intl.DateTimeFormat("hu-HU", {
   year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
 });
 const MONTH = new Intl.DateTimeFormat("hu-HU", { year: "numeric", month: "short" });
+const MONTH_LONG = new Intl.DateTimeFormat("hu-HU", { year: "numeric", month: "long" });
+const DAY = new Intl.DateTimeFormat("hu-HU", { month: "short", day: "numeric" });
+const DAY_YEAR = new Intl.DateTimeFormat("hu-HU", { year: "numeric", month: "short", day: "numeric" });
+const DAY_TIME = new Intl.DateTimeFormat("hu-HU", {
+  year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+});
 
 export const ft = (value: number | string | null | undefined): string =>
   value == null ? "–" : HUF.format(Number(value));
@@ -30,6 +36,28 @@ export const dateTime = (iso: string | null | undefined): string =>
   iso ? DATETIME.format(new Date(iso)) : "–";
 
 export const month = (iso: string): string => MONTH.format(new Date(iso));
+
+/** "2026. november": a month as a heading in a list. */
+export const monthLong = (at: Date): string => MONTH_LONG.format(at);
+
+/** A plain date ("2026-12-10") is a day, not an instant: read it as local midnight, so it
+ *  is the same day in every time zone. Anything with a time is an instant and parsed as one. */
+const parse = (iso: string): Date => {
+  const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return day ? new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3])) : new Date(iso);
+};
+
+/** "nov. 18." - a date in a list or a narrow column, where "2026. 11. 18." wrapped onto
+ *  three lines. The year only when it is not this year. */
+export const shortDate = (iso: string | null | undefined): string => {
+  if (!iso) return "–";
+  const at = parse(iso);
+  return (at.getFullYear() === new Date().getFullYear() ? DAY : DAY_YEAR).format(at);
+};
+
+/** "2026. nov. 17. 17:30": when something happened, readable at a glance. */
+export const dayTime = (iso: string | null | undefined): string =>
+  iso ? DAY_TIME.format(new Date(iso)) : "–";
 
 /** ISO timestamp -> the value a <input type="datetime-local"> expects, in local time.
  *  Slicing the ISO string directly would show UTC and silently shift the time. */
@@ -85,6 +113,13 @@ export const STATUS_LABELS: Record<string, string> = {
   needs_review: "Ellenőrzendő",
   failed: "Sikertelen",
   confirmed: "Megerősítve",
+};
+
+/** "unknown" has no label on purpose: saying nothing beats saying "ismeretlen". */
+export const PAYMENT_LABELS: Record<string, string> = {
+  card: "Bankkártya",
+  cash: "Készpénz",
+  other: "Egyéb fizetés",
 };
 
 export const KIND_LABELS: Record<string, string> = {

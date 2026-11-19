@@ -207,8 +207,10 @@ async def get_receipt(_: AuthDep, session: SessionDep, receipt_id: uuid.UUID) ->
 
     detail = ReceiptDetail.model_validate(receipt)
     detail.item_count = len(receipt.items)
-    # Receipts stored before multi-part capture have no rows here and are single-page.
-    detail.pages = len(receipt.images) or 1
+    # Receipts stored before multi-part capture have no rows here and are single-page. A
+    # typed-in or recurring receipt has no photograph at all: 0, so the page shows none
+    # rather than a broken image.
+    detail.pages = len(receipt.images) or (1 if receipt.image_path else 0)
     if receipt.merchant_id:
         merchant = await session.get(Merchant, receipt.merchant_id)
         detail.merchant_name = merchant.name if merchant else None

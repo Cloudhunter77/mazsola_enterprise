@@ -113,12 +113,22 @@ async def create_product(
 
 @router.get("/suggestions", response_model=SuggestionsOut)
 async def product_suggestions(
-    _: AuthDep, session: SessionDep, limit: int = Query(40, le=200)
+    _: AuthDep,
+    session: SessionDep,
+    limit: int = Query(40, le=200),
+    exact: bool = Query(
+        True,
+        description="Include the letter-for-letter groups. They become products on their "
+        "own every hour, so a screen asking you to decide can leave them out.",
+    ),
 ) -> SuggestionsOut:
     """Group the receipt lines that are not yet mapped to a product.
 
     Everything here is derived on the fly rather than stored: the grouping rules can change
     without a migration, and a suggestion nobody acted on is not worth a row.
+
+    Without the exact groups, the limit applies to the rest: otherwise forty spellings that
+    sort themselves out could crowd out the one group that actually needs you.
     """
     # What one of it cost: the printed unit price, else the line split by its quantity, else
     # the line itself. Per unit rather than per line, or buying two would look like a
@@ -168,8 +178,13 @@ async def product_suggestions(
         for product in (await session.scalars(select(Product))).all()
     }
 
+    clusters = cluster(counts)
+    exact_groups = sum(1 for group in clusters if group.band == "green")
+    if not exact:
+        clusters = [group for group in clusters if group.band != "green"]
+
     groups: list[SuggestionOut] = []
-    for group in cluster(counts)[:limit]:
+    for group in clusters[:limit]:
         member_products = {m: known.get(fingerprint(m)[:320]) for m in group.members}
         product_id = next((pid for pid in member_products.values() if pid), None)
         groups.append(
@@ -192,7 +207,9 @@ async def product_suggestions(
             )
         )
 
-    return SuggestionsOut(unmapped_lines=sum(counts.values()), groups=groups)
+    return SuggestionsOut(
+        unmapped_lines=sum(counts.values()), exact_groups=exact_groups, groups=groups
+    )
 
 
 @router.post("/suggestions/apply", response_model=ProductOut, status_code=201)

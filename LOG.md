@@ -1,5 +1,19 @@
 # Log
 
+## 2026-11-19 – UX/UI pass
+- Walked every screen at phone width (390px), dark and light, with a seeded household, and
+  measured page height, small controls and overflow before and after.
+- Text boxes, dropdowns and checkboxes are styled everywhere, not only inside a form field
+  (many were the browser's 13–30px ones). Dates in lists are short ("nov. 17.").
+- Blokkok, Elszámolás, Rendszeres and the meeting's "Terv és tény" are rows instead of tables
+  that a phone cut off; receipts and shared bills are grouped by month.
+- Receipt page: shop, amount and date first, header edit behind ✎ Javítás, lines as rows with
+  their category, and no broken photo for typed-in receipts (the API now says 0 pages).
+- Product matching moved to its own page, Árak → Termékek, listing only the groups that need a
+  decision (`/api/suggestions?exact=false`); Ártörténet went from 10 000px to 1 700px.
+- Kilépés moved to ⚙ → Felhasználók; the shopping list ticks by the whole row; the wishlist
+  and pockets lost their wrapped button rows; Hónap rows lost the Fix/Változó tags.
+
 ## 2026-11-19 – Housekeeping
 - The NAS is updated; both budgeting migrations ran.
 - CI: every action moved to its Node 24 major (checkout, setup-node, setup-python v7;

@@ -13,7 +13,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, type MonthRow, type MonthView, type Person } from "../lib/api";
-import { KIND_LABELS, dayLabel, isAside, monthLabel, ownerName, owners, periodRange, pocketLabel } from "../lib/budget";
+import { dayLabel, isAside, monthLabel, ownerName, owners, periodRange, pocketLabel } from "../lib/budget";
 import { ft } from "../lib/format";
 import Occurrences from "../components/Occurrences";
 import { TransferChecklist } from "./Pockets";
@@ -182,7 +182,8 @@ function BudgetRow({ row }: { row: MonthRow }) {
         <span style={{ minWidth: 0 }}>
           {row.type === "recurring" && <span aria-hidden>↻ </span>}
           {row.name}
-          {row.type !== "unplanned" && <span className="tag">{KIND_LABELS[row.kind]}</span>}
+          {/* Fix or Változó is how a line is planned, and the plan says it; here it only
+              pushed long names onto a second line. The unusual cases keep their tag. */}
           {row.yearly && <span className="tag">éves · 1/12</span>}
           {!row.active && <span className="tag">archivált</span>}
         </span>

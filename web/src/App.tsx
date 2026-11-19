@@ -18,6 +18,7 @@ import ShelfPrices from "./pages/ShelfPrices";
 import Shopping from "./pages/Shopping";
 import Login from "./pages/Login";
 import Manual from "./pages/Manual";
+import Matching from "./pages/Matching";
 import Meeting from "./pages/Meeting";
 import Month from "./pages/Month";
 import PlanPage from "./pages/Plan";
@@ -91,11 +92,12 @@ export default function App() {
       <header className="topbar">
         <span className="brand">🧾 Receipt Tracker</span>
         <span className="spacer" />
-        {/* Logins, fix notes, API cost and version: looked at rarely, so not a tab. */}
+        {/* Logins and logging out, fix notes, API cost and version: looked at rarely, so
+            not a tab. */}
         <Link
           className="btn"
           to={SETTINGS.pages[0].to}
-          title="Beállítások: felhasználók, javítani való, API költség, rendszer"
+          title="Beállítások: felhasználók és kilépés, javítani való, API költség, rendszer"
           aria-label="Beállítások"
           aria-current={section === SETTINGS ? "page" : undefined}
         >
@@ -109,7 +111,8 @@ export default function App() {
         >
           {themeGlyph}
         </button>
-        <button className="btn" onClick={logout}>Kilépés</button>
+        {/* Kilépés lives on ⚙ → Felhasználók: on your own phone it is pressed about never,
+            and on every screen it was the widest thing in the bar. */}
       </header>
 
       <main className="content">
@@ -141,11 +144,12 @@ export default function App() {
           <Route path="/megbeszeles" element={<Meeting />} />
           <Route path="/zsebek" element={<Pockets />} />
           <Route path="/kivansaglista" element={<Wishlist />} />
-          <Route path="/felhasznalok" element={<SettingsPage title="Felhasználók"><Users /></SettingsPage>} />
+          <Route path="/felhasznalok" element={<SettingsPage title="Felhasználók"><Users onLogout={logout} /></SettingsPage>} />
           <Route path="/javitani" element={<SettingsPage title="Javítani való"><FixNotes /></SettingsPage>} />
           <Route path="/elszamolas" element={<Settle />} />
           <Route path="/statisztika" element={<Dashboard />} />
           <Route path="/arak" element={<Prices />} />
+          <Route path="/termekek" element={<Matching />} />
           <Route path="/arcimkek" element={<Labels />} />
           <Route path="/polcarak" element={<ShelfPrices />} />
           <Route path="/lista" element={<Shopping />} />
