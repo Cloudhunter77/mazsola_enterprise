@@ -1,5 +1,13 @@
 # Log
 
+## 2026-11-19 – Housekeeping
+- The NAS is updated; both budgeting migrations ran.
+- CI: every action moved to its Node 24 major (checkout, setup-node, setup-python v7;
+  setup-buildx v4, login v4, metadata v6, build-push v7), after checking each new major's
+  runtime, its inputs we use, and its breaking changes against this workflow.
+- TODO tidied: finished items moved under Done, the stray "Receipt and expense tracker" item
+  removed.
+
 ## 2026-11-17 – Budgeting stage 2, deploy, clickable Statisztika
 - Grilled stage 2: goals and the wishlist became Revolut pockets with earmarks (D23–D35).
 - Built pockets, goals, pocket lines, "Zsebből" on receipts, the meeting's transfer checklist
