@@ -13,7 +13,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { api, type Category, type Item, type Product, type ReceiptDetail } from "../lib/api";
 import {
@@ -36,6 +36,7 @@ const BADGE: Record<string, string> = {
 export default function Review() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const state = useAsync(() => api.receipt(id), [id]);
   const categories = useAsync(() => api.categories(), []);
   const products = useAsync(() => api.products(), []);
@@ -68,6 +69,8 @@ export default function Review() {
   return (
     <AsyncBlock state={state}>
       {(receipt) => {
+        const read =
+          receipt.status !== "pending" && receipt.status !== "processing" && receipt.total_gross != null;
         const lines = (
           <Lines
             receipt={receipt}
@@ -83,8 +86,10 @@ export default function Review() {
               categories={categories.data ?? []}
               onSaved={() => state.reload()}
             />
-            <SplitBill receipt={receipt} onSaved={() => state.reload()} />
-            <PocketAndGoal receipt={receipt} onSaved={() => state.reload()} />
+            {/* Splitting or filing a receipt that has not been read yet means 0 Ft of
+                nothing; these appear once there is a total. */}
+            {read && <SplitBill receipt={receipt} onSaved={() => state.reload()} />}
+            {read && <PocketAndGoal receipt={receipt} onSaved={() => state.reload()} />}
             <Card title="Műveletek">
               <div className="row">
                 {/* Reading the photo again only means something when there is a photo. */}
@@ -117,7 +122,15 @@ export default function Review() {
         return (
           <>
             <div className="row" style={{ marginBottom: 14 }}>
-              <Link className="btn" to="/blokkok">← Blokkok</Link>
+              {/* Back to wherever you came from - the price history, the settle-up, a
+                  chart - not always to the receipt list. Opened from a bookmark, there is
+                  nowhere to go back to, so then it is the list. */}
+              <button
+                className="btn"
+                onClick={() => (location.key !== "default" ? navigate(-1) : navigate("/blokkok"))}
+              >
+                ← Vissza
+              </button>
               <span style={{ flex: 1 }} />
               <span className={BADGE[receipt.status] ?? "badge"}>
                 {STATUS_LABELS[receipt.status] ?? receipt.status}

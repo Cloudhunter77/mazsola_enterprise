@@ -260,6 +260,12 @@ th { text-align: left; font-weight: 600; color: var(--ink-secondary);
 td { padding: 8px; border-bottom: 1px solid var(--grid); vertical-align: middle; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
+/* Filter buttons in one row that scrolls sideways: on a phone, six of them wrapped into two
+   rows of buttons above the list. */
+.chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chips > .btn { flex: none; }
+
 /* --- lists --------------------------------------------------------------
    A phone is too narrow for a five-column table: the dates wrapped onto three lines and the
    last column was cut off. A list row says the same in two lines - what it is and its amount,

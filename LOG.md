@@ -13,6 +13,9 @@
   decision (`/api/suggestions?exact=false`); Ártörténet went from 10 000px to 1 700px.
 - Kilépés moved to ⚙ → Felhasználók; the shopping list ticks by the whole row; the wishlist
   and pockets lost their wrapped button rows; Hónap rows lost the Fix/Változó tags.
+- Follow-up: Blokkok has a search (shop name, accent-insensitive, or amount) and its filters
+  in one sideways row; a receipt's ← Vissza returns to wherever it was opened from; a receipt
+  still being read no longer offers splitting or a pocket.
 
 ## 2026-11-19 – Housekeeping
 - The NAS is updated; both budgeting migrations ran.

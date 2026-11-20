@@ -20,8 +20,21 @@ const BADGE: Record<string, string> = {
   failed: "badge bad",
 };
 
+/** "Cinema City", "cinema", "CINEMA" and "cinéma" are the same search. */
+const fold = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+function matches(receipt: ReceiptSummary, query: string): boolean {
+  const q = fold(query.trim());
+  if (!q) return true;
+  if (fold(receipt.merchant_name ?? "").includes(q)) return true;
+  // A number finds a total: "8950" or "8 950" finds the 8950 Ft receipt.
+  const digits = q.replace(/\s/g, "");
+  return /^\d+$/.test(digits) && String(Math.round(Number(receipt.total_gross ?? 0))).includes(digits);
+}
+
 export default function Receipts() {
   const [status, setStatus] = useState("");
+  const [query, setQuery] = useState("");
   const state = useAsync(() => api.receipts({ status: status || undefined, limit: 200 }), [status]);
   // A receipt uploaded from the phone shows up as queued and turns into a result by itself.
   useLive(state, (rows) => rows.some((row) => row.status === "pending" || row.status === "processing"));
@@ -30,7 +43,17 @@ export default function Receipts() {
     <>
       <h1 style={{ marginBottom: 14 }}>Blokkok</h1>
 
-      <div className="row" style={{ marginBottom: 14, gap: 8 }}>
+      <input
+        type="search"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Keresés: bolt vagy összeg"
+        aria-label="Keresés boltra vagy összegre"
+        style={{ width: "100%", marginBottom: 10 }}
+      />
+
+      {/* One row that scrolls sideways rather than two rows of buttons above the list. */}
+      <div className="chips" style={{ marginBottom: 14 }}>
         {FILTERS.map((filter) => (
           <button
             key={filter.value}
@@ -47,7 +70,12 @@ export default function Receipts() {
         <AsyncBlock state={state} empty="Még nincs blokk ebben a nézetben.">
           {/* The ones with no date yet - still in the queue, or not readable - come first:
               they are the newest, and the ones that may need you. */}
-          {(receipts) => groupByMonth(receipts, (r) => r.purchased_at).map((group) => (
+          {(all) => {
+            const receipts = all.filter((receipt) => matches(receipt, query));
+            if (receipts.length === 0) {
+              return <p className="empty">Nincs ilyen blokk{query.trim() ? `: „${query.trim()}”` : ""}.</p>;
+            }
+            return groupByMonth(receipts, (r) => r.purchased_at).map((group) => (
             <section key={group.key} className="list-section">
               <MonthHeading count={group.items.length}
                             total={group.items.reduce((sum, r) => sum + Number(r.total_gross ?? 0), 0)}>
@@ -61,7 +89,8 @@ export default function Receipts() {
                 ))}
               </ul>
             </section>
-          ))}
+            ));
+          }}
         </AsyncBlock>
       </Card>
     </>
